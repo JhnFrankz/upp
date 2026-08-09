@@ -110,34 +110,33 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 			continue
 		}
 
-		// Confirm if needed (interactive mode)
-		if !gf.CI {
-			riskLevel := security.ClassifyCommand(info.Name + " update")
-			decision := security.ConfirmAction(security.ConfirmConfig{
-				ToolName:   info.Name,
-				TrustLevel: trustLevelString(info.Trust),
-				RiskLevel:  riskLevel,
-				Command:    info.Name + " update",
-				CI:         gf.CI,
-				Trusted:    info.Trust == adapters.TrustTrusted,
-			})
+		// Confirm if needed — always evaluate trust/risk, even in CI mode.
+		// In CI mode, ConfirmAction returns ConfirmError for untrusted tools.
+		riskLevel := security.ClassifyCommand(info.Name + " update")
+		decision := security.ConfirmAction(security.ConfirmConfig{
+			ToolName:   info.Name,
+			TrustLevel: trustLevelString(info.Trust),
+			RiskLevel:  riskLevel,
+			Command:    info.Name + " update",
+			CI:         gf.CI,
+			Trusted:    info.Trust == adapters.TrustTrusted,
+		})
 
-			switch decision {
-			case security.ConfirmDeny:
-				results = append(results, output.ToolResult{
-					Name:   info.Name,
-					Status: output.StatusSkipped,
-				})
-				continue
-			case security.ConfirmError:
-				results = append(results, output.ToolResult{
-					Name:   info.Name,
-					Status: output.StatusFailed,
-					Error:  fmt.Errorf("CI mode: untrusted custom tool requires confirmation"),
-				})
-				hasFailure = true
-				continue
-			}
+		switch decision {
+		case security.ConfirmDeny:
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusSkipped,
+			})
+			continue
+		case security.ConfirmError:
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusFailed,
+				Error:  fmt.Errorf("CI mode: untrusted custom tool requires confirmation"),
+			})
+			hasFailure = true
+			continue
 		}
 
 		// Update

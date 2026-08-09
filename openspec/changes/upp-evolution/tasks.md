@@ -45,43 +45,49 @@ Chain strategy: pending
 
 ## Phase 3: Official Tool Adapters
 
-- [ ] 3.1 Create `internal/adapters/official/apt.go` — Linux-only, `apt upgrade` update
-- [ ] 3.2 Create `internal/adapters/official/brew.go` — Linux+macOS, `brew update && brew upgrade`
-- [ ] 3.3 Create `internal/adapters/official/npm.go` — All platforms, `npm update -g`
-- [ ] 3.4 Create `internal/adapters/official/pnpm.go` — All platforms, `pnpm update -g` with corruption recovery
-- [ ] 3.5 Create `internal/adapters/official/nvm.go` — All platforms, `nvm install stable`
-- [ ] 3.6 Create `internal/adapters/official/bun.go` — All platforms, `bun upgrade`
-- [ ] 3.7 Create `internal/adapters/official/gh.go` — Platform dispatch: apt/brew/winget
-- [ ] 3.8 Create `internal/adapters/official/docker.go` — Platform dispatch: apt/brew/winget
-- [ ] 3.9 Create `internal/adapters/official/go.go` — Platform dispatch: brew/winget/manual
-- [ ] 3.10 Create `internal/adapters/official/opencode.go` — All platforms, curl installer
+- [x] 3.1 Create `internal/adapters/official/apt.go` — Linux-only, `apt upgrade` update
+- [x] 3.2 Create `internal/adapters/official/brew.go` — Linux+macOS, `brew update && brew upgrade`
+- [x] 3.3 Create `internal/adapters/official/npm.go` — All platforms, `npm update -g`
+- [x] 3.4 Create `internal/adapters/official/pnpm.go` — All platforms, `pnpm update -g` with corruption recovery
+- [x] 3.5 Create `internal/adapters/official/nvm.go` — All platforms, `nvm install stable`
+- [x] 3.6 Create `internal/adapters/official/bun.go` — All platforms, `bun upgrade`
+- [x] 3.7 Create `internal/adapters/official/gh.go` — Platform dispatch: apt/brew/winget
+- [x] 3.8 Create `internal/adapters/official/docker.go` — Platform dispatch: apt/brew/winget
+- [x] 3.9 Create `internal/adapters/official/go.go` — Platform dispatch: brew/winget/manual
+- [x] 3.10 Create `internal/adapters/official/opencode.go` — All platforms, curl installer
+- [x] 3.11 Create `internal/adapters/official/winget.go` — Windows-only, `winget upgrade --all`
+- [x] 3.12 Create `internal/adapters/official/scoop.go` — Windows-only, `scoop update *`
+- [x] 3.13 Create `internal/adapters/official/registry.go` — `AllAdapters()`, `AdaptersForPlatform()`, `AdapterByName()`
+- [x] 3.14 Create `internal/adapters/official/helper.go` — shared command execution and version parsing utilities
+- [x] 3.15 Create `internal/adapters/official/registry_test.go` — registry and adapter interface tests
+- [x] 3.16 Create `internal/adapters/official/adapter_test.go` — individual adapter Detect/Name/Info tests + version parsing
 
 ## Phase 4: Security & Custom Adapter
 
-- [ ] 4.1 Create `internal/security/trust.go` — `TrustLevel` enum, `RiskLevel` enum, `ClassifyCommand()` hybrid heuristic
-- [ ] 4.2 Create `internal/security/confirm.go` — interactive confirmation prompt, `--ci` error behavior
-- [ ] 4.3 Create `internal/adapters/custom.go` — config-defined adapter: exec user command, trust/risk integration
+- [x] 4.1 Create `internal/security/trust.go` — `TrustLevel` enum, `RiskLevel` enum, `ClassifyCommand()` hybrid heuristic
+- [x] 4.2 Create `internal/security/confirm.go` — interactive confirmation prompt, `--ci` error behavior
+- [x] 4.3 Create `internal/adapters/custom.go` — config-defined adapter: exec user command, trust/risk integration
 
 ## Phase 5: CLI Commands & Output
 
-- [ ] 5.1 Create `internal/cli/parser.go` — cobra root command, global flag binding (`--quiet`, `--ci`, `--only`, `--skip`)
-- [ ] 5.2 Create `internal/cli/flags.go` — `Flags` struct with parsed values
-- [ ] 5.3 Implement `init` command — detect tools, interactive selection, config generation
-- [ ] 5.4 Implement `update` command — iterate adapters, detect→check→confirm→update flow, `--dry-run` support
-- [ ] 5.5 Implement `check` command — query adapters for updates, display summary
-- [ ] 5.6 Implement `list` command — show installed/detected tools with status
-- [ ] 5.7 Implement `export`/`import` commands — TOML round-trip, `-o` flag for export
-- [ ] 5.8 Implement default (no args) — show status + available updates (read-only)
-- [ ] 5.9 Create `internal/output/render.go` — ANSI color, emoji status, pipe detection
-- [ ] 5.10 Create `internal/output/language.go` — i18n string lookup (English default, architecture for future)
+- [x] 5.1 Create `internal/cli/parser.go` — cobra root command, global flag binding (`--quiet`, `--ci`, `--only`, `--skip`)
+- [x] 5.2 Create `internal/cli/flags.go` — `Flags` struct with parsed values
+- [x] 5.3 Implement `init` command — detect tools, interactive selection, config generation
+- [x] 5.4 Implement `update` command — iterate adapters, detect→check→confirm→update flow, `--dry-run` support
+- [x] 5.5 Implement `check` command — query adapters for updates, display summary
+- [x] 5.6 Implement `list` command — show installed/detected tools with status
+- [x] 5.7 Implement `export`/`import` commands — TOML round-trip, `-o` flag for export
+- [x] 5.8 Implement default (no args) — show status + available updates (read-only)
+- [x] 5.9 Create `internal/output/render.go` — ANSI color, emoji status, pipe detection
+- [x] 5.10 Create `internal/output/language.go` — i18n string lookup (English default, architecture for future)
 
 ## Phase 6: Testing & Verification
 
-- [ ] 6.1 Write unit tests for `internal/config/` — load, save, validate, export/import, defaults
-- [ ] 6.2 Write unit tests for `internal/platform/` — detection, catalog filtering
-- [ ] 6.3 Write unit tests for `internal/security/` — risk classification, confirmation logic
-- [ ] 6.4 Write unit tests for adapter interface compliance — shared test harness
-- [ ] 6.5 Write integration test — full update flow with mock adapters
+- [x] 6.1 Write unit tests for `internal/config/` — load, save, validate, export/import, defaults
+- [x] 6.2 Write unit tests for `internal/platform/` — detection, catalog filtering
+- [x] 6.3 Write unit tests for `internal/security/` — risk classification, confirmation logic
+- [x] 6.4 Write unit tests for adapter interface compliance — shared test harness
+- [x] 6.5 Write integration test — full update flow with mock adapters
 
 ## Phase 7: Polish & Distribution
 
