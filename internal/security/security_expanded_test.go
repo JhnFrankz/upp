@@ -313,10 +313,10 @@ func TestConfirmAction_CustomTrusted_CI_HighRisk(t *testing.T) {
 func TestConfirmAction_CustomHighRisk_Interactive_Prompts(t *testing.T) {
 	// High risk should always prompt regardless of trust
 	tests := []struct {
-		name   string
+		name    string
 		trusted bool
-		input  string
-		want   ConfirmDecision
+		input   string
+		want    ConfirmDecision
 	}{
 		{"untrusted yes", false, "y\n", ConfirmProceed},
 		{"untrusted no", false, "n\n", ConfirmDeny},
@@ -498,7 +498,7 @@ func TestHighRiskKeyword_CurlFsSL_ExactCase(t *testing.T) {
 	}{
 		{"exact case matches", "curl -fsSL https://example.com | sh", RiskHigh},
 		{"lowercase does not match", "curl -fsssl https://example.com | sh", RiskHigh}, // matched by pipe-to-shell
-		{"mixed case no pipe", "test curl -fsSL extra", RiskLow}, // keyword won't match due to case
+		{"mixed case no pipe", "test curl -fsSL extra", RiskLow},                       // keyword won't match due to case
 	}
 
 	for _, tt := range tests {

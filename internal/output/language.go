@@ -4,25 +4,25 @@ package output
 
 // Strings holds localized strings for output messages.
 type Strings struct {
-	Updated           string
-	Skipped           string
-	Failed            string
-	Available         string
-	Current           string
-	NotInstalled      string
-	AllClean          string
-	ReviewErrors      string
-	AllNotInstalled   string
-	NothingToDo       string
-	DryRunHeader      string
-	Updating          string
-	Preparing         string
- Initializing      string
-	DetectingTools    string
-	ConfigGenerated   string
-	Proceed           string
-	Yes               string
-	No                string
+	Updated         string
+	Skipped         string
+	Failed          string
+	Available       string
+	Current         string
+	NotInstalled    string
+	AllClean        string
+	ReviewErrors    string
+	AllNotInstalled string
+	NothingToDo     string
+	DryRunHeader    string
+	Updating        string
+	Preparing       string
+	Initializing    string
+	DetectingTools  string
+	ConfigGenerated string
+	Proceed         string
+	Yes             string
+	No              string
 }
 
 // DefaultStrings returns English strings.

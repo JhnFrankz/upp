@@ -39,10 +39,10 @@ type Summary struct {
 
 // Renderer handles formatted terminal output.
 type Renderer struct {
-	w      io.Writer
-	color  bool
-	emoji  bool
-	quiet  bool
+	w       io.Writer
+	color   bool
+	emoji   bool
+	quiet   bool
 	strings *Strings
 }
 

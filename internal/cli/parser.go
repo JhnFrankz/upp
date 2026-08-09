@@ -35,9 +35,9 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 	gf := &GlobalFlags{}
 
 	root := &cobra.Command{
-		Use:   "upp",
-		Short: "Cross-platform dev environment updater",
-		Long:  "upp updates your development tools across Linux, macOS, and Windows.",
+		Use:           "upp",
+		Short:         "Cross-platform dev environment updater",
+		Long:          "upp updates your development tools across Linux, macOS, and Windows.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// No args → show status (read-only, same as check)
