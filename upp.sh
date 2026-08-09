@@ -107,6 +107,7 @@ section() {
 ok()      { UPDATED=$((UPDATED + 1)); echo -e "    ${GREEN}✅${NC} $1"; }
 skip()    { SKIPPED=$((SKIPPED + 1)); echo -e "    ${YELLOW}⏭️${NC}  $1"; }
 fail()    { FAILED=$((FAILED + 1));   echo -e "    ${RED}❌${NC} $1"; }
+warn()    { echo -e "    ${YELLOW}⚠️${NC}  $1"; }
 info()    { echo -e "    ${DIM}ℹ️  $1${NC}"; }
 update()  { UPDATES_AVAIL=$((UPDATES_AVAIL + 1)); echo -e "    ${YELLOW}⬆️${NC}  $1"; }
 current(){ CURRENT_COUNT=$((CURRENT_COUNT + 1)); echo -e "    ${GREEN}✔️${NC}  $1"; }
@@ -377,6 +378,15 @@ else
   header "🚀 upp"
 fi
 
+# ── Source nvm early so node is in PATH for all sections ──
+export NVM_DIR="$HOME/.nvm"
+if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+  SCRIPT_ARGS=("$@")
+  set --
+  \. "$NVM_DIR/nvm.sh"
+  set -- "${SCRIPT_ARGS[@]}"
+fi
+
 # ── 1. APT ───────────────────────────────────────────
 if should_run "apt"; then
   section "📦 APT"
@@ -425,23 +435,26 @@ fi
 # ── 3. NODE.JS ───────────────────────────────────────
 if should_run "node"; then
   section "🟢 Node.js"
-  export NVM_DIR="$HOME/.nvm"
-  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
-    SCRIPT_ARGS=("$@")
-    set --
-    \. "$NVM_DIR/nvm.sh"
-    set -- "${SCRIPT_ARGS[@]}"
+  if command -v nvm &>/dev/null; then
     NODE_BEFORE=$(nvm current 2>/dev/null | sed 's/v//')
     LATEST_NODE=$(nvm version-remote stable 2>/dev/null | sed 's/v//' || echo "")
     info "Node actual: v$NODE_BEFORE"
-    if [[ -n "$LATEST_NODE" && "$NODE_BEFORE" != "$LATEST_NODE" ]]; then
-      # Only use --reinstall-packages-from if current version is valid (not N/A)
-      if [[ "$NODE_BEFORE" != "N/A" && -n "$NODE_BEFORE" ]]; then
-        run "nvm install stable --reinstall-packages-from=current" && info "nvm install" || fail "nvm install"
+
+    # Handle case where no default version is set (nvm current = none/N/A)
+    if [[ "$NODE_BEFORE" == "none" || "$NODE_BEFORE" == "N/A" || -z "$NODE_BEFORE" ]]; then
+      info "No hay versión por defecto — instalando stable"
+      run "nvm install stable" && info "nvm install" || fail "nvm install"
+      run "nvm alias default stable" && info "nvm alias default" || true
+      NEW_NODE=$(nvm current 2>/dev/null | sed 's/v//')
+      if [[ -n "$NEW_NODE" && "$NEW_NODE" != "none" && "$NEW_NODE" != "N/A" ]]; then
+        ok "Node: none → v$NEW_NODE (stable como default)"
+        ACTUALIZADOS+=("Node none → v$NEW_NODE")
       else
-        run "nvm install stable" && info "nvm install" || fail "nvm install"
+        fail "Node: instalación no completada"
+        FALLIDOS+=("Node.js")
       fi
-      # Verify the install actually worked
+    elif [[ -n "$LATEST_NODE" && "$NODE_BEFORE" != "$LATEST_NODE" ]]; then
+      run "nvm install stable --reinstall-packages-from=current" && info "nvm install" || fail "nvm install"
       NEW_NODE=$(nvm current 2>/dev/null | sed 's/v//')
       if [[ "$NEW_NODE" != "N/A" && "$NEW_NODE" != "$NODE_BEFORE" ]]; then
         ok "Node: v$NODE_BEFORE → v$NEW_NODE"
@@ -495,15 +508,38 @@ if should_run "pnpm"; then
     run "pnpm update -g 2>$PNPM_UPDATE_ERR 1>$PNPM_UPDATE_OUT"
     PNPM_EXIT=$?
     cat "$PNPM_UPDATE_OUT"
-    if [[ $PNPM_EXIT -ne 0 ]]; then
+
+    # Check for ENOENT / corrupted store — attempt auto-recovery
+    if [[ $PNPM_EXIT -ne 0 ]] && grep -q "ENOENT\|corrupted" "$PNPM_UPDATE_ERR" 2>/dev/null; then
+      warn "pnpm: directorio global corrupto — intentando recuperación"
+      # Clean corrupted global directory
+      PNPM_GLOBAL_DIR=$(pnpm root -g 2>/dev/null | sed 's|/node_modules||' || true)
+      if [[ -n "$PNPM_GLOBAL_DIR" && -d "$PNPM_GLOBAL_DIR" ]]; then
+        rm -rf "$PNPM_GLOBAL_DIR"
+        info "Directorio corrupto eliminado: $PNPM_GLOBAL_DIR"
+      fi
+      # Reinstall pnpm via npm to reinitialize
+      if command -v npm &>/dev/null; then
+        info "Reinstalando pnpm via npm..."
+        npm install -g pnpm >/dev/null 2>&1 && info "pnpm reinstalado" || true
+      fi
+      # Retry update
+      PNPM_UPDATE_ERR2=$(mktemp)
+      PNPM_UPDATE_OUT2=$(mktemp)
+      run "pnpm update -g 2>$PNPM_UPDATE_ERR2 1>$PNPM_UPDATE_OUT2"
+      PNPM_EXIT2=$?
+      cat "$PNPM_UPDATE_OUT2"
+      rm -f "$PNPM_UPDATE_ERR2" "$PNPM_UPDATE_OUT2"
+      if [[ $PNPM_EXIT2 -eq 0 ]]; then
+        ok "pnpm: recuperado y actualizado"
+        ACTUALIZADOS+=("pnpm global (recuperado)")
+      else
+        fail "pnpm: recuperación falló (código $PNPM_EXIT2)"
+        FALLIDOS+=("pnpm global")
+      fi
+    elif [[ $PNPM_EXIT -ne 0 ]]; then
       fail "pnpm update -g: error (código $PNPM_EXIT)"
-      # Show first 5 lines of error for context
       head -5 "$PNPM_UPDATE_ERR" | sed 's/^/       /'
-      FALLIDOS+=("pnpm global")
-    elif grep -q "ENOENT\|corrupted\|error" "$PNPM_UPDATE_ERR" 2>/dev/null; then
-      fail "pnpm update -g: store corrupto o incompleto"
-      head -5 "$PNPM_UPDATE_ERR" | sed 's/^/       /'
-      info "Intenta: pnpm store prune && pnpm install -g"
       FALLIDOS+=("pnpm global")
     else
       if [[ "$PNPM_BEFORE" -gt 0 ]]; then
