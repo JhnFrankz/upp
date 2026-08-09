@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -22,16 +23,7 @@ func Export(cfg *Config) error {
 // ExportToFile writes the config as TOML to the specified path,
 // creating directories as needed.
 func ExportToFile(cfg *Config, path string) error {
-	dir := path[:len(path)-len("/config.toml")]
-	if dir == path {
-		// Fallback: use parent directory
-		for i := len(path) - 1; i >= 0; i-- {
-			if path[i] == '/' {
-				dir = path[:i]
-				break
-			}
-		}
-	}
+	dir := filepath.Dir(path)
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("cannot create directory: %w", err)
@@ -52,6 +44,8 @@ func ExportToFile(cfg *Config, path string) error {
 }
 
 // ImportFromFile reads a TOML config file and returns a validated Config.
+// The config is imported exactly as-is; call ApplyDefaults() separately
+// if you want to merge platform defaults for missing tools.
 func ImportFromFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
