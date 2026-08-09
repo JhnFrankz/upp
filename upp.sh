@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# upp — 🚀 Gestor de actualizaciones para tu entorno de desarrollo en WSL
+# upp — 🚀 Gestor de actualizaciones para tu entorno de desarrollo en Linux
 # alias: update-all, upp
 
 set -euo pipefail
@@ -435,9 +435,21 @@ if should_run "node"; then
     LATEST_NODE=$(nvm version-remote stable 2>/dev/null | sed 's/v//' || echo "")
     info "Node actual: v$NODE_BEFORE"
     if [[ -n "$LATEST_NODE" && "$NODE_BEFORE" != "$LATEST_NODE" ]]; then
-      ok "Node: v$NODE_BEFORE → v$LATEST_NODE"
-      ACTUALIZADOS+=("Node v$NODE_BEFORE → v$LATEST_NODE")
-      run "nvm install stable --reinstall-packages-from=current" && info "nvm install" || fail "nvm install"
+      # Only use --reinstall-packages-from if current version is valid (not N/A)
+      if [[ "$NODE_BEFORE" != "N/A" && -n "$NODE_BEFORE" ]]; then
+        run "nvm install stable --reinstall-packages-from=current" && info "nvm install" || fail "nvm install"
+      else
+        run "nvm install stable" && info "nvm install" || fail "nvm install"
+      fi
+      # Verify the install actually worked
+      NEW_NODE=$(nvm current 2>/dev/null | sed 's/v//')
+      if [[ "$NEW_NODE" != "N/A" && "$NEW_NODE" != "$NODE_BEFORE" ]]; then
+        ok "Node: v$NODE_BEFORE → v$NEW_NODE"
+        ACTUALIZADOS+=("Node v$NODE_BEFORE → v$NEW_NODE")
+      else
+        fail "Node: instalación no completada correctamente"
+        FALLIDOS+=("Node.js")
+      fi
     else
       current "Node.js v$NODE_BEFORE: ya al día"
       YA_ACTUALIZADOS+=("Node.js")
@@ -478,14 +490,31 @@ if should_run "pnpm"; then
   section "📦 pnpm global"
   if command -v pnpm &>/dev/null; then
     PNPM_BEFORE=$(pnpm outdated -g 2>/dev/null | grep -c "Latest" || true)
-    run "pnpm update -g" && info "pnpm update -g" || fail "pnpm update -g"
-    if [[ "$PNPM_BEFORE" -gt 0 ]]; then
-      ok "pnpm: $PNPM_BEFORE paquetes actualizados"
-      ACTUALIZADOS+=("pnpm global ($PNPM_BEFORE paquetes)")
+    PNPM_UPDATE_ERR=$(mktemp)
+    PNPM_UPDATE_OUT=$(mktemp)
+    run "pnpm update -g 2>$PNPM_UPDATE_ERR 1>$PNPM_UPDATE_OUT"
+    PNPM_EXIT=$?
+    cat "$PNPM_UPDATE_OUT"
+    if [[ $PNPM_EXIT -ne 0 ]]; then
+      fail "pnpm update -g: error (código $PNPM_EXIT)"
+      # Show first 5 lines of error for context
+      head -5 "$PNPM_UPDATE_ERR" | sed 's/^/       /'
+      FALLIDOS+=("pnpm global")
+    elif grep -q "ENOENT\|corrupted\|error" "$PNPM_UPDATE_ERR" 2>/dev/null; then
+      fail "pnpm update -g: store corrupto o incompleto"
+      head -5 "$PNPM_UPDATE_ERR" | sed 's/^/       /'
+      info "Intenta: pnpm store prune && pnpm install -g"
+      FALLIDOS+=("pnpm global")
     else
-      current "pnpm global: ya al día"
-      YA_ACTUALIZADOS+=("pnpm global")
+      if [[ "$PNPM_BEFORE" -gt 0 ]]; then
+        ok "pnpm: $PNPM_BEFORE paquetes actualizados"
+        ACTUALIZADOS+=("pnpm global ($PNPM_BEFORE paquetes)")
+      else
+        current "pnpm global: ya al día"
+        YA_ACTUALIZADOS+=("pnpm global")
+      fi
     fi
+    rm -f "$PNPM_UPDATE_ERR" "$PNPM_UPDATE_OUT"
   else
     skip "pnpm no instalado"
     SALTADOS+=("pnpm")
@@ -525,15 +554,26 @@ if should_run "bun"; then
   if [[ -f "$HOME/.bun/bin/bun" ]]; then
     BUN_BEFORE=$("$HOME/.bun/bin/bun" --version 2>/dev/null || echo "unknown")
     info "Bun actual: v$BUN_BEFORE"
-    run "$HOME/.bun/bin/bun upgrade" && info "bun upgrade" || fail "Bun upgrade"
-    BUN_AFTER=$("$HOME/.bun/bin/bun" --version 2>/dev/null || echo "unknown")
-    if [[ "$BUN_BEFORE" != "$BUN_AFTER" ]]; then
-      ok "Bun: v$BUN_BEFORE → v$BUN_AFTER"
-      ACTUALIZADOS+=("Bun v$BUN_BEFORE → v$BUN_AFTER")
+    BUP_OUT=$(mktemp)
+    BUP_ERR=$(mktemp)
+    run "$HOME/.bun/bin/bun upgrade 1>$BUP_OUT 2>$BUP_ERR"
+    BUP_EXIT=$?
+    cat "$BUP_OUT"
+    if [[ $BUP_EXIT -ne 0 ]]; then
+      fail "Bun upgrade falló (código $BUP_EXIT)"
+      head -3 "$BUP_ERR" | sed 's/^/       /'
+      FALLIDOS+=("Bun")
     else
-      current "Bun v$BUN_AFTER: ya al día"
-      YA_ACTUALIZADOS+=("Bun")
+      BUN_AFTER=$("$HOME/.bun/bin/bun" --version 2>/dev/null || echo "unknown")
+      if [[ "$BUN_BEFORE" != "$BUN_AFTER" ]]; then
+        ok "Bun: v$BUN_BEFORE → v$BUN_AFTER"
+        ACTUALIZADOS+=("Bun v$BUN_BEFORE → v$BUN_AFTER")
+      else
+        current "Bun v$BUN_AFTER: ya al día"
+        YA_ACTUALIZADOS+=("Bun")
+      fi
     fi
+    rm -f "$BUP_OUT" "$BUP_ERR"
   else
     skip "Bun no instalado"
     SALTADOS+=("Bun")
