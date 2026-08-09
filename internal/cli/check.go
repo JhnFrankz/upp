@@ -31,7 +31,10 @@ func runCheck(gf *GlobalFlags) error {
 		return fmt.Errorf("cannot load config: %w", err)
 	}
 
-	p := platform.Detect()
+	p, err := platform.Detect()
+	if err != nil {
+		return fmt.Errorf("cannot detect platform: %w", err)
+	}
 	adapterList := buildAdapterList(cfg, p.OS)
 
 	toolIDs := adapterIDs(adapterList)
@@ -46,7 +49,11 @@ func runCheck(gf *GlobalFlags) error {
 		}
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	lang := "en"
+	if cfg != nil {
+		lang = cfg.Settings.Language
+	}
+	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
 
 	var results []output.ToolResult
 	total := len(filteredAdapters)

@@ -25,11 +25,19 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 func runInit(gf *GlobalFlags) error {
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	cfg, _ := config.Load()
+	lang := "en"
+	if cfg != nil {
+		lang = cfg.Settings.Language
+	}
+	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
 	r.InitHeader()
 
 	// Detect platform
-	p := platform.Detect()
+	p, err := platform.Detect()
+	if err != nil {
+		return fmt.Errorf("cannot detect platform: %w", err)
+	}
 
 	// Get platform-specific adapters
 	platformAdapters := official.AdaptersForPlatform(p.OS)
@@ -49,13 +57,16 @@ func runInit(gf *GlobalFlags) error {
 	}
 
 	// Check if config already exists
-	existingCfg, err := config.Load()
-	if err != nil && !isConfigNotFound(err) {
-		return fmt.Errorf("cannot load existing config: %w", err)
+	existingCfg, _ := config.Load()
+	if existingCfg != nil && existingCfg.Version > 0 {
+		if !gf.CI {
+			r.Warning("Config already exists. Use --ci to overwrite.")
+			return nil
+		}
 	}
 
 	// Build config with detected tools
-	cfg := config.DefaultConfigWithDefaults()
+	cfg = config.DefaultConfigWithDefaults()
 
 	// Enable only detected tools
 	for id := range cfg.Tools {

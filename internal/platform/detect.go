@@ -1,7 +1,10 @@
 // Package platform handles OS/architecture detection and tool catalog management.
 package platform
 
-import "runtime"
+import (
+	"fmt"
+	"runtime"
+)
 
 // OS constants for supported operating systems.
 const (
@@ -25,24 +28,29 @@ type Platform struct {
 
 // Detect returns the current platform by mapping runtime.GOOS and runtime.GOARCH
 // to upp's canonical OS and architecture identifiers.
-func Detect() Platform {
-	return Platform{
-		OS:   mapOS(),
-		Arch: mapArch(),
+// Returns an error if the platform is unsupported.
+func Detect() (Platform, error) {
+	os, err := mapOS()
+	if err != nil {
+		return Platform{}, err
 	}
+	return Platform{
+		OS:   os,
+		Arch: mapArch(),
+	}, nil
 }
 
 // mapOS converts runtime.GOOS to a canonical OS name.
-func mapOS() string {
+func mapOS() (string, error) {
 	switch runtime.GOOS {
 	case "linux":
-		return OSLinux
+		return OSLinux, nil
 	case "darwin":
-		return OSMacOS
+		return OSMacOS, nil
 	case "windows":
-		return OSWindows
+		return OSWindows, nil
 	default:
-		return runtime.GOOS // pass through unknown values
+		return "", fmt.Errorf("unsupported platform: %s/%s — upp supports Linux, macOS, and Windows only", runtime.GOOS, runtime.GOARCH)
 	}
 }
 
@@ -58,4 +66,14 @@ func mapArch() string {
 	default:
 		return runtime.GOARCH // pass through unknown values
 	}
+}
+
+// MustDetect returns the current platform or panics if unsupported.
+// Use only in main/entry points where failure is fatal.
+func MustDetect() Platform {
+	p, err := Detect()
+	if err != nil {
+		panic(err)
+	}
+	return p
 }

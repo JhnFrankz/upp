@@ -177,25 +177,28 @@ func TestAdapterByName(t *testing.T) {
 }
 
 func TestAdaptersForCurrentPlatform(t *testing.T) {
-	currentOS := platform.Detect().OS
+	p, err := platform.Detect()
+	if err != nil {
+		t.Skipf("unsupported platform: %v", err)
+	}
 	result := AdaptersForCurrentPlatform()
 
 	if len(result) == 0 {
-		t.Errorf("AdaptersForCurrentPlatform() returned empty for OS %q", currentOS)
+		t.Errorf("AdaptersForCurrentPlatform() returned empty for OS %q", p.OS)
 	}
 
 	// Verify all returned adapters claim to support the current platform.
 	for _, a := range result {
 		info := a.Info()
 		found := false
-		for _, p := range info.Platforms {
-			if p == currentOS {
+		for _, plat := range info.Platforms {
+			if plat == p.OS {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("adapter %s does not claim platform %q but was returned", a.Name(), currentOS)
+			t.Errorf("adapter %s does not claim platform %q but was returned", a.Name(), p.OS)
 		}
 	}
 }

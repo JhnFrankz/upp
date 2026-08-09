@@ -43,7 +43,11 @@ func AdaptersForPlatform(os string) []adapters.Adapter {
 
 // AdaptersForCurrentPlatform returns adapters for the detected runtime OS.
 func AdaptersForCurrentPlatform() []adapters.Adapter {
-	return AdaptersForPlatform(platform.Detect().OS)
+	p, err := platform.Detect()
+	if err != nil {
+		return nil // unsupported platform
+	}
+	return AdaptersForPlatform(p.OS)
 }
 
 // AdapterByName returns the adapter with the given tool ID, or nil if not found.

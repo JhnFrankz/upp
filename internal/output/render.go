@@ -43,16 +43,30 @@ type Renderer struct {
 	color  bool
 	emoji  bool
 	quiet  bool
+	strings *Strings
 }
 
 // NewRenderer creates a Renderer that detects color/emoji support.
 func NewRenderer(w io.Writer, quiet bool) *Renderer {
 	color := isTerminal(w)
 	return &Renderer{
-		w:     w,
-		color: color,
-		emoji: color, // emoji follows color support
-		quiet: quiet,
+		w:       w,
+		color:   color,
+		emoji:   color, // emoji follows color support
+		quiet:   quiet,
+		strings: DefaultStrings(),
+	}
+}
+
+// NewRendererWithLang creates a Renderer with a specific language.
+func NewRendererWithLang(w io.Writer, quiet bool, lang string) *Renderer {
+	color := isTerminal(w)
+	return &Renderer{
+		w:       w,
+		color:   color,
+		emoji:   color,
+		quiet:   quiet,
+		strings: GetStrings(lang),
 	}
 }
 

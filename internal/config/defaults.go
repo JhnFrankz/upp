@@ -10,7 +10,10 @@ func ApplyDefaults(cfg *Config) {
 		cfg.Tools = make(map[string]ToolConfig)
 	}
 
-	p := platform.Detect()
+	p, err := platform.Detect()
+	if err != nil {
+		return // unsupported platform, skip catalog merge
+	}
 	catalog := platform.CatalogFor(p.OS)
 
 	for _, tool := range catalog {

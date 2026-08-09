@@ -60,7 +60,11 @@ func ConfigDir() (string, error) {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
-	p := platform.Detect()
+	p, err := platform.Detect()
+	if err != nil {
+		// Fallback to Linux-style path for unsupported platforms
+		return filepath.Join(home, ".config", "upp"), nil
+	}
 	switch p.OS {
 	case platform.OSWindows:
 		appData := os.Getenv("APPDATA")
@@ -137,6 +141,7 @@ func Save(cfg *Config) error {
 }
 
 // Validate checks the config for structural issues.
+// Returns warnings as nil (non-fatal) — callers should check warnings separately.
 func Validate(cfg *Config) error {
 	if cfg.Version < 1 {
 		return fmt.Errorf("config version must be >= 1, got %d", cfg.Version)
@@ -146,10 +151,42 @@ func Validate(cfg *Config) error {
 		cfg.Settings.Language = "en"
 	}
 
+	// Detect current platform for compatibility checks
+	currentOS, _ := platform.Detect()
+
 	// Validate tools reference official catalog where possible
 	for id, tool := range cfg.Tools {
 		if tool.Enabled && !platform.IsOfficialTool(id) && cfg.Custom[id].Command == "" {
 			return fmt.Errorf("tool %q is enabled but not official and has no custom command", id)
+		}
+
+		// Warn if tool is enabled but not available on current platform
+		if tool.Enabled && currentOS.OS != "" {
+			toolPlatforms := tool.Platforms
+			if len(toolPlatforms) == 0 {
+				// No platform restriction — check official catalog
+				for _, official := range platform.OfficialTools {
+					if official.ID == id {
+						toolPlatforms = official.Platforms
+						break
+					}
+				}
+			}
+			if len(toolPlatforms) > 0 {
+				supported := false
+				for _, p := range toolPlatforms {
+					if p == currentOS.OS {
+						supported = true
+						break
+					}
+				}
+				if !supported {
+					// Non-fatal: disable the tool and continue
+					enabled := false
+					tool.Enabled = enabled
+					cfg.Tools[id] = tool
+				}
+			}
 		}
 	}
 

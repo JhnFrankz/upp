@@ -37,7 +37,10 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 		return fmt.Errorf("cannot load config: %w", err)
 	}
 
-	p := platform.Detect()
+	p, err := platform.Detect()
+	if err != nil {
+		return fmt.Errorf("cannot detect platform: %w", err)
+	}
 	adapterList := buildAdapterList(cfg, p.OS)
 
 	toolIDs := adapterIDs(adapterList)
@@ -52,7 +55,11 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 		}
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	lang := "en"
+	if cfg != nil {
+		lang = cfg.Settings.Language
+	}
+	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
 
 	if uf.DryRun {
 		r.DryRunHeader()
