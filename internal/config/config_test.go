@@ -58,7 +58,6 @@ func TestValidate(t *testing.T) {
 }
 
 func TestLoadMissingFile(t *testing.T) {
-	// Temporarily override home directory to avoid loading real config.
 	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
 	os.Setenv("HOME", tmpDir)
@@ -83,7 +82,6 @@ func TestLoadValidTOML(t *testing.T) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
-	// Create config directory and file.
 	cfgDir := filepath.Join(tmpDir, ".config", "upp")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -138,5 +136,290 @@ func TestLoadInvalidTOML(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Error("Load() should error on invalid TOML")
+	}
+}
+
+// --- Phase 2: Defaults Tests ---
+
+func TestApplyDefaultsEmptyConfig(t *testing.T) {
+	cfg := &Config{
+		Version:  ConfigVersion,
+		Settings: Settings{},
+		Tools:    nil,
+		Custom:   nil,
+	}
+
+	ApplyDefaults(cfg)
+
+	if cfg.Tools == nil {
+		t.Fatal("ApplyDefaults should initialize Tools map")
+	}
+	if cfg.Settings.Language != "en" {
+		t.Errorf("expected default language 'en', got %q", cfg.Settings.Language)
+	}
+	// Should have tools from the platform catalog
+	if len(cfg.Tools) == 0 {
+		t.Error("expected at least one tool from platform catalog")
+	}
+}
+
+func TestApplyDefaultsPartialConfig(t *testing.T) {
+	cfg := &Config{
+		Version:  ConfigVersion,
+		Settings: Settings{Language: "es"},
+		Tools: map[string]ToolConfig{
+			"apt": {Enabled: false},
+		},
+		Custom: make(map[string]CustomTool),
+	}
+
+	ApplyDefaults(cfg)
+
+	// User's explicit setting should be preserved
+	if cfg.Settings.Language != "es" {
+		t.Errorf("expected language 'es', got %q", cfg.Settings.Language)
+	}
+
+	// User's explicit tool config should be preserved
+	if cfg.Tools["apt"].Enabled {
+		t.Error("expected apt to remain disabled (user override)")
+	}
+
+	// Other platform tools should be added with defaults
+	for id, tool := range cfg.Tools {
+		if id == "apt" {
+			continue
+		}
+		if !tool.Enabled {
+			t.Errorf("expected tool %q to be enabled by default", id)
+		}
+	}
+}
+
+func TestApplyDefaultsDoesNotOverride(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Tools["npm"] = ToolConfig{Enabled: false}
+
+	ApplyDefaults(cfg)
+
+	if cfg.Tools["npm"].Enabled {
+		t.Error("ApplyDefaults should not override existing tool config")
+	}
+}
+
+func TestDefaultConfigWithDefaults(t *testing.T) {
+	cfg := DefaultConfigWithDefaults()
+
+	if cfg.Version != 1 {
+		t.Errorf("expected version 1, got %d", cfg.Version)
+	}
+	if len(cfg.Tools) == 0 {
+		t.Error("expected platform tools to be populated")
+	}
+}
+
+// --- Phase 2: Export/Import Tests ---
+
+func TestExport(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Tools["apt"] = ToolConfig{Enabled: true}
+
+	// Capture stdout
+	origStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := Export(cfg)
+
+	w.Close()
+	os.Stdout = origStdout
+
+	if err != nil {
+		t.Fatalf("Export() error: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if len(output) == 0 {
+		t.Error("Export() produced no output")
+	}
+}
+
+func TestExportToFile(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Tools["apt"] = ToolConfig{Enabled: true}
+
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+
+	err := ExportToFile(cfg, path)
+	if err != nil {
+		t.Fatalf("ExportToFile() error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cannot read exported file: %v", err)
+	}
+
+	if len(data) == 0 {
+		t.Error("exported file is empty")
+	}
+}
+
+func TestImportFromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.toml")
+
+	tomlContent := `version = 1
+
+[settings]
+language = "es"
+interactive = false
+
+[tools.apt]
+enabled = true
+
+[tools.brew]
+enabled = false
+`
+	if err := os.WriteFile(path, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ImportFromFile(path)
+	if err != nil {
+		t.Fatalf("ImportFromFile() error: %v", err)
+	}
+
+	if cfg.Settings.Language != "es" {
+		t.Errorf("expected language 'es', got %q", cfg.Settings.Language)
+	}
+	if cfg.Settings.Interactive {
+		t.Error("expected interactive to be false")
+	}
+	if !cfg.Tools["apt"].Enabled {
+		t.Error("expected apt to be enabled")
+	}
+	if cfg.Tools["brew"].Enabled {
+		t.Error("expected brew to be disabled")
+	}
+}
+
+func TestImportFromFileInvalidTOML(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.toml")
+
+	badToml := `this is not valid toml {{{`
+	if err := os.WriteFile(path, []byte(badToml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ImportFromFile(path)
+	if err == nil {
+		t.Error("ImportFromFile() should error on invalid TOML")
+	}
+}
+
+func TestImportFromFileMissingFile(t *testing.T) {
+	_, err := ImportFromFile("/nonexistent/path/config.toml")
+	if err == nil {
+		t.Error("ImportFromFile() should error on missing file")
+	}
+}
+
+func TestRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalPath := filepath.Join(tmpDir, "original.toml")
+	exportPath := filepath.Join(tmpDir, "exported.toml")
+
+	// Create original config
+	original := DefaultConfig()
+	original.Settings.Language = "es"
+	original.Settings.Interactive = false
+	original.Tools["apt"] = ToolConfig{Enabled: true}
+	original.Tools["npm"] = ToolConfig{Enabled: false}
+	original.Custom["mytool"] = CustomTool{
+		Command:  "mytool --update",
+		CheckCmd: "mytool --version",
+		Trusted:  true,
+	}
+
+	// Export original
+	if err := ExportToFile(original, originalPath); err != nil {
+		t.Fatalf("Export original: %v", err)
+	}
+
+	// Import
+	imported, err := ImportFromFile(originalPath)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	// Export imported
+	if err := ExportToFile(imported, exportPath); err != nil {
+		t.Fatalf("Export imported: %v", err)
+	}
+
+	// Read both files
+	origData, _ := os.ReadFile(originalPath)
+	exportData, _ := os.ReadFile(exportPath)
+
+	if string(origData) != string(exportData) {
+		t.Errorf("round-trip failed:\noriginal:\n%s\nexported:\n%s", origData, exportData)
+	}
+}
+
+func TestRoundTripPreservesCustomTools(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.toml")
+
+	cfg := DefaultConfig()
+	cfg.Custom["deploy"] = CustomTool{
+		Command:  "deploy.sh --prod",
+		CheckCmd: "deploy.sh --version",
+		Trusted:  false,
+	}
+
+	// Export → Import → Export
+	if err := ExportToFile(cfg, path); err != nil {
+		t.Fatal(err)
+	}
+
+	imported, err := ImportFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exportPath := filepath.Join(tmpDir, "roundtrip.toml")
+	if err := ExportToFile(imported, exportPath); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(exportPath)
+	if len(data) == 0 {
+		t.Error("round-trip produced empty file")
+	}
+}
+
+func TestImportValidatesConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.toml")
+
+	// Invalid: version 0
+	tomlContent := `version = 0
+
+[settings]
+language = "en"
+`
+	if err := os.WriteFile(path, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ImportFromFile(path)
+	if err == nil {
+		t.Error("ImportFromFile() should error on invalid config version")
 	}
 }

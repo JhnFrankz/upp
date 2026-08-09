@@ -39,9 +39,9 @@ Chain strategy: pending
 
 ## Phase 2: Configuration System
 
-- [ ] 2.1 Create `internal/config/config.go` — `Config` struct with `Version`, `Settings`, `Tools`, `Custom` fields; `Load()`, `Save()`, `Validate()`
-- [ ] 2.2 Create `internal/config/defaults.go` — default settings (`language: "en"`, `interactive: true`), platform catalog merge
-- [ ] 2.3 Create `internal/config/export.go` — `Export(w io.Writer)`, `Import(r io.Reader)` with TOML round-trip
+- [x] 2.1 Create `internal/config/config.go` — `Config` struct with `Version`, `Settings`, `Tools`, `Custom` fields; `Load()`, `Save()`, `Validate()`
+- [x] 2.2 Create `internal/config/defaults.go` — default settings (`language: "en"`, `interactive: true`), platform catalog merge
+- [x] 2.3 Create `internal/config/export.go` — `Export(w io.Writer)`, `Import(r io.Reader)` with TOML round-trip
 
 ## Phase 3: Official Tool Adapters
 
