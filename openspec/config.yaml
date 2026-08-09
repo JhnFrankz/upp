@@ -1,0 +1,54 @@
+schema: spec-driven
+
+context: |
+  Project: upp — single-file Bash CLI (upp.sh, ~666 LOC) that updates a WSL dev
+  environment (apt, brew, nvm/node, npm, pnpm, opencode, bun, gh, docker, go).
+  Stack: bash 5.3.9, GNU coreutils; no package manager, no dependencies, no lockfiles.
+  Architecture: single procedural script — arg parsing, MODE dispatch
+  (update/check/dry-run/list), per-tool sections gated by should_run(), run()
+  wrapper for dry-run, summary counters.
+  Conventions: set -euo pipefail; Spanish UX with emoji + ANSI colors; functions
+  + global counters; 2-space indent. Git repo on main, no commits yet.
+  Docs: no README/AGENTS.md/CONTRIBUTING; .atl/skill-registry.md present.
+
+testing:
+  strict_tdd: false
+  test_command: ""
+  framework: none
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage: false
+  quality:
+    linter: shellcheck (not installed)
+    type_checker: none
+    formatter: none
+  smoke_check: "bash -n upp.sh && ./upp.sh --list"
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing single-file script patterns
+      - Keep --check, --dry-run, --list, --only, --skip modes working
+      - Preserve set -euo pipefail and Spanish output conventions
+    tdd: false
+    test_command: ""
+    smoke_check: "bash -n upp.sh"
+  verify:
+    test_command: ""
+    build_command: "bash -n upp.sh"
+    smoke_check: "./upp.sh --list"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
