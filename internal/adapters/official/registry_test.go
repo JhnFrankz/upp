@@ -17,8 +17,8 @@ func TestAllAdaptersCount(t *testing.T) {
 func TestAllAdaptersImplementInterface(t *testing.T) {
 	all := AllAdapters()
 	for _, a := range all {
-		// Verify each adapter satisfies the Adapter interface.
-		var _ adapters.Adapter = a
+		// AllAdapters() already returns []adapters.Adapter, so interface
+		// conformance is enforced by the compiler at the return sites.
 
 		// Name must be non-empty.
 		if a.Name() == "" {

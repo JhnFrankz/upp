@@ -106,7 +106,7 @@ func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Wri
 	// Warn about unknown tools
 	for _, name := range onlyList {
 		if !toolSet[strings.ToLower(name)] {
-			fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", name)
+			_, _ = fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", name)
 		}
 	}
 
@@ -128,7 +128,7 @@ func filterSkip(tools, skipList []string, toolSet map[string]bool, stderr io.Wri
 	// Warn about unknown tools
 	for _, name := range skipList {
 		if !toolSet[strings.ToLower(name)] {
-			fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", name)
+			_, _ = fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", name)
 		}
 	}
 
@@ -162,6 +162,6 @@ func SilenceStdout(fn func() error) error {
 	}
 	os.Stdout = w
 	defer func() { os.Stdout = origStdout }()
-	w.Close()
+	_ = w.Close()
 	return fn()
 }

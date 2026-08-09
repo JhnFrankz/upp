@@ -182,29 +182,29 @@ func (r *Renderer) verboseToolLine(result ToolResult) {
 	switch result.Status {
 	case StatusUpdated:
 		if result.Version != "" {
-			fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
+			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
 		} else {
-			fmt.Fprintf(r.w, "  %s %s\n", icon, name)
+			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
 		}
 	case StatusSkipped:
-		fmt.Fprintf(r.w, "  %s %s (not installed)\n", icon, name)
+		_, _ = fmt.Fprintf(r.w, "  %s %s (not installed)\n", icon, name)
 	case StatusFailed:
 		errMsg := ""
 		if result.Error != nil {
 			errMsg = " (" + result.Error.Error() + ")"
 		}
-		fmt.Fprintf(r.w, "  %s %s%s\n", icon, r.red(result.Name), errMsg)
+		_, _ = fmt.Fprintf(r.w, "  %s %s%s\n", icon, r.red(result.Name), errMsg)
 	case StatusAvailable:
 		if result.Version != "" {
-			fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
+			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
 		} else {
-			fmt.Fprintf(r.w, "  %s %s\n", icon, name)
+			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
 		}
 	case StatusCurrent:
 		if result.Version != "" {
-			fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
+			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
 		} else {
-			fmt.Fprintf(r.w, "  %s %s\n", icon, name)
+			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
 		}
 	}
 }
@@ -219,11 +219,11 @@ func (r *Renderer) quietToolLine(result ToolResult) {
 		if result.Error != nil {
 			errMsg = ": " + result.Error.Error()
 		}
-		fmt.Fprintf(r.w, "%s %s%s\n", icon, name, errMsg)
+		_, _ = fmt.Fprintf(r.w, "%s %s%s\n", icon, name, errMsg)
 	case StatusSkipped:
-		fmt.Fprintf(r.w, "%s %s\n", icon, name)
+		_, _ = fmt.Fprintf(r.w, "%s %s\n", icon, name)
 	default:
-		fmt.Fprintf(r.w, "%s %s\n", icon, name)
+		_, _ = fmt.Fprintf(r.w, "%s %s\n", icon, name)
 	}
 }
 
@@ -234,7 +234,7 @@ func (r *Renderer) Progress(current, total int, name string) {
 	if r.quiet || total <= 1 {
 		return
 	}
-	fmt.Fprintf(r.w, "  %s Updating %d/%d: %s\n",
+	_, _ = fmt.Fprintf(r.w, "  %s Updating %d/%d: %s\n",
 		r.dim("⟳"), current, total, r.cyan(name))
 }
 
@@ -267,22 +267,22 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
 	}
 
-	fmt.Fprintln(r.w)
+	_, _ = fmt.Fprintln(r.w)
 
 	// All skipped (or empty) → special message
 	if updated == 0 && available == 0 && failed == 0 {
-		fmt.Fprintf(r.w, "%s All tools not installed. Nothing to do.\n", r.statusIcon(StatusSkipped))
+		_, _ = fmt.Fprintf(r.w, "%s All tools not installed. Nothing to do.\n", r.statusIcon(StatusSkipped))
 		return
 	}
 
 	summaryLine := strings.Join(parts, ", ")
 
 	if failed > 0 {
-		fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
+		_, _ = fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
 	} else if updated > 0 || available > 0 {
-		fmt.Fprintf(r.w, "%s %s. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
+		_, _ = fmt.Fprintf(r.w, "%s %s. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else {
-		fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusCurrent), summaryLine)
+		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusCurrent), summaryLine)
 	}
 
 	// List tools per category in non-quiet mode
@@ -298,15 +298,15 @@ func (r *Renderer) detailSummary(summary Summary) {
 
 	if len(updated) > 0 {
 		ids := toolNames(updated)
-		fmt.Fprintf(r.w, "  %s %s\n", r.green("Updated:"), strings.Join(ids, ", "))
+		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.green("Updated:"), strings.Join(ids, ", "))
 	}
 	if len(skipped) > 0 {
 		ids := toolNames(skipped)
-		fmt.Fprintf(r.w, "  Skipped: %s\n", strings.Join(ids, ", "))
+		_, _ = fmt.Fprintf(r.w, "  Skipped: %s\n", strings.Join(ids, ", "))
 	}
 	if len(failed) > 0 {
 		ids := toolNames(failed)
-		fmt.Fprintf(r.w, "  %s %s\n", r.red("Failed:"), strings.Join(ids, ", "))
+		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.red("Failed:"), strings.Join(ids, ", "))
 	}
 }
 
@@ -324,10 +324,10 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 		}
 	}
 
-	fmt.Fprintln(r.w)
+	_, _ = fmt.Fprintln(r.w)
 
 	if available == 0 && failed == 0 {
-		fmt.Fprintf(r.w, "%s All tools up to date.\n", r.statusIcon(StatusCurrent))
+		_, _ = fmt.Fprintf(r.w, "%s All tools up to date.\n", r.statusIcon(StatusCurrent))
 		return
 	}
 
@@ -342,12 +342,12 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
 	}
 
-	fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusAvailable), strings.Join(parts, ", "))
+	_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusAvailable), strings.Join(parts, ", "))
 
 	if !r.quiet {
 		for _, res := range results {
 			if res.Status == StatusAvailable {
-				fmt.Fprintf(r.w, "  %s %s %s\n",
+				_, _ = fmt.Fprintf(r.w, "  %s %s %s\n",
 					r.statusIcon(StatusAvailable),
 					r.cyan(res.Name),
 					r.dim(res.Version))
@@ -361,7 +361,7 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 // ListTools renders a table of detected tools.
 func (r *Renderer) ListTools(tools []ListEntry) {
 	w := tabwriter.NewWriter(r.w, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 		r.cyan("Tool"), "Name", "Status", "Version")
 
 	for _, t := range tools {
@@ -371,10 +371,10 @@ func (r *Renderer) ListTools(tools []ListEntry) {
 		if version == "" {
 			version = "-"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 			icon, t.Name, status, version)
 	}
-	w.Flush()
+	_ = w.Flush()
 }
 
 // ListEntry holds data for a single tool in the list output.
@@ -388,43 +388,43 @@ type ListEntry struct {
 
 // DryRunHeader prints the dry-run header.
 func (r *Renderer) DryRunHeader() {
-	fmt.Fprintf(r.w, "%s Dry run — no changes will be made\n\n", r.statusIcon(StatusAvailable))
+	_, _ = fmt.Fprintf(r.w, "%s Dry run — no changes will be made\n\n", r.statusIcon(StatusAvailable))
 }
 
 // DryRunPlanned prints a planned action for dry-run mode.
 func (r *Renderer) DryRunPlanned(name string) {
-	fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusAvailable), r.cyan(name))
+	_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusAvailable), r.cyan(name))
 }
 
 // --- Init output ---
 
 // InitHeader prints the init wizard header.
 func (r *Renderer) InitHeader() {
-	fmt.Fprintln(r.w, "upp init — detecting installed tools...")
-	fmt.Fprintln(r.w)
+	_, _ = fmt.Fprintln(r.w, "upp init — detecting installed tools...")
+	_, _ = fmt.Fprintln(r.w)
 }
 
 // InitDetected prints a detected tool.
 func (r *Renderer) InitDetected(name string) {
-	fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusCurrent), r.cyan(name))
+	_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusCurrent), r.cyan(name))
 }
 
 // InitConfigGenerated prints the config generated message.
 func (r *Renderer) InitConfigGenerated(path string) {
-	fmt.Fprintln(r.w)
-	fmt.Fprintf(r.w, "%s Config written to %s\n", r.statusIcon(StatusUpdated), path)
+	_, _ = fmt.Fprintln(r.w)
+	_, _ = fmt.Fprintf(r.w, "%s Config written to %s\n", r.statusIcon(StatusUpdated), path)
 }
 
 // --- Error output ---
 
 // Error prints a prefixed error message.
 func (r *Renderer) Error(msg string) {
-	fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusFailed), r.red(msg))
+	_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusFailed), r.red(msg))
 }
 
 // Warning prints a warning message.
 func (r *Renderer) Warning(msg string) {
-	fmt.Fprintf(r.w, "⚠️  %s\n", r.yellow(msg))
+	_, _ = fmt.Fprintf(r.w, "⚠️  %s\n", r.yellow(msg))
 }
 
 // --- Helpers ---

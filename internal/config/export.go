@@ -33,7 +33,7 @@ func ExportToFile(cfg *Config, path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot create file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	enc := toml.NewEncoder(f)
 	if err := enc.Encode(cfg); err != nil {
