@@ -1,15 +1,13 @@
 schema: spec-driven
 
 context: |
-  Project: upp — single-file Bash CLI (upp.sh, ~666 LOC) that updates a WSL dev
+  Project: upp — cross-platform dev environment updater (Go binary, ~2800 LOC) that updates a dev
   environment (apt, brew, nvm/node, npm, pnpm, opencode, bun, gh, docker, go).
-  Stack: bash 5.3.9, GNU coreutils; no package manager, no dependencies, no lockfiles.
-  Architecture: single procedural script — arg parsing, MODE dispatch
-  (update/check/dry-run/list), per-tool sections gated by should_run(), run()
-  wrapper for dry-run, summary counters.
-  Conventions: set -euo pipefail; Spanish UX with emoji + ANSI colors; functions
-  + global counters; 2-space indent. Git repo on main, no commits yet.
-  Docs: no README/AGENTS.md/CONTRIBUTING; .atl/skill-registry.md present.
+  Stack: Go 1.22, cobra CLI, TOML config; legacy Bash script (upp-legacy.sh) kept as fallback.
+  Architecture: compiled binary with adapter pattern, platform detection, security/trust layer.
+  Conventions: Go standard formatting, table-driven tests, cobra subcommands.
+  Git repo on main, Phase 1-6 complete.
+  Docs: README.md, CONTRIBUTING.md (planned).
 
 testing:
   strict_tdd: false
@@ -24,7 +22,7 @@ testing:
     linter: shellcheck (not installed)
     type_checker: none
     formatter: none
-  smoke_check: "bash -n upp.sh && ./upp.sh --list"
+  smoke_check: "bash -n upp-legacy.sh && ./upp-legacy.sh --list"
 
 rules:
   proposal:
@@ -44,11 +42,11 @@ rules:
       - Preserve set -euo pipefail and Spanish output conventions
     tdd: false
     test_command: ""
-    smoke_check: "bash -n upp.sh"
+    smoke_check: "bash -n upp-legacy.sh"
   verify:
     test_command: ""
-    build_command: "bash -n upp.sh"
-    smoke_check: "./upp.sh --list"
+    build_command: "bash -n upp-legacy.sh"
+    smoke_check: "./upp-legacy.sh --list"
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas

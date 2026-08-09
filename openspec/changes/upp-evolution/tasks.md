@@ -91,7 +91,10 @@ Chain strategy: pending
 
 ## Phase 7: Polish & Distribution
 
-- [ ] 7.1 Rename `upp.sh` → `upp-legacy.sh`
-- [ ] 7.2 Create `Makefile` — build targets for all 5 platform/arch combinations
-- [ ] 7.3 Verify `go build ./...` succeeds on Linux
-- [ ] 7.4 Manual smoke test: `go run ./cmd/upp init`, `go run ./cmd/upp list`, `go run ./cmd/upp check`
+- [x] 7.1 Rename `upp.sh` → `upp-legacy.sh`
+- [x] 7.2 Create `Makefile` — build targets for all 5 platform/arch combinations
+- [x] 7.3 Verify `go build ./...` succeeds on Linux
+- [x] 7.4 Manual smoke test: `go run ./cmd/upp init`, `go run ./cmd/upp list`, `go run ./cmd/upp check`
+- [x] 7.5 Create `README.md` — comprehensive project documentation
+- [x] 7.6 Create `scripts/install.sh` — cross-platform binary installer
+- [x] 7.7 Final smoke test suite — verify all commands work, cross-compilation works
