@@ -15,9 +15,9 @@ const ConfigVersion = 1
 
 // Config is the root configuration structure.
 type Config struct {
-	Version  int                    `toml:"version"`
-	Settings Settings               `toml:"settings"`
-	Tools    map[string]ToolConfig  `toml:"tools"`
+	Version  int                   `toml:"version"`
+	Settings Settings              `toml:"settings"`
+	Tools    map[string]ToolConfig `toml:"tools"`
 	Custom   map[string]CustomTool `toml:"custom"`
 }
 

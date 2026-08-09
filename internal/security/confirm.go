@@ -30,7 +30,7 @@ type ConfirmConfig struct {
 	Command    string
 	Privileges []string
 	CI         bool
-	Trusted    bool // config trust override for custom tools
+	Trusted    bool      // config trust override for custom tools
 	Reader     io.Reader // injectable for testing
 }
 

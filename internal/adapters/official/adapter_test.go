@@ -265,10 +265,10 @@ func TestIsVersionLike(t *testing.T) {
 		{"go1.22.0", true},
 		{"abc", false},
 		{"", false},
-		{"1", false},       // no dot
-		{"v", false},       // just prefix
-		{"1.2", true},      // two-part version
-		{"1.2.3.4", true},  // four-part
+		{"1", false},      // no dot
+		{"v", false},      // just prefix
+		{"1.2", true},     // two-part version
+		{"1.2.3.4", true}, // four-part
 	}
 
 	for _, tt := range tests {
@@ -283,9 +283,9 @@ func TestIsVersionLike(t *testing.T) {
 
 func TestTruncate(t *testing.T) {
 	tests := []struct {
-		input   string
-		maxLen  int
-		want    string
+		input  string
+		maxLen int
+		want   string
 	}{
 		{"hello", 10, "hello"},
 		{"hello world", 5, "hello..."},

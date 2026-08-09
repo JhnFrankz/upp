@@ -340,17 +340,17 @@ func TestIsVersionLike_EdgeCases(t *testing.T) {
 		want  bool
 	}{
 		{"", false},
-		{"1", false},          // no dot
-		{"1.2", true},         // two-part
-		{"1.2.3", true},       // standard
-		{"1.2.3.4", true},     // four-part
-		{"v1.2.3", true},      // prefix
-		{"go1.22.0", true},    // go prefix
-		{"abc", false},        // no digits
-		{"abc.def", false},    // no digits
-		{"1.2.3-rc1", true},   // pre-release
+		{"1", false},           // no dot
+		{"1.2", true},          // two-part
+		{"1.2.3", true},        // standard
+		{"1.2.3.4", true},      // four-part
+		{"v1.2.3", true},       // prefix
+		{"go1.22.0", true},     // go prefix
+		{"abc", false},         // no digits
+		{"abc.def", false},     // no digits
+		{"1.2.3-rc1", true},    // pre-release
 		{"1.2.3-beta.1", true}, // pre-release
-		{"1.2.3+build", true}, // build metadata
+		{"1.2.3+build", true},  // build metadata
 	}
 
 	for _, tt := range tests {

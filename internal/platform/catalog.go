@@ -56,5 +56,3 @@ func FilterByPlatform(os string) []string {
 	}
 	return ids
 }
-
-
