@@ -9,6 +9,19 @@ import (
 	"strings"
 )
 
+// Test seam (D1): package-level function variables swapped by tests via
+// setExecFakes so adapters can be exercised hermetically without executing
+// real subprocesses. Production behavior is preserved — the vars initialize
+// to the real implementations and are only replaced inside tests.
+var (
+	runCmdFn     = runCmd
+	runCmdArgsFn = runCmdArgs
+	lookPathFn   = func(name string) bool {
+		_, err := exec.LookPath(name)
+		return err == nil
+	}
+)
+
 // runCmd executes a shell command and returns stdout, stderr, and any error.
 // The command runs via the platform's default shell.
 func runCmd(command string) (stdout, stderr string, err error) {
@@ -41,10 +54,9 @@ func runCmdArgs(name string, args ...string) (stdout, stderr string, err error) 
 }
 
 // lookPath checks if a command exists on PATH.
-// Returns true if found, false otherwise.
+// Returns true if found, false otherwise. Delegates to the lookPathFn seam.
 func lookPath(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
+	return lookPathFn(name)
 }
 
 // extractVersion attempts to extract a version string from command output.
@@ -111,7 +123,7 @@ func isVersionLike(s string) bool {
 // commandOutput runs a command and returns its trimmed stdout.
 // Used for simple version commands where stderr is irrelevant.
 func commandOutput(name string, args ...string) string {
-	stdout, _, err := runCmdArgs(name, args...)
+	stdout, _, err := runCmdArgsFn(name, args...)
 	if err != nil {
 		return ""
 	}
@@ -120,7 +132,7 @@ func commandOutput(name string, args ...string) string {
 
 // shellOutput runs a shell command and returns its trimmed stdout.
 func shellOutput(command string) string {
-	stdout, _, err := runCmd(command)
+	stdout, _, err := runCmdFn(command)
 	if err != nil {
 		return ""
 	}
