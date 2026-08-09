@@ -2,15 +2,15 @@
 
 Cross-platform dev environment updater. One binary to update all your development tools on Linux, macOS, and Windows.
 
-upp detects installed tools, checks for updates, and applies them safely with interactive confirmation. Supports official package managers (apt, brew, npm, pnpm, winget, scoop), runtime managers (nvm, bun), and custom tools defined in a TOML config.
+upp detects installed tools, checks for updates, and applies them safely with interactive confirmation. It ships official adapters for the most common package and runtime managers (apt, brew, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop) and lets you define custom tools in a TOML config.
 
 ## Features
 
 - **Cross-platform**: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64)
 - **Official adapters**: apt, brew, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop
 - **Custom tools**: define your own update commands in `config.toml`
-- **Security**: trust levels, risk classification, interactive confirmation for destructive ops
-- **CI mode**: non-interactive, exits on failure (`--ci`)
+- **Security**: trust levels, risk classification, and confirmation prompts for custom tools
+- **CI mode**: non-interactive, exits non-zero on failure (`--ci`)
 - **Dry run**: preview updates without applying (`--dry-run`)
 - **Filtering**: `--only` and `--skip` to target specific tools
 - **Export/import**: share your tool configuration as TOML
@@ -39,11 +39,7 @@ sudo mv upp /usr/local/bin/
 curl -fsSL https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.sh | bash
 ```
 
-### Homebrew (coming soon)
-
-```bash
-# brew install JhnFrankz/tap/upp
-```
+The script detects your OS and architecture, downloads the matching binary, verifies its checksum when available, and installs it to `/usr/local/bin` (override with `INSTALL_DIR=/your/path` or pin a version with `VERSION=v0.1.0`).
 
 ### Build from source
 
@@ -75,26 +71,29 @@ upp update --dry-run
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `upp` | Show status (same as `check`) |
-| `upp init` | Detect tools, generate `~/.config/upp/config.toml` |
-| `upp update` | Apply updates for all enabled tools |
-| `upp check` | Check for available updates |
-| `upp list` | List detected tools and their status |
-| `upp export` | Export config to TOML (stdout or `-o file.toml`) |
-| `upp import` | Import config from TOML file |
+| Command | Description | Interactive | Modifies system |
+|---------|-------------|-------------|-----------------|
+| `upp` | Show status and available updates (read-only, like `check`) | No | No |
+| `upp init` | First-run wizard: detect tools, generate `~/.config/upp/config.toml` | Yes | Yes (creates config) |
+| `upp update` | Apply updates for all enabled tools | Yes | Yes |
+| `upp update --dry-run` | Preview updates without executing | No | No |
+| `upp check` | Check for available updates | No | No |
+| `upp list` | List detected tools and their status | No | No |
+| `upp export` | Export config to TOML (stdout or `-o file.toml`) | No | No |
+| `upp import <file>` | Import config from a TOML file (confirms replace) | Yes | Yes (replaces config) |
 
 ## Flags
 
 ### Global flags
 
+Available on every command:
+
 | Flag | Description |
 |------|-------------|
-| `--quiet` | Reduce output to essential status only |
-| `--ci` | Non-interactive mode (exit non-zero on failure) |
-| `--only <tools>` | Process only these tools (comma-separated) |
-| `--skip <tools>` | Skip these tools (comma-separated) |
+| `--quiet` | Reduce output to essential status only (summary still shown) |
+| `--ci` | Non-interactive mode: no prompts, exit non-zero on failure |
+| `--only <tools>` | Process only these tools (comma-separated, takes precedence over `--skip`) |
+| `--skip <tools>` | Process all enabled tools except these (comma-separated) |
 
 ### Command-specific flags
 
@@ -105,20 +104,22 @@ upp update --dry-run
 
 ## Configuration
 
-Config file: `~/.config/upp/config.toml` (Linux/macOS) or `%APPDATA%/upp/config.toml` (Windows).
+Config file: `~/.config/upp/config.toml` on Linux/macOS, `%APPDATA%/upp/config.toml` on Windows. The directory is created on first run; if the file does not exist, upp runs with defaults.
 
 ```toml
 version = 1
 
 [settings]
-language = "en"
-interactive = true
+language = "en"      # output language ("en" or "es")
+interactive = true   # prompt before each update
 
 [tools.apt]
 enabled = true
+platforms = ["linux"]
 
 [tools.brew]
 enabled = true
+platforms = ["linux", "macos"]
 
 [custom.mytool]
 command = "mytool --update"
@@ -128,7 +129,7 @@ trusted = false
 
 ### Tool configuration
 
-Each official tool can be enabled/disabled:
+Each official tool can be enabled or disabled, with optional platform restrictions:
 
 ```toml
 [tools.npm]
@@ -137,7 +138,7 @@ enabled = true
 
 ### Custom tools
 
-Define your own tools:
+Define your own tools with an update `command` and an optional `check_cmd`:
 
 ```toml
 [custom.my-cli]
@@ -146,7 +147,26 @@ check_cmd = "my-cli --version"
 trusted = false  # requires confirmation
 ```
 
-Custom tools are treated as untrusted by default. Set `trusted = true` to skip confirmation (still confirms for high-risk commands).
+Custom tools are treated as untrusted by default. See [Security & trust](#security--trust) for how `trusted` affects confirmation.
+
+## Security & trust
+
+upp distinguishes two trust levels:
+
+- **Official**: adapters implemented and maintained by the upp project, shipped with the binary. They only invoke platform-native package managers or known official installers.
+- **Custom**: user-defined commands from `[custom.*]` in the config. Untrusted by default.
+
+Every update action is displayed before execution: tool name, trust level, the command, and required privileges.
+
+Commands are classified into risk levels:
+
+| Risk | Examples | `trusted = false` | `trusted = true` |
+|------|----------|-------------------|------------------|
+| Low | Non-destructive, no privileges | Proceeds with info | Proceeds silently |
+| Medium | May modify system state (`apt remove`, `brew uninstall`, chained commands) | Confirmation required | Proceeds with info |
+| High | `sudo`, `rm -rf`, pipe-to-shell, network to untrusted sources | Confirmation required | Confirmation required |
+
+High-risk operations always require confirmation, regardless of trust. In `--ci` mode no prompts are shown: a custom tool that would require confirmation fails with an error telling you to run interactively or mark the tool as `trusted = true`.
 
 ## Platform support
 
@@ -191,10 +211,11 @@ make test-race
 make test-cover
 ```
 
-### Lint
+### Lint and format
 
 ```bash
-make lint
+make lint    # golangci-lint (falls back to go vet)
+make fmt     # gofmt -s -w
 ```
 
 ### Smoke test
@@ -203,15 +224,13 @@ make lint
 make smoke
 ```
 
-## Migration from upp.sh
-
-The legacy Bash script is preserved as `upp-legacy.sh`. To use it as a fallback:
+### Release
 
 ```bash
-alias upp=upp-legacy.sh
-# or
-ln -sf upp-legacy.sh /usr/local/bin/upp
+make release
 ```
+
+Builds cross-platform assets into `dist/` and generates `checksums.txt`. No tag or publish happens automatically — create the tag yourself and attach the assets to a GitHub Release.
 
 ## License
 
