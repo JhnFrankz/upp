@@ -22,7 +22,10 @@ PLATFORMS := \
 	darwin/arm64 \
 	windows/amd64
 
-.PHONY: all build build-all test test-verbose test-race test-cover vet lint clean fmt tidy smoke help
+# Install prefix (override: PREFIX=/custom/path make install)
+PREFIX ?= /usr/local/bin
+
+.PHONY: all build build-all test test-verbose test-race test-cover vet lint clean fmt tidy smoke release install help
 
 ## all: build and test
 all: build test
@@ -89,6 +92,43 @@ clean:
 ## smoke: run smoke tests
 smoke: build
 	@bash scripts/smoke-test.sh --skip-build
+
+## release: build all platforms, package tar.gz/zip archives and generate checksums.txt (no tag, no publish)
+release: build-all
+	@echo "Packaging release assets..."
+	@rm -rf $(DIST_DIR)/.stage
+	@mkdir -p $(DIST_DIR)/.stage
+	@for plat in $(PLATFORMS); do \
+		GOOS=$${plat%/*}; \
+		GOARCH=$${plat#*/}; \
+		EXT=$$([ "$$GOOS" = "windows" ] && echo .exe || true); \
+		STAGE=$(DIST_DIR)/.stage/$(BINARY)-$$GOOS-$$GOARCH; \
+		mkdir -p $$STAGE; \
+		cp $(DIST_DIR)/$(BINARY)-$$GOOS-$$GOARCH$$EXT $$STAGE/$(BINARY)$$EXT; \
+		if [ "$$GOOS" = "windows" ]; then \
+			(cd $(DIST_DIR)/.stage && zip -q -r ../$(BINARY)-$$GOOS-$$GOARCH.zip $(BINARY)-$$GOOS-$$GOARCH); \
+		else \
+			tar czf $(DIST_DIR)/$(BINARY)-$$GOOS-$$GOARCH.tar.gz -C $(DIST_DIR)/.stage $(BINARY)-$$GOOS-$$GOARCH; \
+		fi; \
+	done
+	@rm -rf $(DIST_DIR)/.stage
+	@echo "Generating checksums..."
+	@if command -v sha256sum >/dev/null 2>&1; then \
+		(cd $(DIST_DIR) && sha256sum $(BINARY)-*.tar.gz $(BINARY)-*.zip > checksums.txt); \
+	elif command -v shasum >/dev/null 2>&1; then \
+		(cd $(DIST_DIR) && shasum -a 256 $(BINARY)-*.tar.gz $(BINARY)-*.zip > checksums.txt); \
+	else \
+		echo "ERROR: no checksum tool found (need sha256sum or shasum)"; exit 1; \
+	fi
+	@echo "Release assets ready in $(DIST_DIR)/:"
+	@ls -1 $(DIST_DIR)/$(BINARY)-*.tar.gz $(DIST_DIR)/$(BINARY)-*.zip $(DIST_DIR)/checksums.txt
+
+## install: build and install binary to PREFIX (default /usr/local/bin, no sudo)
+install: build
+	@echo "Installing $(BINARY) to $(PREFIX)..."
+	@install -d "$(PREFIX)"
+	@install -m 0755 $(BINARY) "$(PREFIX)/$(BINARY)"
+	@echo "Installed $(PREFIX)/$(BINARY)"
 
 ## help: show this help
 help:
