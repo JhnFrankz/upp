@@ -33,8 +33,7 @@ func runImport(gf *GlobalFlags, filePath string) error {
 		fmt.Printf("Import config from %s? This will replace your current config.\n", filePath)
 		fmt.Print("[y/N] ")
 		var response string
-		fmt.Scanln(&response)
-		if response != "y" && response != "yes" {
+		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "yes") {
 			fmt.Println("Cancelled.")
 			return nil
 		}

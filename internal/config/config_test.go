@@ -58,10 +58,8 @@ func TestValidate(t *testing.T) {
 }
 
 func TestLoadMissingFile(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -77,10 +75,8 @@ func TestLoadMissingFile(t *testing.T) {
 }
 
 func TestLoadValidTOML(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfgDir := filepath.Join(tmpDir, ".config", "upp")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
@@ -118,10 +114,8 @@ enabled = true
 }
 
 func TestLoadInvalidTOML(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfgDir := filepath.Join(tmpDir, ".config", "upp")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
@@ -231,7 +225,7 @@ func TestExport(t *testing.T) {
 
 	err := Export(cfg)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = origStdout
 
 	if err != nil {

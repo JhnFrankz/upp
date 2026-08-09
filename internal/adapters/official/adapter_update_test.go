@@ -526,9 +526,7 @@ func TestNVMAdapter_Detect_WithNVM_DIR(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	old := os.Getenv("NVM_DIR")
-	os.Setenv("NVM_DIR", tmpDir)
-	defer os.Setenv("NVM_DIR", old)
+	t.Setenv("NVM_DIR", tmpDir)
 
 	if !a.Detect() {
 		t.Error("NVMAdapter.Detect() should return true with valid NVM_DIR")
@@ -538,9 +536,8 @@ func TestNVMAdapter_Detect_WithNVM_DIR(t *testing.T) {
 func TestNVMAdapter_Detect_WithoutNVM_DIR(t *testing.T) {
 	a := &NVMAdapter{}
 
-	old := os.Getenv("NVM_DIR")
-	os.Unsetenv("NVM_DIR")
-	defer os.Setenv("NVM_DIR", old)
+	// Empty NVM_DIR is treated as unset by the adapter.
+	t.Setenv("NVM_DIR", "")
 
 	// Should not panic
 	result := a.Detect()

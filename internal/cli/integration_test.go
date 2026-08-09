@@ -61,11 +61,11 @@ func withCapturedStdout(fn func()) string {
 
 	fn()
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = origStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	return buf.String()
 }
 
@@ -201,16 +201,14 @@ func TestRootCommand_Version(t *testing.T) {
 // --- Init Command Integration Tests ---
 
 func TestInitCommand_CI_Mode(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"init", "--ci"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// Config should be written
@@ -225,16 +223,14 @@ func TestInitCommand_CI_Mode(t *testing.T) {
 }
 
 func TestInitCommand_DetectsTools(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"init", "--ci"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	if !strings.Contains(output, "detecting installed tools") {
@@ -245,10 +241,8 @@ func TestInitCommand_DetectsTools(t *testing.T) {
 // --- Export/Import Round-Trip Integration Test ---
 
 func TestExportImport_RoundTrip(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	// Create initial config
 	cfg := config.DefaultConfigWithDefaults()
@@ -269,7 +263,7 @@ func TestExportImport_RoundTrip(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"export", "-o", exportPath})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// Verify export file exists and has content
@@ -282,13 +276,13 @@ func TestExportImport_RoundTrip(t *testing.T) {
 	}
 
 	// Reset HOME and load from import
-	os.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 
 	withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"import", exportPath, "--ci"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// Verify imported config
@@ -314,16 +308,14 @@ func TestExportImport_RoundTrip(t *testing.T) {
 // --- List Command Integration Test ---
 
 func TestListCommand_NoConfig(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"list"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// list with no config should still work (uses defaults)
@@ -335,16 +327,14 @@ func TestListCommand_NoConfig(t *testing.T) {
 // --- Check Command Integration Test ---
 
 func TestCheckCommand_NoConfig(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"check"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// check with no config should still work
@@ -399,21 +389,21 @@ func TestBuildAdapterList_IncludesCustomAdapters(t *testing.T) {
 // --- CI Mode Integration Test ---
 
 func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	// Create a mock script so the tool is detectable
 	mockDir := filepath.Join(tmpDir, "bin")
-	os.MkdirAll(mockDir, 0o755)
+	if err := os.MkdirAll(mockDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	mockScript := filepath.Join(mockDir, "untrusted-tool")
-	os.WriteFile(mockScript, []byte("#!/bin/sh\necho 1.0.0"), 0o755)
+	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\necho 1.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Prepend mock dir to PATH
-	oldPath := os.Getenv("PATH")
-	os.Setenv("PATH", mockDir+":"+oldPath)
-	defer os.Setenv("PATH", oldPath)
+	t.Setenv("PATH", mockDir+":"+os.Getenv("PATH"))
 
 	cfg := config.DefaultConfigWithDefaults()
 	cfg.Custom["untrusted-tool"] = config.CustomTool{
@@ -439,10 +429,8 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 // --- Dry-Run Integration Test ---
 
 func TestDryRun_NoCommandsExecuted(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfigWithDefaults()
 	if err := config.Save(cfg); err != nil {
@@ -453,7 +441,7 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"update", "--dry-run"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	if !strings.Contains(output, "Dry run") {
@@ -519,10 +507,8 @@ func TestTrustLevelString(t *testing.T) {
 // --- Quiet Mode Integration Test ---
 
 func TestQuietMode_SuppressesProgress(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfigWithDefaults()
 	if err := config.Save(cfg); err != nil {
@@ -533,7 +519,7 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"check", "--quiet"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// Quiet mode should not contain progress indicators
@@ -575,10 +561,8 @@ func TestImport_InvalidTOML(t *testing.T) {
 // --- Complex Config Integration Test ---
 
 func TestComplexConfigRoundTrip(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfig()
 	cfg.Settings.Language = "es"
@@ -637,10 +621,8 @@ func TestComplexConfigRoundTrip(t *testing.T) {
 // --- Update Flow End-to-End Test ---
 
 func TestUpdateFlow_ConfigToSummary(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfigWithDefaults()
 	if err := config.Save(cfg); err != nil {
@@ -651,7 +633,7 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"update", "--dry-run"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	if !strings.Contains(output, "Dry run") && !strings.Contains(output, "All tools") {
@@ -662,10 +644,8 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 // --- Edge Case: Empty Config ---
 
 func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	// Create config with all tools explicitly disabled
 	cfg := config.DefaultConfigWithDefaults()
@@ -680,7 +660,7 @@ func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"check"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// With all tools disabled, check should show "All tools up to date" or similar
@@ -772,10 +752,8 @@ func TestCustomTool_MissingCommand(t *testing.T) {
 // --- Multiple Custom Tools ---
 
 func TestMultipleCustomTools(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfig()
 	cfg.Custom["tool1"] = config.CustomTool{Command: "tool1 --update", Trusted: true}
@@ -800,17 +778,15 @@ func TestMultipleCustomTools(t *testing.T) {
 // --- Init → Check → Update Lifecycle Test ---
 
 func TestInitCheckUpdateLifecycle(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	// Step 1: init --ci
 	withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"init", "--ci"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// Verify config exists
@@ -824,7 +800,7 @@ func TestInitCheckUpdateLifecycle(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"check"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	// Step 3: update --dry-run
@@ -832,7 +808,7 @@ func TestInitCheckUpdateLifecycle(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"update", "--dry-run"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	if !strings.Contains(output, "Dry run") && !strings.Contains(output, "All tools") {
@@ -944,10 +920,8 @@ func TestImportCommand_RequiresArgs(t *testing.T) {
 // --- Check Summary Output ---
 
 func TestCheckCommand_SummaryOutput(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfigWithDefaults()
 	if err := config.Save(cfg); err != nil {
@@ -958,7 +932,7 @@ func TestCheckCommand_SummaryOutput(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"check"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	hasSummary := strings.Contains(output, "All tools up to date") ||
@@ -972,10 +946,8 @@ func TestCheckCommand_SummaryOutput(t *testing.T) {
 // --- Init with Existing Config ---
 
 func TestInitCommand_AlreadyExists(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfigWithDefaults()
 	if err := config.Save(cfg); err != nil {
@@ -986,7 +958,7 @@ func TestInitCommand_AlreadyExists(t *testing.T) {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"init", "--ci"})
-		root.Execute()
+		_ = root.Execute()
 	})
 
 	if !strings.Contains(output, "Config written to") {

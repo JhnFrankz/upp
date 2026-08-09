@@ -45,10 +45,8 @@ func TestConfigVersion_DefaultValue(t *testing.T) {
 }
 
 func TestConfigVersion_PreservedOnLoad(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfgDir := filepath.Join(tmpDir, ".config", "upp")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
@@ -300,10 +298,8 @@ func TestValidate_MultipleTools(t *testing.T) {
 // --- Config Save/Load Edge Cases ---
 
 func TestSaveAndLoad_RoundTrip(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := DefaultConfig()
 	cfg.Settings.Language = "fr"
@@ -335,10 +331,8 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 }
 
 func TestSave_CreatesDirectories(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg := DefaultConfig()
 	if err := Save(cfg); err != nil {
@@ -352,10 +346,8 @@ func TestSave_CreatesDirectories(t *testing.T) {
 }
 
 func TestLoad_InvalidTOML(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfgDir := filepath.Join(tmpDir, ".config", "upp")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
@@ -374,10 +366,8 @@ func TestLoad_InvalidTOML(t *testing.T) {
 }
 
 func TestLoad_MissingFile(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -480,7 +470,7 @@ func TestExport_Stdout(t *testing.T) {
 
 	err := Export(cfg)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = origStdout
 
 	if err != nil {
@@ -518,10 +508,8 @@ func TestDefaultConfigWithDefaults_AllPlatforms(t *testing.T) {
 // --- Config Path Tests ---
 
 func TestConfigPath_Linux(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	path, err := ConfigPath()
 	if err != nil {
@@ -535,10 +523,8 @@ func TestConfigPath_Linux(t *testing.T) {
 }
 
 func TestConfigDir_Linux(t *testing.T) {
-	origHome := os.Getenv("HOME")
 	tmpDir := t.TempDir()
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	t.Setenv("HOME", tmpDir)
 
 	dir, err := ConfigDir()
 	if err != nil {

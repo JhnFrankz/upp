@@ -92,8 +92,7 @@ func runInit(gf *GlobalFlags) error {
 		fmt.Println("  Config already exists. Overwrite with new detection?")
 		fmt.Print("  [y/N] ")
 		var response string
-		fmt.Scanln(&response)
-		if response != "y" && response != "yes" {
+		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "yes") {
 			fmt.Println("  Cancelled.")
 			return nil
 		}
@@ -106,8 +105,4 @@ func runInit(gf *GlobalFlags) error {
 	path, _ := config.ConfigPath()
 	r.InitConfigGenerated(path)
 	return nil
-}
-
-func isConfigNotFound(err error) bool {
-	return err != nil && fmt.Sprint(err) == ""
 }
