@@ -12,11 +12,37 @@ import (
 // Test seam (D1): package-level function variables swapped by tests via
 // setExecFakes so adapters can be exercised hermetically without executing
 // real subprocesses. Production behavior is preserved — the vars initialize
-// to the real implementations and are only replaced inside tests.
+// to the real implementations and are only replaced inside tests. The public
+// leaf functions (runCmd, runCmdArgs, lookPath) delegate to the vars, so both
+// adapters and wrappers stay hermetic when a test swaps the seam.
 var (
-	runCmdFn     = runCmd
-	runCmdArgsFn = runCmdArgs
-	lookPathFn   = func(name string) bool {
+	runCmdFn = func(command string) (stdout, stderr string, err error) {
+		var stdoutBuf, stderrBuf bytes.Buffer
+
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", command)
+		} else {
+			cmd = exec.Command("sh", "-c", command)
+		}
+
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+
+		err = cmd.Run()
+		return stdoutBuf.String(), stderrBuf.String(), err
+	}
+	runCmdArgsFn = func(name string, args ...string) (stdout, stderr string, err error) {
+		var stdoutBuf, stderrBuf bytes.Buffer
+
+		cmd := exec.Command(name, args...)
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+
+		err = cmd.Run()
+		return stdoutBuf.String(), stderrBuf.String(), err
+	}
+	lookPathFn = func(name string) bool {
 		_, err := exec.LookPath(name)
 		return err == nil
 	}
@@ -24,33 +50,15 @@ var (
 
 // runCmd executes a shell command and returns stdout, stderr, and any error.
 // The command runs via the platform's default shell.
+// Delegates to the runCmdFn seam variable.
 func runCmd(command string) (stdout, stderr string, err error) {
-	var stdoutBuf, stderrBuf bytes.Buffer
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", command)
-	} else {
-		cmd = exec.Command("sh", "-c", command)
-	}
-
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	err = cmd.Run()
-	return stdoutBuf.String(), stderrBuf.String(), err
+	return runCmdFn(command)
 }
 
 // runCmdArgs executes a command with explicit arguments (no shell).
+// Delegates to the runCmdArgsFn seam variable.
 func runCmdArgs(name string, args ...string) (stdout, stderr string, err error) {
-	var stdoutBuf, stderrBuf bytes.Buffer
-
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	err = cmd.Run()
-	return stdoutBuf.String(), stderrBuf.String(), err
+	return runCmdArgsFn(name, args...)
 }
 
 // lookPath checks if a command exists on PATH.

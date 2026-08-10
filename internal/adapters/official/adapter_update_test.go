@@ -1,8 +1,7 @@
 package official
 
 import (
-	"os"
-	"path/filepath"
+	"errors"
 	"runtime"
 	"strings"
 	"testing"
@@ -10,262 +9,118 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
-// --- Adapter Update Tests with Mock Shell ---
+// --- Hermetic wrapper tests ---
+//
+// commandOutput and shellOutput stay real (D1) but are driven through the
+// seam leaf fakes, so no real subprocess runs. The previous versions of these
+// tests executed real commands.
 
-func TestAptAdapter_Update_DryRun(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("apt is Linux-only")
-	}
-
-	a := &AptAdapter{}
-	if !a.Detect() {
-		t.Skip("apt not installed")
-	}
-
-	result, err := a.Update(true) // dry run
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-	if result.Before == "" {
-		t.Error("dry-run should return before version")
-	}
-}
-
-func TestBrewAdapter_Update_DryRun(t *testing.T) {
-	a := &BrewAdapter{}
-	if !a.Detect() {
-		t.Skip("brew not installed")
+func TestCommandOutput(t *testing.T) {
+	tests := []struct {
+		name  string
+		fakes execFakes
+		call  func() string
+		want  string
+	}{
+		{
+			name:  "success-trimmed",
+			fakes: execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "hello\n"}}},
+			call:  func() string { return commandOutput("echo", "hello") },
+			want:  "hello",
+		},
+		{
+			name:  "command-error-empty",
+			fakes: execFakes{cmdArgs: map[string]fakeResult{"echo": {err: errors.New("boom")}}},
+			call:  func() string { return commandOutput("echo", "hello") },
+			want:  "",
+		},
 	}
 
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestNpmAdapter_Update_DryRun(t *testing.T) {
-	a := &NpmAdapter{}
-	if !a.Detect() {
-		t.Skip("npm not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestPnpmAdapter_Update_DryRun(t *testing.T) {
-	a := &PnpmAdapter{}
-	if !a.Detect() {
-		t.Skip("pnpm not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestBunAdapter_Update_DryRun(t *testing.T) {
-	a := &BunAdapter{}
-	if !a.Detect() {
-		t.Skip("bun not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestGhAdapter_Update_DryRun(t *testing.T) {
-	a := &GhAdapter{}
-	if !a.Detect() {
-		t.Skip("gh not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestDockerAdapter_Update_DryRun(t *testing.T) {
-	a := &DockerAdapter{}
-	if !a.Detect() {
-		t.Skip("docker not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestGoAdapter_Update_DryRun(t *testing.T) {
-	a := &GoAdapter{}
-	if !a.Detect() {
-		t.Skip("go not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestOpenCodeAdapter_Update_DryRun(t *testing.T) {
-	a := &OpenCodeAdapter{}
-	if !a.Detect() {
-		t.Skip("opencode not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-func TestNVMAdapter_Update_DryRun(t *testing.T) {
-	a := &NVMAdapter{}
-	if !a.Detect() {
-		t.Skip("nvm not installed")
-	}
-
-	result, err := a.Update(true)
-	if err != nil {
-		t.Fatalf("Update(dryRun=true) error: %v", err)
-	}
-	if !result.Success {
-		t.Error("dry-run should always succeed")
-	}
-}
-
-// --- Dry-Run Safety: No Commands Executed ---
-
-func TestDryRunSafety_AllAdapters(t *testing.T) {
-	// This is a critical safety test: dry-run MUST NOT execute any commands.
-	// We verify by checking that all adapters return success in dry-run mode.
-	allAdapters := AllAdapters()
-
-	for _, a := range allAdapters {
-		t.Run(a.Name(), func(t *testing.T) {
-			if !a.Detect() {
-				t.Skipf("%s not installed, skipping dry-run safety test", a.Name())
-			}
-
-			result, err := a.Update(true)
-			if err != nil {
-				t.Errorf("%s dry-run returned error: %v", a.Name(), err)
-			}
-			if !result.Success {
-				t.Errorf("%s dry-run returned Success=false", a.Name())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setExecFakes(t, tt.fakes)
+			if got := tt.call(); got != tt.want {
+				t.Errorf("commandOutput() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-// --- Error Handling: Network Failures ---
-
-func TestAptAdapter_Check_NotInstalled(t *testing.T) {
-	if runtime.GOOS == "linux" {
-		t.Skip("apt is installed on Linux")
+func TestShellOutput(t *testing.T) {
+	tests := []struct {
+		name  string
+		fakes execFakes
+		call  func() string
+		want  string
+	}{
+		{
+			name:  "success-trimmed",
+			fakes: execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "hello\n"}}},
+			call:  func() string { return shellOutput("echo hello") },
+			want:  "hello",
+		},
+		{
+			name:  "command-error-empty",
+			fakes: execFakes{shell: map[string]fakeResult{"echo hello": {err: errors.New("boom")}}},
+			call:  func() string { return shellOutput("echo hello") },
+			want:  "",
+		},
 	}
 
-	a := &AptAdapter{}
-	_, err := a.Check()
-	if err == nil {
-		t.Error("Check() should error when apt is not installed")
-	}
-}
-
-func TestAptAdapter_Update_NotInstalled(t *testing.T) {
-	if runtime.GOOS == "linux" {
-		t.Skip("apt is installed on Linux")
-	}
-
-	a := &AptAdapter{}
-	_, err := a.Update(false)
-	if err == nil {
-		t.Error("Update() should error when apt is not installed")
-	}
-}
-
-// --- Error Handling: Permission Denied ---
-
-func TestAptAdapter_Update_Privileges(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("apt is Linux-only")
-	}
-
-	a := &AptAdapter{}
-	if !a.Detect() {
-		t.Skip("apt not installed")
-	}
-
-	// Update should report sudo privilege requirement
-	result, err := a.Update(true) // dry run
-	if err != nil {
-		t.Fatalf("dry-run error: %v", err)
-	}
-	_ = result
-	// Privileges are set in the real Update path, not dry-run
-}
-
-// --- Error Handling: Partial Failures ---
-
-func TestAllAdapters_Check_DoesNotPanic(t *testing.T) {
-	allAdapters := AllAdapters()
-
-	for _, a := range allAdapters {
-		t.Run(a.Name(), func(t *testing.T) {
-			// Check should never panic, even if tool is not installed
-			_, err := a.Check()
-			// Error is acceptable; panic is not
-			_ = err
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setExecFakes(t, tt.fakes)
+			if got := tt.call(); got != tt.want {
+				t.Errorf("shellOutput() = %q, want %q", got, tt.want)
+			}
 		})
 	}
 }
 
-func TestAllAdapters_Update_DoesNotPanic(t *testing.T) {
-	allAdapters := AllAdapters()
+// --- Platform-Specific Adapter Tests ---
 
-	for _, a := range allAdapters {
-		t.Run(a.Name(), func(t *testing.T) {
-			if !a.Detect() {
-				t.Skipf("%s not installed", a.Name())
+func TestPlatformSpecificAdapters(t *testing.T) {
+	tests := []struct {
+		platform string
+		expected []string
+		excluded []string
+	}{
+		{
+			platform: "linux",
+			expected: []string{"apt", "brew", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
+			excluded: []string{"winget", "scoop"},
+		},
+		{
+			platform: "macos",
+			expected: []string{"brew", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
+			excluded: []string{"apt", "winget", "scoop"},
+		},
+		{
+			platform: "windows",
+			expected: []string{"winget", "scoop", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
+			excluded: []string{"apt", "brew"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			result := AdaptersForPlatform(tt.platform)
+
+			ids := make(map[string]bool)
+			for _, a := range result {
+				ids[a.Name()] = true
 			}
-			// Dry-run should never panic
-			_, err := a.Update(true)
-			_ = err
+
+			for _, id := range tt.expected {
+				if !ids[id] {
+					t.Errorf("AdaptersForPlatform(%s) missing: %s", tt.platform, id)
+				}
+			}
+			for _, id := range tt.excluded {
+				if ids[id] {
+					t.Errorf("AdaptersForPlatform(%s) should not contain: %s", tt.platform, id)
+				}
+			}
 		})
 	}
 }
@@ -405,6 +260,10 @@ func TestLookPath_NotExists(t *testing.T) {
 }
 
 // --- RunCmd Tests ---
+//
+// These exercise the real leaf implementations through the seam delegates
+// (no fakes installed), the only tests in the package that run real
+// subprocesses — all deterministic (echo / exit 1), no env-dependent tools.
 
 func TestRunCmd_Success(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -467,156 +326,11 @@ func TestExtractGoVersion_EdgeCases(t *testing.T) {
 	}
 }
 
-// --- Platform-Specific Adapter Tests ---
-
-func TestPlatformSpecificAdapters(t *testing.T) {
-	tests := []struct {
-		platform string
-		expected []string
-		excluded []string
-	}{
-		{
-			platform: "linux",
-			expected: []string{"apt", "brew", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
-			excluded: []string{"winget", "scoop"},
-		},
-		{
-			platform: "macos",
-			expected: []string{"brew", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
-			excluded: []string{"apt", "winget", "scoop"},
-		},
-		{
-			platform: "windows",
-			expected: []string{"winget", "scoop", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
-			excluded: []string{"apt", "brew"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.platform, func(t *testing.T) {
-			result := AdaptersForPlatform(tt.platform)
-
-			ids := make(map[string]bool)
-			for _, a := range result {
-				ids[a.Name()] = true
-			}
-
-			for _, id := range tt.expected {
-				if !ids[id] {
-					t.Errorf("AdaptersForPlatform(%s) missing: %s", tt.platform, id)
-				}
-			}
-			for _, id := range tt.excluded {
-				if ids[id] {
-					t.Errorf("AdaptersForPlatform(%s) should not contain: %s", tt.platform, id)
-				}
-			}
-		})
-	}
-}
-
-// --- NVM Adapter Edge Cases ---
-
-func TestNVMAdapter_Detect_WithNVM_DIR(t *testing.T) {
-	a := &NVMAdapter{}
-
-	tmpDir := t.TempDir()
-	nvmSh := filepath.Join(tmpDir, "nvm.sh")
-	if err := os.WriteFile(nvmSh, []byte("#!/bin/sh\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("NVM_DIR", tmpDir)
-
-	if !a.Detect() {
-		t.Error("NVMAdapter.Detect() should return true with valid NVM_DIR")
-	}
-}
-
-func TestNVMAdapter_Detect_WithoutNVM_DIR(t *testing.T) {
-	a := &NVMAdapter{}
-
-	// Empty NVM_DIR is treated as unset by the adapter.
-	t.Setenv("NVM_DIR", "")
-
-	// Should not panic
-	result := a.Detect()
-	_ = result
-}
-
 // --- Helper Function Tests ---
-
-func TestCommandOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
-	}
-
-	output := commandOutput("echo", "hello")
-	if !strings.Contains(output, "hello") {
-		t.Errorf("commandOutput should contain 'hello', got: %q", output)
-	}
-}
-
-func TestShellOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
-	}
-
-	output := shellOutput("echo hello")
-	if !strings.Contains(output, "hello") {
-		t.Errorf("shellOutput should contain 'hello', got: %q", output)
-	}
-}
 
 func TestFormatUpdateCmd(t *testing.T) {
 	got := formatUpdateCmd("brew upgrade")
 	if got != "exec: brew upgrade" {
 		t.Errorf("formatUpdateCmd = %q, want %q", got, "exec: brew upgrade")
-	}
-}
-
-// --- NVM Adapter Name and Info ---
-
-func TestNVMAdapter_FullInfo(t *testing.T) {
-	a := &NVMAdapter{}
-
-	if a.Name() != "nvm" {
-		t.Errorf("Name() = %q, want %q", a.Name(), "nvm")
-	}
-
-	info := a.Info()
-	if info.ID != "nvm" {
-		t.Errorf("Info().ID = %q, want %q", info.ID, "nvm")
-	}
-	if info.Name != "Node Version Manager" {
-		t.Errorf("Info().Name = %q, want %q", info.Name, "Node Version Manager")
-	}
-	if len(info.Platforms) != 3 {
-		t.Errorf("Info().Platforms has %d entries, want 3", len(info.Platforms))
-	}
-}
-
-// --- Adapter Check When Not Installed ---
-
-func TestAdapters_CheckWhenNotInstalled(t *testing.T) {
-	// Most adapters should return an error when not installed
-	// This tests error handling paths
-	adaptersToTest := []struct {
-		name    string
-		adapter adapters.Adapter
-	}{
-		{"apt", &AptAdapter{}},
-	}
-
-	for _, tt := range adaptersToTest {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.adapter.Detect() {
-				t.Skipf("%s is installed, skipping not-installed test", tt.name)
-			}
-			_, err := tt.adapter.Check()
-			if err == nil {
-				t.Errorf("Check() should error when %s is not installed", tt.name)
-			}
-		})
 	}
 }
