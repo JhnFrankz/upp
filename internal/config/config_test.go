@@ -212,6 +212,121 @@ func TestDefaultConfigWithDefaults(t *testing.T) {
 	}
 }
 
+// --- Phase 2: Load-state Tests (D6: defaults only for existing files) ---
+
+func TestExists_MissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	if Exists() {
+		t.Error("Exists() should be false when no config file exists")
+	}
+}
+
+func TestExists_ExistingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	if err := Save(DefaultConfig()); err != nil {
+		t.Fatal(err)
+	}
+	if !Exists() {
+		t.Error("Exists() should be true after Save")
+	}
+}
+
+func TestLoadMissingFile_NoDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() on missing file should not error: %v", err)
+	}
+	// D6: ApplyDefaults runs only when the file exists — a missing file must
+	// NOT be merged with the platform catalog.
+	if len(cfg.Tools) != 0 {
+		t.Errorf("missing file: expected no catalog defaults, got %d tools", len(cfg.Tools))
+	}
+}
+
+func TestLoadEmptyFile_AppliesDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() on empty file should not error: %v", err)
+	}
+	// Empty existing file → all defaults applied; NOT first-run.
+	if len(cfg.Tools) == 0 {
+		t.Error("empty existing file should get platform catalog defaults")
+	}
+	if cfg.Settings.Language != "en" {
+		t.Errorf("empty existing file should default language to 'en', got %q", cfg.Settings.Language)
+	}
+}
+
+func TestLoadPartialConfig_CatalogDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tomlContent := "version = 1\n\n[settings]\nlanguage = \"es\"\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() on partial config should not error: %v", err)
+	}
+	// Explicit setting preserved; tool sections default to the catalog.
+	if cfg.Settings.Language != "es" {
+		t.Errorf("partial config: expected language 'es' preserved, got %q", cfg.Settings.Language)
+	}
+	if len(cfg.Tools) == 0 {
+		t.Error("partial config: tool sections should default to the platform catalog")
+	}
+}
+
+func TestLoadFullConfig_AsIs(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	orig := DefaultConfigWithDefaults()
+	orig.Settings.Language = "es"
+	orig.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
+	if err := Save(orig); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load() on full config should not error: %v", err)
+	}
+	if loaded.Settings.Language != "es" {
+		t.Errorf("full config: expected language 'es', got %q", loaded.Settings.Language)
+	}
+	if len(loaded.Tools) != len(orig.Tools) {
+		t.Errorf("full config: defaults must not add tools (got %d, want %d)", len(loaded.Tools), len(orig.Tools))
+	}
+	if loaded.Custom["mytool"].Command != "mytool --update" {
+		t.Errorf("full config: custom tool lost, got %q", loaded.Custom["mytool"].Command)
+	}
+}
+
 // --- Phase 2: Export/Import Tests ---
 
 func TestExport(t *testing.T) {

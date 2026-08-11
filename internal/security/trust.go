@@ -93,11 +93,14 @@ func hasCommandChaining(cmd string) bool {
 		strings.Contains(cmd, ";")
 }
 
-// hasPipeToShell detects piping output to a shell interpreter.
+// hasPipeToShell detects piping output to a shell interpreter,
+// both spaced ("| sh", "| bash") and compact ("|sh", "|bash") variants.
 func hasPipeToShell(cmd string) bool {
 	lower := strings.ToLower(strings.TrimSpace(cmd))
 	return strings.Contains(lower, "| sh") ||
 		strings.Contains(lower, "| bash") ||
+		strings.Contains(lower, "|sh") ||
+		strings.Contains(lower, "|bash") ||
 		strings.Contains(lower, "|zsh") ||
 		strings.Contains(lower, "| zsh")
 }

@@ -56,11 +56,15 @@ func runInit(gf *GlobalFlags) error {
 		r.Warning("No supported tools detected.")
 	}
 
-	// Check if config already exists
-	existingCfg, _ := config.Load()
-	if existingCfg != nil && existingCfg.Version > 0 {
-		if !gf.CI {
-			r.Warning("Config already exists. Use --ci to overwrite.")
+	// First-run state comes from explicit file existence (D5) — never from
+	// applied defaults. Existing config: confirm before overwriting.
+	if config.Exists() && !gf.CI {
+		fmt.Println()
+		fmt.Println("  Config already exists. Overwrite with new detection?")
+		fmt.Print("  [y/N] ")
+		var response string
+		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "yes") {
+			fmt.Println("  Cancelled.")
 			return nil
 		}
 	}
@@ -84,18 +88,6 @@ func runInit(gf *GlobalFlags) error {
 		path, _ := config.ConfigPath()
 		r.InitConfigGenerated(path)
 		return nil
-	}
-
-	// Interactive: if existing config, warn
-	if existingCfg != nil && existingCfg.Version > 0 {
-		fmt.Println()
-		fmt.Println("  Config already exists. Overwrite with new detection?")
-		fmt.Print("  [y/N] ")
-		var response string
-		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "yes") {
-			fmt.Println("  Cancelled.")
-			return nil
-		}
 	}
 
 	if err := config.Save(cfg); err != nil {
