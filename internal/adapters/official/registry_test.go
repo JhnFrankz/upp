@@ -36,8 +36,8 @@ func TestAllAdaptersImplementInterface(t *testing.T) {
 		if len(info.Platforms) == 0 {
 			t.Errorf("adapter %T has empty Info().Platforms", a)
 		}
-		if info.Trust != adapters.TrustTrusted {
-			t.Errorf("adapter %T has trust level %d, want TrustTrusted", a, info.Trust)
+		if info.Trust != adapters.TrustOfficial {
+			t.Errorf("adapter %T has trust level %d, want TrustOfficial", a, info.Trust)
 		}
 	}
 }

@@ -89,16 +89,18 @@ func (c *CustomAdapter) Update(dryRun bool) (Result, error) {
 }
 
 func (c *CustomAdapter) Info() ToolInfo {
-	trust := TrustUntrusted
+	trust := TrustCustomUntrusted
 	if c.trusted {
-		trust = TrustTrusted
+		trust = TrustCustomTrusted
 	}
 
 	return ToolInfo{
-		ID:        c.id,
-		Name:      c.id,
-		Platforms: []string{"linux", "darwin", "windows"},
-		Trust:     trust,
+		ID:         c.id,
+		Name:       c.id,
+		Platforms:  []string{"linux", "darwin", "windows"},
+		Trust:      trust,
+		Command:    c.command,
+		Privileges: detectPrivileges(c.command),
 	}
 }
 

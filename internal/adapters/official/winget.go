@@ -75,6 +75,6 @@ func (a *WingetAdapter) Info() adapters.ToolInfo {
 		ID:        "winget",
 		Name:      "Windows Package Manager",
 		Platforms: []string{"windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }

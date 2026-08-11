@@ -104,7 +104,7 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		ID:        "go",
 		Name:      "Go",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
 

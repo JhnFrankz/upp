@@ -84,6 +84,6 @@ func (a *BunAdapter) Info() adapters.ToolInfo {
 		ID:        "bun",
 		Name:      "Bun",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }

@@ -51,22 +51,37 @@ func TestCustomAdapter_Info_Untrusted(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := ca.Info()
-	if info.Trust != TrustUntrusted {
-		t.Errorf("Info().Trust = %v, want TrustUntrusted", info.Trust)
+	if info.Trust != TrustCustomUntrusted {
+		t.Errorf("Info().Trust = %v, want TrustCustomUntrusted", info.Trust)
 	}
 	if info.ID != "mytool" {
 		t.Errorf("Info().ID = %q, want %q", info.ID, "mytool")
 	}
+	if info.Command != "mytool --update" {
+		t.Errorf("Info().Command = %q, want %q", info.Command, "mytool --update")
+	}
+	if len(info.Privileges) != 0 {
+		t.Errorf("Info().Privileges = %v, want empty for non-privileged command", info.Privileges)
+	}
 }
 
 func TestCustomAdapter_Info_Trusted(t *testing.T) {
-	ca, err := NewCustomAdapter("mytool", "mytool --update", "", true)
+	ca, err := NewCustomAdapter("mytool", "sudo mytool --update", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	info := ca.Info()
-	if info.Trust != TrustTrusted {
-		t.Errorf("Info().Trust = %v, want TrustTrusted", info.Trust)
+	if info.Trust != TrustCustomTrusted {
+		t.Errorf("Info().Trust = %v, want TrustCustomTrusted (trusted=true must never map to Official)", info.Trust)
+	}
+	if info.Trust == TrustOfficial {
+		t.Error("trusted=true must never classify as TrustOfficial")
+	}
+	if info.Command != "sudo mytool --update" {
+		t.Errorf("Info().Command = %q, want %q", info.Command, "sudo mytool --update")
+	}
+	if len(info.Privileges) != 1 || info.Privileges[0] != "sudo" {
+		t.Errorf("Info().Privileges = %v, want [sudo]", info.Privileges)
 	}
 }
 

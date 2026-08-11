@@ -81,7 +81,7 @@ func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
 		ID:        "opencode",
 		Name:      "OpenCode",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
 

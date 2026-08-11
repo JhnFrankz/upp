@@ -126,7 +126,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 			RiskLevel:  riskLevel,
 			Command:    info.Name + " update",
 			CI:         gf.CI,
-			Trusted:    info.Trust == adapters.TrustTrusted,
+			Trusted:    info.Trust == adapters.TrustOfficial,
 		})
 
 		switch decision {
@@ -193,7 +193,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 }
 
 func trustLevelString(level adapters.TrustLevel) string {
-	if level == adapters.TrustTrusted {
+	if level == adapters.TrustOfficial {
 		return "official"
 	}
 	return "custom"

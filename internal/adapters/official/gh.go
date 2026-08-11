@@ -103,6 +103,6 @@ func (a *GhAdapter) Info() adapters.ToolInfo {
 		ID:        "gh",
 		Name:      "GitHub CLI",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
