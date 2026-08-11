@@ -19,19 +19,21 @@ upp detects installed tools, checks for updates, and applies them safely with in
 
 ### Binary download
 
-Download the latest binary from [GitHub Releases](https://github.com/JhnFrankz/upp/releases):
+Download the archive for your platform from [GitHub Releases](https://github.com/JhnFrankz/upp/releases) (each release ships `upp-<os>-<arch>.tar.gz` for Linux/macOS, `upp-windows-amd64.zip` for Windows, plus `checksums.txt`):
 
 ```bash
 # Linux (amd64)
-curl -fsSL https://github.com/JhnFrankz/upp/releases/latest/download/upp-linux-amd64 -o upp
-chmod +x upp
-sudo mv upp /usr/local/bin/
+curl -fsSL -o upp.tar.gz https://github.com/JhnFrankz/upp/releases/latest/download/upp-linux-amd64.tar.gz
+tar xzf upp.tar.gz upp-linux-amd64/upp
+sudo mv upp-linux-amd64/upp /usr/local/bin/
 
 # macOS (Apple Silicon)
-curl -fsSL https://github.com/JhnFrankz/upp/releases/latest/download/upp-darwin-arm64 -o upp
-chmod +x upp
-sudo mv upp /usr/local/bin/
+curl -fsSL -o upp.tar.gz https://github.com/JhnFrankz/upp/releases/latest/download/upp-darwin-arm64.tar.gz
+tar xzf upp.tar.gz upp-darwin-arm64/upp
+sudo mv upp-darwin-arm64/upp /usr/local/bin/
 ```
+
+Windows: download `upp-windows-amd64.zip` and extract `upp-windows-amd64/upp.exe`.
 
 ### Install script
 
@@ -39,7 +41,7 @@ sudo mv upp /usr/local/bin/
 curl -fsSL https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.sh | bash
 ```
 
-The script detects your OS and architecture, downloads the matching binary, verifies its checksum when available, and installs it to `/usr/local/bin` (override with `INSTALL_DIR=/your/path` or pin a version with `VERSION=v0.1.0`).
+The script detects your OS and architecture, downloads the matching release archive, verifies its SHA-256 checksum against `checksums.txt`, and installs the binary to `/usr/local/bin` (override with `INSTALL_DIR=/your/path` or pin a version with `VERSION=v0.1.0`).
 
 ### Build from source
 
@@ -94,6 +96,7 @@ Available on every command:
 | `--ci` | Non-interactive mode: no prompts, exit non-zero on failure |
 | `--only <tools>` | Process only these tools (comma-separated, takes precedence over `--skip`) |
 | `--skip <tools>` | Process all enabled tools except these (comma-separated) |
+| `--version` | Print the upp version and exit |
 
 ### Command-specific flags
 
@@ -153,12 +156,12 @@ Custom tools are treated as untrusted by default. See [Security & trust](#securi
 
 upp distinguishes two trust levels:
 
-- **Official**: adapters implemented and maintained by the upp project, shipped with the binary. They only invoke platform-native package managers or known official installers.
+- **Official**: adapters implemented and maintained by the upp project, shipped with the binary. They only invoke platform-native package managers or known official installers. Official tools always proceed automatically — they never show a confirmation prompt, not even in `--ci` mode.
 - **Custom**: user-defined commands from `[custom.*]` in the config. Untrusted by default.
 
 Every update action is displayed before execution: tool name, trust level, the command, and required privileges.
 
-Commands are classified into risk levels:
+The confirmation matrix below applies to **custom tools** (official tools are never prompted):
 
 | Risk | Examples | `trusted = false` | `trusted = true` |
 |------|----------|-------------------|------------------|
@@ -193,6 +196,9 @@ make build
 
 # Cross-compile for all platforms
 make build-all
+
+# Install to /usr/local/bin (override with PREFIX=/custom/path)
+make install
 ```
 
 ### Test
@@ -216,6 +222,15 @@ make test-cover
 ```bash
 make lint    # golangci-lint (falls back to go vet)
 make fmt     # gofmt -s -w
+make vet     # go vet
+make tidy    # go mod tidy
+```
+
+### Clean and help
+
+```bash
+make clean   # remove build artifacts (dist/, binary, coverage)
+make help    # list all targets
 ```
 
 ### Smoke test
@@ -223,6 +238,10 @@ make fmt     # gofmt -s -w
 ```bash
 make smoke
 ```
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push/PR: vet, a gofmt format gate, unit and race tests, a build, and the smoke test, plus golangci-lint (v1.60.3) in a separate job. On version tags (`v*`) or manual dispatch it also builds the release assets into `dist/` and uploads them as artifacts.
 
 ### Release
 
