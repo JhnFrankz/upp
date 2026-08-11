@@ -3,6 +3,8 @@ package security
 import (
 	"strings"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 func TestConfirmAction_OfficialTools(t *testing.T) {
@@ -19,7 +21,7 @@ func TestConfirmAction_OfficialTools(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "brew",
-				TrustLevel: "official",
+				TrustLevel: adapters.TrustOfficial,
 				RiskLevel:  tt.riskLevel,
 				Command:    "brew upgrade",
 				CI:         false,
@@ -33,13 +35,13 @@ func TestConfirmAction_OfficialTools(t *testing.T) {
 }
 
 func TestConfirmAction_CustomUntrusted_CI(t *testing.T) {
-	// Untrusted custom tools always error in CI — no prompts possible.
+	// D4: CI Low→Auto (even untrusted); Medium→Err; High→Err — no prompts possible.
 	tests := []struct {
 		name      string
 		riskLevel RiskLevel
 		want      ConfirmDecision
 	}{
-		{"low risk CI error", RiskLow, ConfirmError},
+		{"low risk CI auto", RiskLow, ConfirmAuto},
 		{"medium risk CI error", RiskMedium, ConfirmError},
 		{"high risk CI error", RiskHigh, ConfirmError},
 	}
@@ -48,11 +50,10 @@ func TestConfirmAction_CustomUntrusted_CI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: "custom",
+				TrustLevel: adapters.TrustCustomUntrusted,
 				RiskLevel:  tt.riskLevel,
 				Command:    "mytool --update",
 				CI:         true,
-				Trusted:    false,
 			}
 			got := ConfirmAction(cfg)
 			if got != tt.want {
@@ -77,11 +78,10 @@ func TestConfirmAction_CustomTrusted_CI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: "custom",
+				TrustLevel: adapters.TrustCustomTrusted,
 				RiskLevel:  tt.riskLevel,
 				Command:    "mytool --update",
 				CI:         true,
-				Trusted:    true,
 			}
 			got := ConfirmAction(cfg)
 			if got != tt.want {
@@ -92,89 +92,96 @@ func TestConfirmAction_CustomTrusted_CI(t *testing.T) {
 }
 
 func TestConfirmAction_CustomHighRisk_Interactive(t *testing.T) {
-	// High risk always prompts — test with "yes" input.
-	reader := strings.NewReader("y\n")
-	cfg := ConfirmConfig{
-		ToolName:   "mytool",
-		TrustLevel: "custom",
-		RiskLevel:  RiskHigh,
-		Command:    "sudo mytool --update",
-		CI:         false,
-		Trusted:    false,
-		Privileges: []string{"sudo"},
-		Reader:     reader,
+	// High risk always prompts — regardless of trust.
+	tests := []struct {
+		name  string
+		trust adapters.TrustLevel
+		input string
+		want  ConfirmDecision
+	}{
+		{"untrusted yes", adapters.TrustCustomUntrusted, "y\n", ConfirmProceed},
+		{"untrusted no", adapters.TrustCustomUntrusted, "n\n", ConfirmDeny},
+		{"trusted yes", adapters.TrustCustomTrusted, "y\n", ConfirmProceed},
+		{"trusted no", adapters.TrustCustomTrusted, "n\n", ConfirmDeny},
 	}
-	got := ConfirmAction(cfg)
-	if got != ConfirmProceed {
-		t.Errorf("ConfirmAction() = %v, want ConfirmProceed", got)
-	}
-}
 
-func TestConfirmAction_CustomHighRisk_Deny(t *testing.T) {
-	// High risk with "no" input.
-	reader := strings.NewReader("n\n")
-	cfg := ConfirmConfig{
-		ToolName:   "mytool",
-		TrustLevel: "custom",
-		RiskLevel:  RiskHigh,
-		Command:    "sudo mytool --update",
-		CI:         false,
-		Trusted:    true,
-		Privileges: []string{"sudo"},
-		Reader:     reader,
-	}
-	got := ConfirmAction(cfg)
-	if got != ConfirmDeny {
-		t.Errorf("ConfirmAction() = %v, want ConfirmDeny", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ConfirmConfig{
+				ToolName:   "mytool",
+				TrustLevel: tt.trust,
+				RiskLevel:  RiskHigh,
+				Command:    "sudo mytool --update",
+				CI:         false,
+				Privileges: []string{"sudo"},
+				Reader:     strings.NewReader(tt.input),
+			}
+			got := ConfirmAction(cfg)
+			if got != tt.want {
+				t.Errorf("ConfirmAction() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestConfirmAction_CustomMediumRisk_Interactive(t *testing.T) {
-	// Untrusted medium risk prompts.
-	reader := strings.NewReader("y\n")
-	cfg := ConfirmConfig{
-		ToolName:   "mytool",
-		TrustLevel: "custom",
-		RiskLevel:  RiskMedium,
-		Command:    "mytool --update",
-		CI:         false,
-		Trusted:    false,
-		Reader:     reader,
+	// Untrusted medium risk prompts; trusted medium risk shows info and proceeds.
+	tests := []struct {
+		name  string
+		trust adapters.TrustLevel
+		input string
+		want  ConfirmDecision
+	}{
+		{"untrusted yes", adapters.TrustCustomUntrusted, "y\n", ConfirmProceed},
+		{"untrusted no", adapters.TrustCustomUntrusted, "n\n", ConfirmDeny},
+		{"trusted no input needed", adapters.TrustCustomTrusted, "", ConfirmProceed},
 	}
-	got := ConfirmAction(cfg)
-	if got != ConfirmProceed {
-		t.Errorf("ConfirmAction() = %v, want ConfirmProceed", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var reader *strings.Reader
+			if tt.input != "" {
+				reader = strings.NewReader(tt.input)
+			}
+			cfg := ConfirmConfig{
+				ToolName:   "mytool",
+				TrustLevel: tt.trust,
+				RiskLevel:  RiskMedium,
+				Command:    "mytool --update",
+				CI:         false,
+				Reader:     reader,
+			}
+			got := ConfirmAction(cfg)
+			if got != tt.want {
+				t.Errorf("ConfirmAction() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestConfirmAction_CustomTrustedMediumRisk_ShowsInfo(t *testing.T) {
-	// Trusted custom tool with medium risk: shows info, no prompt.
-	cfg := ConfirmConfig{
-		ToolName:   "mytool",
-		TrustLevel: "custom",
-		RiskLevel:  RiskMedium,
-		Command:    "mytool --update",
-		CI:         false,
-		Trusted:    true,
+func TestConfirmAction_CustomLowRisk_Interactive(t *testing.T) {
+	// Low risk always shows info and proceeds — regardless of trust.
+	tests := []struct {
+		name  string
+		trust adapters.TrustLevel
+	}{
+		{"untrusted", adapters.TrustCustomUntrusted},
+		{"trusted", adapters.TrustCustomTrusted},
 	}
-	got := ConfirmAction(cfg)
-	if got != ConfirmProceed {
-		t.Errorf("ConfirmAction() = %v, want ConfirmProceed", got)
-	}
-}
 
-func TestConfirmAction_CustomLowRisk_ShowsInfo(t *testing.T) {
-	// Low risk always proceeds with info.
-	cfg := ConfirmConfig{
-		ToolName:   "mytool",
-		TrustLevel: "custom",
-		RiskLevel:  RiskLow,
-		Command:    "mytool --version",
-		CI:         false,
-		Trusted:    false,
-	}
-	got := ConfirmAction(cfg)
-	if got != ConfirmProceed {
-		t.Errorf("ConfirmAction() = %v, want ConfirmProceed", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ConfirmConfig{
+				ToolName:   "mytool",
+				TrustLevel: tt.trust,
+				RiskLevel:  RiskLow,
+				Command:    "mytool --version",
+				CI:         false,
+			}
+			got := ConfirmAction(cfg)
+			if got != ConfirmProceed {
+				t.Errorf("ConfirmAction() = %v, want ConfirmProceed", got)
+			}
+		})
 	}
 }

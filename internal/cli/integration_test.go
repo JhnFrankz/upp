@@ -407,7 +407,9 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 
 	cfg := config.DefaultConfigWithDefaults()
 	cfg.Custom["untrusted-tool"] = config.CustomTool{
-		Command: "untrusted-tool --update",
+		// Medium risk (command chaining) so CI rejects it under D4 —
+		// an untrusted CI low-risk command would now auto-proceed.
+		Command: "untrusted-tool --update && echo done",
 		Trusted: false,
 	}
 	if err := config.Save(cfg); err != nil {
@@ -482,25 +484,6 @@ func TestAdapterByID(t *testing.T) {
 	}
 	if m["brew"] == nil {
 		t.Error("missing 'brew' in map")
-	}
-}
-
-// --- Trust Level String Integration Test ---
-
-func TestTrustLevelString(t *testing.T) {
-	tests := []struct {
-		level adapters.TrustLevel
-		want  string
-	}{
-		{adapters.TrustOfficial, "official"},
-		{adapters.TrustCustomUntrusted, "custom"},
-	}
-
-	for _, tt := range tests {
-		got := trustLevelString(tt.level)
-		if got != tt.want {
-			t.Errorf("trustLevelString(%d) = %q, want %q", tt.level, got, tt.want)
-		}
 	}
 }
 

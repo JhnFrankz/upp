@@ -15,6 +15,20 @@ const (
 	TrustCustomUntrusted
 )
 
+// String returns a human-readable trust label.
+func (t TrustLevel) String() string {
+	switch t {
+	case TrustOfficial:
+		return "official"
+	case TrustCustomTrusted:
+		return "custom-trusted"
+	case TrustCustomUntrusted:
+		return "custom-untrusted"
+	default:
+		return "unknown"
+	}
+}
+
 // Adapter is the contract every tool adapter must implement.
 // Each adapter handles detection, version checking, and updating for one tool.
 type Adapter interface {
