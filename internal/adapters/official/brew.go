@@ -86,7 +86,7 @@ func (a *BrewAdapter) Info() adapters.ToolInfo {
 		ID:        "brew",
 		Name:      "Homebrew",
 		Platforms: []string{"linux", "macos"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
 

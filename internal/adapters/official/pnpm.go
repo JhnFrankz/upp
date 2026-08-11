@@ -102,6 +102,6 @@ func (a *PnpmAdapter) Info() adapters.ToolInfo {
 		ID:        "pnpm",
 		Name:      "pnpm",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }

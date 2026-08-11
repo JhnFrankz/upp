@@ -94,7 +94,7 @@ func (a *AptAdapter) Info() adapters.ToolInfo {
 		ID:        "apt",
 		Name:      "APT Package Manager",
 		Platforms: []string{"linux"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
 

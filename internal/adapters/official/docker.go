@@ -103,6 +103,6 @@ func (a *DockerAdapter) Info() adapters.ToolInfo {
 		ID:        "docker",
 		Name:      "Docker",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }

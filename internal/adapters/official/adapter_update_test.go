@@ -149,9 +149,9 @@ func TestAllAdapters_InfoConsistency(t *testing.T) {
 				t.Error("Info().Platforms is empty")
 			}
 
-			// Trust must be Trusted for official adapters
-			if info.Trust != adapters.TrustTrusted {
-				t.Errorf("Info().Trust = %d, want TrustTrusted", info.Trust)
+			// Trust must be TrustOfficial for official adapters
+			if info.Trust != adapters.TrustOfficial {
+				t.Errorf("Info().Trust = %d, want TrustOfficial", info.Trust)
 			}
 		})
 	}

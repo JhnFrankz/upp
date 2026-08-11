@@ -110,7 +110,7 @@ func (a *NVMAdapter) Info() adapters.ToolInfo {
 		ID:        "nvm",
 		Name:      "Node Version Manager",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
 

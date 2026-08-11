@@ -6,10 +6,13 @@ package adapters
 type TrustLevel int
 
 const (
-	// TrustTrusted is for official, built-in adapters.
-	TrustTrusted TrustLevel = iota
-	// TrustUntrusted is for custom, user-defined adapters.
-	TrustUntrusted
+	// TrustOfficial is for official, built-in adapters.
+	TrustOfficial TrustLevel = iota
+	// TrustCustomTrusted is for custom, user-defined adapters marked trusted=true in config.
+	// It must never alias TrustOfficial: trust level MUST NOT bypass the risk matrix.
+	TrustCustomTrusted
+	// TrustCustomUntrusted is for custom, user-defined adapters, untrusted by default.
+	TrustCustomUntrusted
 )
 
 // Adapter is the contract every tool adapter must implement.
@@ -45,8 +48,10 @@ type Result struct {
 
 // ToolInfo holds static metadata about a tool.
 type ToolInfo struct {
-	ID        string
-	Name      string
-	Platforms []string
-	Trust     TrustLevel
+	ID         string
+	Name       string
+	Platforms  []string
+	Trust      TrustLevel
+	Command    string   // real update command; empty for official adapters
+	Privileges []string // e.g., ["sudo"]
 }

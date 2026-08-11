@@ -88,6 +88,6 @@ func (a *NpmAdapter) Info() adapters.ToolInfo {
 		ID:        "npm",
 		Name:      "npm",
 		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }

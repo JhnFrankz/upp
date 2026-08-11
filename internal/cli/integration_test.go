@@ -46,7 +46,7 @@ func (m *mockAdapter) Info() adapters.ToolInfo {
 		ID:        m.name,
 		Name:      m.name,
 		Platforms: []string{"linux", "darwin", "windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
 
@@ -492,8 +492,8 @@ func TestTrustLevelString(t *testing.T) {
 		level adapters.TrustLevel
 		want  string
 	}{
-		{adapters.TrustTrusted, "official"},
-		{adapters.TrustUntrusted, "custom"},
+		{adapters.TrustOfficial, "official"},
+		{adapters.TrustCustomUntrusted, "custom"},
 	}
 
 	for _, tt := range tests {

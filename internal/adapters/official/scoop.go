@@ -75,6 +75,6 @@ func (a *ScoopAdapter) Info() adapters.ToolInfo {
 		ID:        "scoop",
 		Name:      "Scoop",
 		Platforms: []string{"windows"},
-		Trust:     adapters.TrustTrusted,
+		Trust:     adapters.TrustOfficial,
 	}
 }
