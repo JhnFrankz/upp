@@ -82,6 +82,27 @@ run_test_with_output() {
     fi
 }
 
+run_test_without_output() {
+    local name="$1"
+    local unexpected="$2"
+    shift 2
+    local output
+    local exit_code=0
+
+    output=$("$@" 2>&1) || exit_code=$?
+
+    if [ "$exit_code" -ne 0 ]; then
+        fail "$name" "exit code: $exit_code"
+        return
+    fi
+
+    if echo "$output" | grep -q "$unexpected"; then
+        fail "$name" "did not expect '$unexpected' in output"
+    else
+        pass "$name"
+    fi
+}
+
 run_test_exit_code() {
     local name="$1"
     local expected_exit="$2"
@@ -203,6 +224,35 @@ run_test "upp export -o /tmp/test-export.toml" "$BINARY" export -o /tmp/test-exp
 rm -f /tmp/test-export.toml
 export HOME="${HOME_ORIG:-$HOME}"
 rm -rf "$TMPDIR_EXPORT"
+
+# Test 12: D6 — empty existing config defaults tools to the catalog (NOT first-run)
+echo ""
+echo "12. Config load states (D6: catalog defaults for existing files)"
+TMPDIR_LOAD=$(mktemp -d)
+HOME_ORIG="${HOME:-}"
+export HOME="$TMPDIR_LOAD"
+mkdir -p "$HOME/.config/upp"
+: > "$HOME/.config/upp/config.toml"
+run_test_with_output "upp export (empty config → catalog defaults)" "tools.apt" "$BINARY" export
+export HOME="${HOME_ORIG:-$HOME}"
+rm -rf "$TMPDIR_LOAD"
+
+# Test 13: partial config ([settings] only) → tool sections default to catalog
+TMPDIR_LOAD=$(mktemp -d)
+export HOME="$TMPDIR_LOAD"
+mkdir -p "$HOME/.config/upp"
+printf 'version = 1\n\n[settings]\nlanguage = "es"\n' > "$HOME/.config/upp/config.toml"
+run_test_with_output "upp export (partial config → catalog defaults)" "tools.apt" "$BINARY" export
+run_test_with_output "upp export (partial config preserves explicit settings)" 'language = "es"' "$BINARY" export
+export HOME="${HOME_ORIG:-$HOME}"
+rm -rf "$TMPDIR_LOAD"
+
+# Test 14: no config file → first-run path stays (missing file gets NO catalog defaults)
+TMPDIR_LOAD=$(mktemp -d)
+export HOME="$TMPDIR_LOAD"
+run_test_without_output "upp export (no config → no catalog defaults)" "tools.apt" "$BINARY" export
+export HOME="${HOME_ORIG:-$HOME}"
+rm -rf "$TMPDIR_LOAD"
 
 # --- Summary ---
 
