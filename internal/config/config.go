@@ -86,6 +86,18 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "config.toml"), nil
 }
 
+// Exists reports whether the config file already exists on disk.
+// First-run state is determined by explicit file existence (D5), never by
+// inspecting applied defaults.
+func Exists() bool {
+	path, err := ConfigPath()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
+	return err == nil
+}
+
 // Load reads and parses the config file. Returns defaults if file doesn't exist.
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
@@ -110,6 +122,11 @@ func Load() (*Config, error) {
 	if err := Validate(cfg); err != nil {
 		return nil, err
 	}
+
+	// The file exists: merge platform catalog defaults for absent fields (D6).
+	// A missing file returns the base config without catalog defaults — first
+	// run is determined by explicit file existence (config.Exists()).
+	ApplyDefaults(cfg)
 
 	return cfg, nil
 }
