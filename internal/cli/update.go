@@ -119,14 +119,19 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 
 		// Confirm if needed — always evaluate trust/risk, even in CI mode.
 		// In CI mode, ConfirmAction returns ConfirmError for untrusted tools.
-		riskLevel := security.ClassifyCommand(info.Name + " update")
+		riskCommand := info.Command
+		if riskCommand == "" {
+			// Official adapters don't expose a command; use the conventional one.
+			riskCommand = info.Name + " update"
+		}
+		riskLevel := security.ClassifyCommand(riskCommand)
 		decision := security.ConfirmAction(security.ConfirmConfig{
 			ToolName:   info.Name,
-			TrustLevel: trustLevelString(info.Trust),
+			TrustLevel: info.Trust,
 			RiskLevel:  riskLevel,
-			Command:    info.Name + " update",
+			Command:    info.Command,
+			Privileges: info.Privileges,
 			CI:         gf.CI,
-			Trusted:    info.Trust == adapters.TrustOfficial,
 		})
 
 		switch decision {
@@ -140,7 +145,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusFailed,
-				Error:  fmt.Errorf("CI mode: untrusted custom tool requires confirmation"),
+				Error:  fmt.Errorf("CI mode: custom tool requires confirmation"),
 			})
 			hasFailure = true
 			continue
@@ -190,11 +195,4 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 	}
 
 	return nil
-}
-
-func trustLevelString(level adapters.TrustLevel) string {
-	if level == adapters.TrustOfficial {
-		return "official"
-	}
-	return "custom"
 }

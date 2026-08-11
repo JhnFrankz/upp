@@ -3,6 +3,8 @@ package security
 import (
 	"strings"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 // --- Risk Classification Edge Cases ---
@@ -209,7 +211,7 @@ func TestRiskLevelString_EdgeCases(t *testing.T) {
 func TestConfirmAction_EmptyToolName(t *testing.T) {
 	cfg := ConfirmConfig{
 		ToolName:   "",
-		TrustLevel: "official",
+		TrustLevel: adapters.TrustOfficial,
 		RiskLevel:  RiskLow,
 		Command:    "echo test",
 		CI:         false,
@@ -223,11 +225,10 @@ func TestConfirmAction_EmptyToolName(t *testing.T) {
 func TestConfirmAction_EmptyCommand(t *testing.T) {
 	cfg := ConfirmConfig{
 		ToolName:   "mytool",
-		TrustLevel: "custom",
+		TrustLevel: adapters.TrustCustomUntrusted,
 		RiskLevel:  RiskLow,
 		Command:    "",
 		CI:         false,
-		Trusted:    false,
 	}
 	got := ConfirmAction(cfg)
 	if got != ConfirmProceed {
@@ -242,7 +243,7 @@ func TestConfirmAction_OfficialAlwaysProceeds(t *testing.T) {
 	for _, risk := range riskLevels {
 		cfg := ConfirmConfig{
 			ToolName:   "brew",
-			TrustLevel: "official",
+			TrustLevel: adapters.TrustOfficial,
 			RiskLevel:  risk,
 			Command:    "brew upgrade",
 			CI:         false,
@@ -255,21 +256,27 @@ func TestConfirmAction_OfficialAlwaysProceeds(t *testing.T) {
 }
 
 func TestConfirmAction_CustomUntrusted_CI_AllRisks(t *testing.T) {
-	// Untrusted custom tools should error in CI for ALL risk levels
-	riskLevels := []RiskLevel{RiskLow, RiskMedium, RiskHigh}
+	// D4: untrusted custom in CI — Low auto-proceeds, Medium and High error.
+	riskLevels := []struct {
+		risk RiskLevel
+		want ConfirmDecision
+	}{
+		{RiskLow, ConfirmAuto},
+		{RiskMedium, ConfirmError},
+		{RiskHigh, ConfirmError},
+	}
 
-	for _, risk := range riskLevels {
+	for _, tt := range riskLevels {
 		cfg := ConfirmConfig{
 			ToolName:   "mytool",
-			TrustLevel: "custom",
-			RiskLevel:  risk,
+			TrustLevel: adapters.TrustCustomUntrusted,
+			RiskLevel:  tt.risk,
 			Command:    "mytool --update",
 			CI:         true,
-			Trusted:    false,
 		}
 		got := ConfirmAction(cfg)
-		if got != ConfirmError {
-			t.Errorf("untrusted custom tool in CI with risk %v should error, got %v", risk, got)
+		if got != tt.want {
+			t.Errorf("untrusted custom tool in CI with risk %v = %v, want %v", tt.risk, got, tt.want)
 		}
 	}
 }
@@ -281,11 +288,10 @@ func TestConfirmAction_CustomTrusted_CI_RiskBelowHigh(t *testing.T) {
 	for _, risk := range riskLevels {
 		cfg := ConfirmConfig{
 			ToolName:   "mytool",
-			TrustLevel: "custom",
+			TrustLevel: adapters.TrustCustomTrusted,
 			RiskLevel:  risk,
 			Command:    "mytool --update",
 			CI:         true,
-			Trusted:    true,
 		}
 		got := ConfirmAction(cfg)
 		if got != ConfirmAuto {
@@ -298,11 +304,10 @@ func TestConfirmAction_CustomTrusted_CI_HighRisk(t *testing.T) {
 	// Trusted custom tools should error in CI if risk = High
 	cfg := ConfirmConfig{
 		ToolName:   "mytool",
-		TrustLevel: "custom",
+		TrustLevel: adapters.TrustCustomTrusted,
 		RiskLevel:  RiskHigh,
 		Command:    "sudo mytool --update",
 		CI:         true,
-		Trusted:    true,
 	}
 	got := ConfirmAction(cfg)
 	if got != ConfirmError {
@@ -313,20 +318,20 @@ func TestConfirmAction_CustomTrusted_CI_HighRisk(t *testing.T) {
 func TestConfirmAction_CustomHighRisk_Interactive_Prompts(t *testing.T) {
 	// High risk should always prompt regardless of trust
 	tests := []struct {
-		name    string
-		trusted bool
-		input   string
-		want    ConfirmDecision
+		name  string
+		trust adapters.TrustLevel
+		input string
+		want  ConfirmDecision
 	}{
-		{"untrusted yes", false, "y\n", ConfirmProceed},
-		{"untrusted no", false, "n\n", ConfirmDeny},
-		{"trusted yes", true, "y\n", ConfirmProceed},
-		{"trusted no", true, "n\n", ConfirmDeny},
-		{"yes full word", false, "yes\n", ConfirmProceed},
-		{"no full word", false, "no\n", ConfirmDeny},
-		{"empty input defaults deny", false, "\n", ConfirmDeny},
-		{"uppercase YES", false, "YES\n", ConfirmProceed},
-		{"uppercase NO", false, "NO\n", ConfirmDeny},
+		{"untrusted yes", adapters.TrustCustomUntrusted, "y\n", ConfirmProceed},
+		{"untrusted no", adapters.TrustCustomUntrusted, "n\n", ConfirmDeny},
+		{"trusted yes", adapters.TrustCustomTrusted, "y\n", ConfirmProceed},
+		{"trusted no", adapters.TrustCustomTrusted, "n\n", ConfirmDeny},
+		{"yes full word", adapters.TrustCustomUntrusted, "yes\n", ConfirmProceed},
+		{"no full word", adapters.TrustCustomUntrusted, "no\n", ConfirmDeny},
+		{"empty input defaults deny", adapters.TrustCustomUntrusted, "\n", ConfirmDeny},
+		{"uppercase YES", adapters.TrustCustomUntrusted, "YES\n", ConfirmProceed},
+		{"uppercase NO", adapters.TrustCustomUntrusted, "NO\n", ConfirmDeny},
 	}
 
 	for _, tt := range tests {
@@ -334,11 +339,10 @@ func TestConfirmAction_CustomHighRisk_Interactive_Prompts(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: "custom",
+				TrustLevel: tt.trust,
 				RiskLevel:  RiskHigh,
 				Command:    "sudo mytool --update",
 				CI:         false,
-				Trusted:    tt.trusted,
 				Privileges: []string{"sudo"},
 				Reader:     reader,
 			}
@@ -367,11 +371,10 @@ func TestConfirmAction_CustomMediumRisk_Interactive_Prompts(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: "custom",
+				TrustLevel: adapters.TrustCustomUntrusted,
 				RiskLevel:  RiskMedium,
 				Command:    "mytool --update",
 				CI:         false,
-				Trusted:    false,
 				Reader:     reader,
 			}
 			got := ConfirmAction(cfg)
@@ -386,11 +389,10 @@ func TestConfirmAction_CustomTrustedMediumRisk_Proceeds(t *testing.T) {
 	// Trusted custom tool with medium risk: shows info, no prompt
 	cfg := ConfirmConfig{
 		ToolName:   "mytool",
-		TrustLevel: "custom",
+		TrustLevel: adapters.TrustCustomTrusted,
 		RiskLevel:  RiskMedium,
 		Command:    "mytool --update",
 		CI:         false,
-		Trusted:    true,
 	}
 	got := ConfirmAction(cfg)
 	if got != ConfirmProceed {
@@ -401,22 +403,21 @@ func TestConfirmAction_CustomTrustedMediumRisk_Proceeds(t *testing.T) {
 func TestConfirmAction_CustomLowRisk_Proceeds(t *testing.T) {
 	// Low risk always proceeds with info
 	tests := []struct {
-		name    string
-		trusted bool
+		name  string
+		trust adapters.TrustLevel
 	}{
-		{"untrusted", false},
-		{"trusted", true},
+		{"untrusted", adapters.TrustCustomUntrusted},
+		{"trusted", adapters.TrustCustomTrusted},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: "custom",
+				TrustLevel: tt.trust,
 				RiskLevel:  RiskLow,
 				Command:    "mytool --version",
 				CI:         false,
-				Trusted:    tt.trusted,
 			}
 			got := ConfirmAction(cfg)
 			if got != ConfirmProceed {
@@ -432,11 +433,10 @@ func TestConfirmAction_PrivilegesDisplay(t *testing.T) {
 	reader := strings.NewReader("n\n")
 	cfg := ConfirmConfig{
 		ToolName:   "mytool",
-		TrustLevel: "custom",
+		TrustLevel: adapters.TrustCustomUntrusted,
 		RiskLevel:  RiskHigh,
 		Command:    "sudo mytool --update",
 		CI:         false,
-		Trusted:    false,
 		Privileges: []string{"sudo", "admin"},
 		Reader:     reader,
 	}
@@ -450,11 +450,10 @@ func TestConfirmAction_NoPrivileges(t *testing.T) {
 	reader := strings.NewReader("n\n")
 	cfg := ConfirmConfig{
 		ToolName:   "mytool",
-		TrustLevel: "custom",
+		TrustLevel: adapters.TrustCustomUntrusted,
 		RiskLevel:  RiskHigh,
 		Command:    "mytool --update",
 		CI:         false,
-		Trusted:    false,
 		Privileges: nil,
 		Reader:     reader,
 	}
@@ -527,43 +526,44 @@ func TestMediumRiskKeywords_AllCovered(t *testing.T) {
 // --- ConfirmAction Decision Matrix ---
 
 func TestConfirmAction_DecisionMatrix(t *testing.T) {
-	// Full decision matrix from design.md
+	// Full decision matrix from design.md D4:
+	// CI: Low→Auto; Medium→Auto(trusted)/Err(untrusted); High→Err (even trusted).
+	// Interactive: High→prompt (any); Medium→prompt(untrusted)/info(trusted); Low→info.
 	tests := []struct {
 		name       string
-		trustLevel string
+		trustLevel adapters.TrustLevel
 		risk       RiskLevel
 		ci         bool
-		trusted    bool
 		input      string
 		want       ConfirmDecision
 	}{
 		// Official tools: always auto-proceed
-		{"official low", "official", RiskLow, false, false, "", ConfirmAuto},
-		{"official medium", "official", RiskMedium, false, false, "", ConfirmAuto},
-		{"official high", "official", RiskHigh, false, false, "", ConfirmAuto},
+		{"official low", adapters.TrustOfficial, RiskLow, false, "", ConfirmAuto},
+		{"official medium", adapters.TrustOfficial, RiskMedium, false, "", ConfirmAuto},
+		{"official high", adapters.TrustOfficial, RiskHigh, false, "", ConfirmAuto},
 
-		// Custom untrusted, CI: always error
-		{"untrusted CI low", "custom", RiskLow, true, false, "", ConfirmError},
-		{"untrusted CI medium", "custom", RiskMedium, true, false, "", ConfirmError},
-		{"untrusted CI high", "custom", RiskHigh, true, false, "", ConfirmError},
+		// Custom untrusted, CI: low auto (D4), medium/high error
+		{"untrusted CI low", adapters.TrustCustomUntrusted, RiskLow, true, "", ConfirmAuto},
+		{"untrusted CI medium", adapters.TrustCustomUntrusted, RiskMedium, true, "", ConfirmError},
+		{"untrusted CI high", adapters.TrustCustomUntrusted, RiskHigh, true, "", ConfirmError},
 
 		// Custom trusted, CI: auto if risk < high, error if high
-		{"trusted CI low", "custom", RiskLow, true, true, "", ConfirmAuto},
-		{"trusted CI medium", "custom", RiskMedium, true, true, "", ConfirmAuto},
-		{"trusted CI high", "custom", RiskHigh, true, true, "", ConfirmError},
+		{"trusted CI low", adapters.TrustCustomTrusted, RiskLow, true, "", ConfirmAuto},
+		{"trusted CI medium", adapters.TrustCustomTrusted, RiskMedium, true, "", ConfirmAuto},
+		{"trusted CI high", adapters.TrustCustomTrusted, RiskHigh, true, "", ConfirmError},
 
 		// Custom untrusted, interactive: prompt if risk >= medium
-		{"untrusted interactive low", "custom", RiskLow, false, false, "", ConfirmProceed},
-		{"untrusted interactive medium yes", "custom", RiskMedium, false, false, "y\n", ConfirmProceed},
-		{"untrusted interactive medium no", "custom", RiskMedium, false, false, "n\n", ConfirmDeny},
-		{"untrusted interactive high yes", "custom", RiskHigh, false, false, "y\n", ConfirmProceed},
-		{"untrusted interactive high no", "custom", RiskHigh, false, false, "n\n", ConfirmDeny},
+		{"untrusted interactive low", adapters.TrustCustomUntrusted, RiskLow, false, "", ConfirmProceed},
+		{"untrusted interactive medium yes", adapters.TrustCustomUntrusted, RiskMedium, false, "y\n", ConfirmProceed},
+		{"untrusted interactive medium no", adapters.TrustCustomUntrusted, RiskMedium, false, "n\n", ConfirmDeny},
+		{"untrusted interactive high yes", adapters.TrustCustomUntrusted, RiskHigh, false, "y\n", ConfirmProceed},
+		{"untrusted interactive high no", adapters.TrustCustomUntrusted, RiskHigh, false, "n\n", ConfirmDeny},
 
 		// Custom trusted, interactive: prompt only if high
-		{"trusted interactive low", "custom", RiskLow, false, true, "", ConfirmProceed},
-		{"trusted interactive medium", "custom", RiskMedium, false, true, "", ConfirmProceed},
-		{"trusted interactive high yes", "custom", RiskHigh, false, true, "y\n", ConfirmProceed},
-		{"trusted interactive high no", "custom", RiskHigh, false, true, "n\n", ConfirmDeny},
+		{"trusted interactive low", adapters.TrustCustomTrusted, RiskLow, false, "", ConfirmProceed},
+		{"trusted interactive medium", adapters.TrustCustomTrusted, RiskMedium, false, "", ConfirmProceed},
+		{"trusted interactive high yes", adapters.TrustCustomTrusted, RiskHigh, false, "y\n", ConfirmProceed},
+		{"trusted interactive high no", adapters.TrustCustomTrusted, RiskHigh, false, "n\n", ConfirmDeny},
 	}
 
 	for _, tt := range tests {
@@ -579,13 +579,12 @@ func TestConfirmAction_DecisionMatrix(t *testing.T) {
 				RiskLevel:  tt.risk,
 				Command:    "mytool --update",
 				CI:         tt.ci,
-				Trusted:    tt.trusted,
 				Reader:     reader,
 			}
 
 			got := ConfirmAction(cfg)
 			if got != tt.want {
-				t.Errorf("ConfirmAction() = %v, want %v", got, got)
+				t.Errorf("ConfirmAction() = %v, want %v", got, tt.want)
 			}
 		})
 	}

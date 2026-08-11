@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 // ConfirmDecision represents the outcome of a confirmation prompt.
@@ -18,71 +20,77 @@ const (
 	ConfirmDeny
 	// ConfirmAuto means --ci mode auto-proceeded (no prompt shown).
 	ConfirmAuto
-	// ConfirmError means --ci mode rejected (medium+ risk, untrusted).
+	// ConfirmError means --ci mode rejected the tool (medium untrusted or high risk).
 	ConfirmError
 )
 
 // ConfirmConfig holds the parameters for a confirmation prompt.
 type ConfirmConfig struct {
 	ToolName   string
-	TrustLevel string // "official" or "custom"
+	TrustLevel adapters.TrustLevel // typed: official, custom-trusted, custom-untrusted
 	RiskLevel  RiskLevel
 	Command    string
 	Privileges []string
 	CI         bool
-	Trusted    bool      // config trust override for custom tools
 	Reader     io.Reader // injectable for testing
 }
 
 // ConfirmAction determines whether to prompt and returns the decision.
 //
-// Decision matrix (from design.md):
+// Risk is evaluated before trust: the risk tier decides whether a prompt or
+// error is required; trust only refines behavior within a tier and never
+// bypasses the risk matrix.
+//
+// Decision matrix (from design.md D4):
 //
 //	Official tools: auto-proceed (no prompts)
-//	Custom untrusted, CI: error and exit
-//	Custom trusted, CI: auto-proceed if risk < High, error if risk = High
-//	Custom untrusted, interactive: prompt if risk >= Medium
-//	Custom trusted, interactive: prompt if risk = High, show info otherwise
+//	CI: Low → Auto (any trust); Medium → Auto (trusted) / Error (untrusted);
+//	    High → Error (trust does not waive it)
+//	Interactive: High → prompt (any trust); Medium → info (trusted) / prompt
+//	    (untrusted); Low → info
 func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 	// Official tools always auto-proceed.
-	if cfg.TrustLevel == "official" {
+	if cfg.TrustLevel == adapters.TrustOfficial {
 		return ConfirmAuto
 	}
 
-	// Custom tools — CI mode.
-	if cfg.CI {
-		if !cfg.Trusted {
-			return ConfirmError
-		}
-		// Trusted custom tool in CI: auto-proceed if risk < High.
-		if cfg.RiskLevel < RiskHigh {
+	switch cfg.RiskLevel {
+	case RiskLow:
+		// Low risk never requires confirmation; CI auto-proceeds without info.
+		if cfg.CI {
 			return ConfirmAuto
 		}
-		return ConfirmError
-	}
-
-	// Custom tools — interactive mode.
-	// High risk always requires confirmation regardless of trust.
-	if cfg.RiskLevel == RiskHigh {
-		return promptUser(cfg)
-	}
-
-	// Trusted custom tool with medium risk: show info, no prompt.
-	if cfg.Trusted && cfg.RiskLevel == RiskMedium {
-		fmt.Printf("  %s (%s) — Command: %s — Risk: %s\n",
-			cfg.ToolName, cfg.TrustLevel, cfg.Command, cfg.RiskLevel)
+		printInfo(cfg)
 		return ConfirmProceed
-	}
 
-	// Untrusted custom tool with medium risk: prompt.
-	if !cfg.Trusted && cfg.RiskLevel == RiskMedium {
+	case RiskMedium:
+		// CI: trusted auto-proceeds, untrusted errors.
+		if cfg.CI {
+			if cfg.TrustLevel == adapters.TrustCustomTrusted {
+				return ConfirmAuto
+			}
+			return ConfirmError
+		}
+		// Interactive: trusted shows info, untrusted prompts.
+		if cfg.TrustLevel == adapters.TrustCustomTrusted {
+			printInfo(cfg)
+			return ConfirmProceed
+		}
+		return promptUser(cfg)
+
+	default: // RiskHigh
+		// High risk requires confirmation; trust never waives it.
+		if cfg.CI {
+			return ConfirmError
+		}
 		return promptUser(cfg)
 	}
+}
 
-	// Low risk: show info, proceed.
+// printInfo shows the command details without asking for confirmation.
+func printInfo(cfg ConfirmConfig) {
 	fmt.Printf("  %s (%s) — Command: %s — Risk: %s\n",
 		cfg.ToolName, cfg.TrustLevel, cfg.Command, cfg.RiskLevel)
-	return ConfirmProceed
 }
 
 // promptUser displays the confirmation prompt and reads the user's response.
