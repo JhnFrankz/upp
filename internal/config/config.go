@@ -25,6 +25,10 @@ type Config struct {
 type Settings struct {
 	Language    string `toml:"language"`
 	Interactive bool   `toml:"interactive"`
+	// CheckSelfUpdate opts into the update-detection hint at the end of
+	// check/bare upp output (spec config-system). Default false: with
+	// default config, check performs ZERO self-update network calls.
+	CheckSelfUpdate bool `toml:"check_self_update"`
 }
 
 // ToolConfig holds per-tool configuration.
@@ -45,8 +49,9 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: ConfigVersion,
 		Settings: Settings{
-			Language:    "en",
-			Interactive: true,
+			Language:        "en",
+			Interactive:     true,
+			CheckSelfUpdate: false, // opt-in hint: default OFF (spec config-system)
 		},
 		Tools:  make(map[string]ToolConfig),
 		Custom: make(map[string]CustomTool),

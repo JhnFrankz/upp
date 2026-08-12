@@ -34,6 +34,12 @@ type Strings struct {
 	SelfUpdateDeniedNotTTY string
 	SelfUpdateUnsupported  string
 	SelfUpdateDone         string // "upp updated: %s → %s"
+	// SelfUpdateHint is the opt-in check hint (design D9): exactly one
+	// line after the check summary when check_self_update is enabled and
+	// a newer release is known (spec ux-patterns: "⬆️ upp v{latest}
+	// available (current {current}) — run "upp self-update""). Unlike
+	// the confirm prompt, quiet mode DOES suppress it.
+	SelfUpdateHint string
 }
 
 // DefaultStrings returns English strings.
@@ -67,6 +73,7 @@ func DefaultStrings() *Strings {
 		SelfUpdateDeniedNotTTY: "self-update requires an interactive terminal; run upp self-update in a terminal",
 		SelfUpdateUnsupported:  "self-update is not supported on this platform yet",
 		SelfUpdateDone:         "upp updated: %s → %s",
+		SelfUpdateHint:         "⬆️ upp %s available (current %s) — run \"upp self-update\"",
 	}
 }
 
@@ -101,6 +108,7 @@ func SpanishStrings() *Strings {
 		SelfUpdateDeniedNotTTY: "self-update requiere una terminal interactiva; ejecuta upp self-update en una terminal",
 		SelfUpdateUnsupported:  "self-update aún no es compatible con esta plataforma",
 		SelfUpdateDone:         "upp actualizado: %s → %s",
+		SelfUpdateHint:         "⬆️ upp %s disponible (actual %s) — ejecuta \"upp self-update\"",
 	}
 }
 

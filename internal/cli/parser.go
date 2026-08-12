@@ -42,7 +42,7 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 		SilenceErrors: true,
 		// No args → show status (read-only, same as check)
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheck(gf)
+			return runCheck(gf, cmd.Root().Version, checkDeps{})
 		},
 	}
 
