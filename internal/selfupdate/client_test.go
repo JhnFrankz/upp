@@ -31,19 +31,19 @@ func newReleaseServer(t *testing.T, latestStatus int, latestJSON string, asset, 
 				w.WriteHeader(latestStatus)
 				return
 			}
-			io.WriteString(w, latestJSON)
+			_, _ = io.WriteString(w, latestJSON)
 		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
 			if checksums == nil {
 				http.NotFound(w, r)
 				return
 			}
-			w.Write(checksums)
+			_, _ = w.Write(checksums)
 		case strings.HasPrefix(r.URL.Path, downloadPath):
 			if asset == nil {
 				http.NotFound(w, r)
 				return
 			}
-			w.Write(asset)
+			_, _ = w.Write(asset)
 		default:
 			http.NotFound(w, r)
 		}
@@ -360,7 +360,7 @@ func TestDownload(t *testing.T) {
 		ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == latestPath:
-				io.WriteString(w, `{"tag_name":"v0.1.1"}`)
+				_, _ = io.WriteString(w, `{"tag_name":"v0.1.1"}`)
 			default:
 				http.Redirect(w, r, ts.URL+"/elsewhere", http.StatusFound)
 			}
@@ -389,7 +389,7 @@ func TestRedirectToHTTPSAccepted(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		io.WriteString(w, `{"tag_name":"v0.1.1"}`)
+		_, _ = io.WriteString(w, `{"tag_name":"v0.1.1"}`)
 	}))
 	defer target.Close()
 
@@ -414,7 +414,7 @@ func TestRedirectToHTTPSAccepted(t *testing.T) {
 func TestClientTimeouts(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(300 * time.Millisecond)
-		io.WriteString(w, `{"tag_name":"v0.1.1"}`)
+		_, _ = io.WriteString(w, `{"tag_name":"v0.1.1"}`)
 	}))
 	defer ts.Close()
 
