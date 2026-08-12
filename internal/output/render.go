@@ -415,6 +415,36 @@ func (r *Renderer) InitConfigGenerated(path string) {
 	_, _ = fmt.Fprintf(r.w, "%s Config written to %s\n", r.statusIcon(StatusUpdated), path)
 }
 
+// --- Self-update output ---
+
+// SelfUpdatePrompt prints the pre-replace confirmation (design D8):
+// current → latest versions and the resolved binary path, then the
+// Proceed question. It is never suppressed by quiet mode (spec flag
+// semantics: --quiet must not hide the confirm prompt).
+func (r *Renderer) SelfUpdatePrompt(current, latest, target string) {
+	_, _ = fmt.Fprintf(r.w, "  %s\n", fmt.Sprintf(r.strings.SelfUpdatePrompt, current, latest))
+	_, _ = fmt.Fprintf(r.w, "    %s\n", fmt.Sprintf(r.strings.SelfUpdateTarget, target))
+	_, _ = fmt.Fprintf(r.w, "  %s", r.strings.Proceed)
+}
+
+// SelfUpdateDevBuild prints the development-build message (spec R1:
+// exit 0, no update claim). Always shown, including quiet mode.
+func (r *Renderer) SelfUpdateDevBuild() {
+	_, _ = fmt.Fprintln(r.w, r.strings.SelfUpdateDevBuild)
+}
+
+// SelfUpdateUpToDate prints the already-up-to-date message with the
+// current release tag (spec R1). Always shown.
+func (r *Renderer) SelfUpdateUpToDate(tag string) {
+	_, _ = fmt.Fprintln(r.w, fmt.Sprintf(r.strings.SelfUpdateUpToDate, tag))
+}
+
+// SelfUpdateDone prints the replacement success line: current → latest.
+// Always shown.
+func (r *Renderer) SelfUpdateDone(current, latest string) {
+	_, _ = fmt.Fprintln(r.w, fmt.Sprintf(r.strings.SelfUpdateDone, current, latest))
+}
+
 // --- Error output ---
 
 // Error prints a prefixed error message.

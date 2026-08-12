@@ -22,8 +22,17 @@ const (
 	// github.com/JhnFrankz/upp.
 	latestPath = "/repos/JhnFrankz/upp/releases/latest"
 	// downloadPath is the GitHub release-asset download path, relative to
-	// Client.BaseURL: .../releases/download/{tag}/{asset}.
+	// the API base (Client.BaseURL): {BaseURL}/repos/.../releases/download/
+	// {tag}/{asset}. The API base does NOT serve this path in production
+	// (it answers 404), so Download normally runs against
+	// DownloadBaseURL + releasePath instead; the fallback exists for
+	// tests that use a single httptest server.
 	downloadPath = "/repos/JhnFrankz/upp/releases/download"
+	// releasePath is the release-asset download path relative to a
+	// github.com web base (Client.DownloadBaseURL): the browser-facing
+	// {host}/JhnFrankz/upp/releases/download/{tag}/{asset} URL, which
+	// redirects over HTTPS to the asset host.
+	releasePath = "/JhnFrankz/upp/releases/download"
 )
 
 // Release is a resolved upstream release. Tag is the release tag — the
@@ -44,10 +53,19 @@ type Release struct {
 // fetches from that same release (spec R4). A Client is not safe for
 // concurrent use.
 type Client struct {
-	BaseURL   string
-	HTTP      *http.Client
-	CachePath string
-	Now       func() time.Time
+	BaseURL string
+	// DownloadBaseURL overrides the base for release-asset downloads
+	// (U5 BaseURL resolution). The API base (https://api.github.com)
+	// serves the latest-release lookup but does NOT serve
+	// /releases/download — it answers 404 — so production points this
+	// at https://github.com, whose /releases/download path redirects
+	// over HTTPS to the asset host (allowed by the redirect policy).
+	// When empty, downloads fall back to BaseURL — the behavior tests
+	// rely on with a single httptest server.
+	DownloadBaseURL string
+	HTTP            *http.Client
+	CachePath       string
+	Now             func() time.Time
 
 	release Release
 }
@@ -177,7 +195,7 @@ func (c *Client) Download(name string) ([]byte, []byte, error) {
 	if c.release.Tag == "" {
 		return nil, nil, fmt.Errorf("selfupdate: no release resolved: call LatestFresh before Download")
 	}
-	base := strings.TrimRight(c.BaseURL, "/") + downloadPath + "/" + c.release.Tag + "/"
+	base := c.downloadBase()
 	asset, err := c.get(base + name)
 	if err != nil {
 		return nil, nil, err
@@ -187,6 +205,17 @@ func (c *Client) Download(name string) ([]byte, []byte, error) {
 		return nil, nil, err
 	}
 	return asset, checksums, nil
+}
+
+// downloadBase returns the base URL for release-asset downloads of the
+// resolved release: DownloadBaseURL + releasePath when a web base is
+// configured, otherwise BaseURL + downloadPath (the API-base-relative
+// path used by tests).
+func (c *Client) downloadBase() string {
+	if c.DownloadBaseURL != "" {
+		return strings.TrimRight(c.DownloadBaseURL, "/") + releasePath + "/" + c.release.Tag + "/"
+	}
+	return strings.TrimRight(c.BaseURL, "/") + downloadPath + "/" + c.release.Tag + "/"
 }
 
 // get performs a single GET and returns the body on HTTP 200.

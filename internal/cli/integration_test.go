@@ -147,8 +147,8 @@ func TestRootCommand_NoArgs(t *testing.T) {
 	}
 
 	commands := root.Commands()
-	if len(commands) != 6 {
-		t.Errorf("expected 6 subcommands, got %d", len(commands))
+	if len(commands) != 7 {
+		t.Errorf("expected 7 subcommands, got %d", len(commands))
 	}
 }
 
@@ -841,12 +841,13 @@ func TestSubcommandRegistration(t *testing.T) {
 	AddCommands(root, gf)
 
 	expected := map[string]bool{
-		"init":   false,
-		"update": false,
-		"check":  false,
-		"list":   false,
-		"export": false,
-		"import": false,
+		"init":        false,
+		"update":      false,
+		"self-update": false,
+		"check":       false,
+		"list":        false,
+		"export":      false,
+		"import":      false,
 	}
 
 	for _, cmd := range root.Commands() {

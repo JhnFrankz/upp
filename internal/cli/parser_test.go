@@ -216,7 +216,7 @@ func TestAddCommands(t *testing.T) {
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
 
-	expectedCommands := []string{"init", "update", "check", "list", "export", "import"}
+	expectedCommands := []string{"init", "update", "self-update", "check", "list", "export", "import"}
 	commands := root.Commands()
 
 	if len(commands) != len(expectedCommands) {
@@ -255,5 +255,38 @@ func TestSilenceStdout_Error(t *testing.T) {
 	}
 	if err.Error() != "test error" {
 		t.Errorf("expected 'test error', got %q", err.Error())
+	}
+}
+
+// --- Self-update command registration and flag semantics ---
+
+func TestSelfUpdateCommand_Short(t *testing.T) {
+	cmd := NewSelfUpdateCommand(&GlobalFlags{})
+	if cmd.Short != "Update the upp binary itself" {
+		t.Errorf("Short = %q, want %q", cmd.Short, "Update the upp binary itself")
+	}
+	if cmd.Use != "self-update" {
+		t.Errorf("Use = %q, want %q", cmd.Use, "self-update")
+	}
+}
+
+func TestSelfUpdateCommand_NoLocalFlags(t *testing.T) {
+	cmd := NewSelfUpdateCommand(&GlobalFlags{})
+	if cmd.HasAvailableLocalFlags() {
+		t.Error("self-update must accept no local flags in v1")
+	}
+}
+
+func TestSelfUpdateCommand_UnknownFlagRejected(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+	root.SetArgs([]string{"self-update", "--yes"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("unknown flag --yes must be rejected")
+	}
+	if !strings.Contains(err.Error(), "unknown flag") {
+		t.Errorf("rejection should mention the unknown flag, got: %v", err)
 	}
 }

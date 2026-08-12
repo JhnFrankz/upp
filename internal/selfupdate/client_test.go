@@ -38,7 +38,7 @@ func newReleaseServer(t *testing.T, latestStatus int, latestJSON string, asset, 
 				return
 			}
 			_, _ = w.Write(checksums)
-		case strings.HasPrefix(r.URL.Path, downloadPath):
+		case strings.HasPrefix(r.URL.Path, downloadPath), strings.HasPrefix(r.URL.Path, releasePath):
 			if asset == nil {
 				http.NotFound(w, r)
 				return
@@ -378,6 +378,41 @@ func TestDownload(t *testing.T) {
 			t.Errorf("error %q does not mention the redirect refusal", err)
 		}
 	})
+}
+
+// TestDownloadDownloadBaseURL pins the U5 BaseURL resolution: the API
+// base (https://api.github.com) serves the latest-release lookup but
+// does NOT serve /releases/download (it answers 404 — verified against
+// api.github.com 2026-08-12), so production routes asset downloads to a
+// github.com web base. Two servers prove the split: the latest lookup
+// hits only the API base and the asset+checksums hit only the web base.
+func TestDownloadDownloadBaseURL(t *testing.T) {
+	var apiReqs, webReqs atomic.Int32
+	api := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, &apiReqs)
+	defer api.Close()
+	web := newReleaseServer(t, http.StatusOK, `{"tag_name":"ignored"}`, []byte("asset-bytes"), []byte("checksum-bytes"), &webReqs)
+	defer web.Close()
+
+	c := &Client{BaseURL: api.URL, DownloadBaseURL: web.URL}
+	if _, err := c.LatestFresh(); err != nil {
+		t.Fatalf("LatestFresh: %v", err)
+	}
+	asset, checksums, err := c.Download("upp-linux-amd64.tar.gz")
+	if err != nil {
+		t.Fatalf("Download with DownloadBaseURL: %v", err)
+	}
+	if string(asset) != "asset-bytes" {
+		t.Errorf("asset = %q, want %q", asset, "asset-bytes")
+	}
+	if string(checksums) != "checksum-bytes" {
+		t.Errorf("checksums = %q, want %q", checksums, "checksum-bytes")
+	}
+	if got := apiReqs.Load(); got != 1 {
+		t.Errorf("latest lookup should hit only the API base, got %d requests", got)
+	}
+	if got := webReqs.Load(); got != 2 {
+		t.Errorf("asset+checksums should hit only the web base, got %d requests", got)
+	}
 }
 
 // TestRedirectToHTTPSAccepted proves the redirect policy accepts a hop

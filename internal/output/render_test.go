@@ -305,6 +305,68 @@ func TestProgress_MultiTool(t *testing.T) {
 	}
 }
 
+func TestSelfUpdatePrompt(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, false, "en")
+	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
+
+	want := "  Update upp from v0.1.0 to v0.1.1?\n    Target: /home/u/.local/bin/upp\n  Proceed? [y/N] "
+	if got := buf.String(); got != want {
+		t.Errorf("prompt = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUpdatePrompt_Spanish(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, false, "es")
+	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
+
+	want := "  ¿Actualizar upp de v0.1.0 a v0.1.1?\n    Destino: /home/u/.local/bin/upp\n  ¿Proceder? [s/N] "
+	if got := buf.String(); got != want {
+		t.Errorf("prompt = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUpdatePrompt_QuietNeverSuppresses(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, true, "en")
+	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
+
+	if got := buf.String(); !strings.Contains(got, "Proceed?") {
+		t.Errorf("prompt must never be suppressed by quiet mode, got %q", got)
+	}
+}
+
+func TestSelfUpdateMessages(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, false, "en")
+	r.SelfUpdateDevBuild()
+	r.SelfUpdateUpToDate("v0.1.1")
+	r.SelfUpdateDone("v0.1.0", "v0.1.1")
+
+	want := "development build; self-update is only available for release builds\n" +
+		"already up to date (v0.1.1)\n" +
+		"upp updated: v0.1.0 → v0.1.1\n"
+	if got := buf.String(); got != want {
+		t.Errorf("messages = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUpdateMessages_Spanish(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, false, "es")
+	r.SelfUpdateDevBuild()
+	r.SelfUpdateUpToDate("v0.1.1")
+	r.SelfUpdateDone("v0.1.0", "v0.1.1")
+
+	want := "build de desarrollo; self-update solo está disponible en builds de release\n" +
+		"ya actualizado (v0.1.1)\n" +
+		"upp actualizado: v0.1.0 → v0.1.1\n"
+	if got := buf.String(); got != want {
+		t.Errorf("messages = %q, want %q", got, want)
+	}
+}
+
 func TestStatusFromResult(t *testing.T) {
 	// We test the mapping logic by checking the constants.
 	if StatusUpdated != 0 {
