@@ -570,6 +570,21 @@ func TestConfirmAction_DecisionMatrix(t *testing.T) {
 		{"trusted interactive medium", adapters.TrustCustomTrusted, RiskMedium, false, "", ConfirmProceed},
 		{"trusted interactive high yes", adapters.TrustCustomTrusted, RiskHigh, false, "y\n", ConfirmProceed},
 		{"trusted interactive high no", adapters.TrustCustomTrusted, RiskHigh, false, "n\n", ConfirmDeny},
+
+		// Zero-value trust (unset): MUST resolve to least-privileged, never auto-proceed
+		{"zero trust CI high", adapters.TrustLevel(0), RiskHigh, true, "", ConfirmError},
+		{"zero trust CI medium", adapters.TrustLevel(0), RiskMedium, true, "", ConfirmError},
+		{"zero trust interactive high yes", adapters.TrustLevel(0), RiskHigh, false, "y\n", ConfirmProceed},
+		{"zero trust interactive high no", adapters.TrustLevel(0), RiskHigh, false, "n\n", ConfirmDeny},
+
+		// Unknown trust value: must behave as untrusted, never bypass the matrix
+		{"unknown trust CI medium", adapters.TrustLevel(99), RiskMedium, true, "", ConfirmError},
+		{"unknown trust interactive high yes", adapters.TrustLevel(99), RiskHigh, false, "y\n", ConfirmProceed},
+		{"unknown trust interactive high no", adapters.TrustLevel(99), RiskHigh, false, "n\n", ConfirmDeny},
+
+		// Unknown risk value: default branch treats it as High (fail-closed)
+		{"unknown risk CI", adapters.TrustCustomUntrusted, RiskLevel(99), true, "", ConfirmError},
+		{"unknown risk interactive no", adapters.TrustCustomUntrusted, RiskLevel(99), false, "n\n", ConfirmDeny},
 	}
 
 	for _, tt := range tests {
@@ -593,5 +608,14 @@ func TestConfirmAction_DecisionMatrix(t *testing.T) {
 				t.Errorf("ConfirmAction() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTrustLevel_ZeroValueIsLeastPrivileged(t *testing.T) {
+	// R4-1 invariant: the zero value of TrustLevel MUST be the least-privileged
+	// tier, so an unset TrustLevel resolves to untrusted and fails closed
+	// (never auto-proceeds as TrustOfficial).
+	if adapters.TrustCustomUntrusted != 0 {
+		t.Errorf("TrustCustomUntrusted = %d, want 0 (zero value MUST be least-privileged)", adapters.TrustCustomUntrusted)
 	}
 }
