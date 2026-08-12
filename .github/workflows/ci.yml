@@ -1,6 +1,8 @@
-# CI for upp — test, lint, and release asset building.
-# The release job only builds and uploads artifacts; publishing a GitHub
-# Release (tag + assets) is a manual, user-triggered step (see README).
+# CI for upp — test, lint, and release.
+# The release job builds assets on tag pushes (after test and lint pass) or
+# manual dispatch, then publishes the GitHub Release idempotently on tag
+# pushes only (scripts/publish-release.sh). Dispatch builds and uploads
+# artifacts without creating a release.
 
 name: CI
 
@@ -71,11 +73,16 @@ jobs:
 
   release:
     name: Release assets
+    needs: [test, lint]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -92,3 +99,9 @@ jobs:
           name: upp-dist
           path: dist/**
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish-release.sh publish
