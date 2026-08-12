@@ -367,6 +367,41 @@ func TestSelfUpdateMessages_Spanish(t *testing.T) {
 	}
 }
 
+func TestSelfUpdateHint(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, false, "en")
+	r.SelfUpdateHint("v0.1.0", "v0.1.1")
+
+	want := "⬆️ upp v0.1.1 available (current v0.1.0) — run \"upp self-update\"\n"
+	if got := buf.String(); got != want {
+		t.Errorf("hint = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUpdateHint_Spanish(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, false, "es")
+	r.SelfUpdateHint("v0.1.0", "v0.1.1")
+
+	want := "⬆️ upp v0.1.1 disponible (actual v0.1.0) — ejecuta \"upp self-update\"\n"
+	if got := buf.String(); got != want {
+		t.Errorf("hint = %q, want %q", got, want)
+	}
+}
+
+// TestSelfUpdateHint_QuietSuppresses locks the ONE place quiet mode
+// applies to self-update output: the hint is informational output
+// (unlike the confirm prompt, which quiet never suppresses).
+func TestSelfUpdateHint_QuietSuppresses(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererWithLang(&buf, true, "en")
+	r.SelfUpdateHint("v0.1.0", "v0.1.1")
+
+	if got := buf.String(); got != "" {
+		t.Errorf("quiet mode must suppress the hint, got %q", got)
+	}
+}
+
 func TestStatusFromResult(t *testing.T) {
 	// We test the mapping logic by checking the constants.
 	if StatusUpdated != 0 {

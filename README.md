@@ -80,9 +80,19 @@ upp update --dry-run
 | `upp update` | Apply updates for all enabled tools | Yes | Yes |
 | `upp update --dry-run` | Preview updates without executing | No | No |
 | `upp check` | Check for available updates | No | No |
+| `upp self-update` | Update the upp binary itself (checks, verifies, asks for confirmation) | Yes (confirm) | Yes (replaces binary) |
 | `upp list` | List detected tools and their status | No | No |
 | `upp export` | Export config to TOML (stdout or `-o file.toml`) | No | No |
 | `upp import <file>` | Import config from a TOML file (confirms replace) | Yes | Yes (replaces config) |
+
+## Self-update
+
+`upp self-update` replaces the upp binary itself with the latest release: it checks the newest release over HTTPS, verifies the downloaded archive's SHA-256 against `checksums.txt`, and asks for confirmation before an atomic replace (with a timestamped `.backup.<ts>` of the previous binary). It never uses `sudo`; if the install directory is not writable, it tells you to make it writable or install under your home directory.
+
+- **Opt-in hint**: with `settings.check_self_update = true` (default **false** — zero network calls by default), `upp check` and bare `upp` append one hint line when a newer release is known: `⬆️ upp v0.1.1 available (current v0.1.0) — run "upp self-update"`. The hint never changes the exit code, is omitted with `--quiet`, stays silent offline, and is cached for 24h in `{config-dir}/self-update-cache.json`.
+- **Deny paths**: non-TTY stdin or `--ci` deny the update with a clear message and exit non-zero — never hang, auto-proceed, or silently skip. Decline at the prompt = no changes, exit 0.
+- **Flags**: `self-update` accepts no flags in v1; `--only`/`--skip` are ignored. `--quiet` does not suppress the confirmation prompt.
+- **Limits**: development/dirty builds never claim updates (release builds only), Windows is not supported yet, and releases must ship `checksums.txt` or the update fails closed.
 
 ## Flags
 
@@ -113,8 +123,9 @@ Config file: `~/.config/upp/config.toml` on Linux/macOS, `%APPDATA%/upp/config.t
 version = 1
 
 [settings]
-language = "en"      # output language ("en" or "es")
-interactive = true   # prompt before each update
+language = "en"          # output language ("en" or "es")
+interactive = true       # prompt before each update
+check_self_update = false  # opt-in update hint after check/bare upp (default: off, zero network)
 
 [tools.apt]
 enabled = true

@@ -18,6 +18,9 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.Settings.Interactive {
 		t.Error("expected interactive to be true")
 	}
+	if cfg.Settings.CheckSelfUpdate {
+		t.Error("expected check_self_update to default to false")
+	}
 	if cfg.Tools == nil {
 		t.Error("tools map should not be nil")
 	}
@@ -130,6 +133,49 @@ func TestLoadInvalidTOML(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Error("Load() should error on invalid TOML")
+	}
+}
+
+// TestLoadCheckSelfUpdate covers the opt-in hint setting (spec
+// config-system): absent → false (TOML zero value), explicit false →
+// false, explicit true → enabled.
+func TestLoadCheckSelfUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings string // [settings] table body, "" for absent
+		want     bool
+	}{
+		{name: "absent defaults to false", settings: "", want: false},
+		{name: "explicit false", settings: "check_self_update = false", want: false},
+		{name: "explicit true enables", settings: "check_self_update = true", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("HOME", tmpDir)
+
+			cfgDir := filepath.Join(tmpDir, ".config", "upp")
+			if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			tomlContent := "version = 1\n\n[settings]\n"
+			if tt.settings != "" {
+				tomlContent += tt.settings + "\n"
+			}
+			if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error: %v", err)
+			}
+			if cfg.Settings.CheckSelfUpdate != tt.want {
+				t.Errorf("CheckSelfUpdate = %v, want %v", cfg.Settings.CheckSelfUpdate, tt.want)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/selfupdate"
 )
 
 // NewCheckCommand creates the `upp check` command.
@@ -20,12 +22,24 @@ func NewCheckCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Check for available updates (read-only)",
 		Long:  "Query each enabled tool for updates without making any changes.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheck(gf)
+			return runCheck(gf, cmd.Root().Version, checkDeps{})
 		},
 	}
 }
 
-func runCheck(gf *GlobalFlags) error {
+// selfUpdateCacheFile is the detection-cache file name inside the config
+// directory (spec config-system: "{config-dir}/self-update-cache.json").
+const selfUpdateCacheFile = "self-update-cache.json"
+
+// checkDeps carries the injectable seam for the check hint (design D9),
+// mirroring selfUpdateDeps. The zero value uses the production client
+// factory: a selfupdate.Client on the API base with the detection cache
+// at {config-dir}/self-update-cache.json.
+type checkDeps struct {
+	clientFactory func(cachePath string) *selfupdate.Client
+}
+
+func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("cannot load config: %w", err)
@@ -98,7 +112,54 @@ func runCheck(gf *GlobalFlags) error {
 	}
 
 	r.CheckSummary(results)
+	maybeShowSelfUpdateHint(gf, r, cfg, version, deps)
 	return nil
+}
+
+// maybeShowSelfUpdateHint appends the opt-in update hint after the check
+// summary (design D9, spec ux-patterns): only when settings.
+// check_self_update is enabled, output is not quiet, the current build
+// is a release (not dev/dirty), and the cached or freshly fetched latest
+// release is newer than the current version. ANY failure — config dir,
+// network, parse — is silent and the exit code is unchanged. The client
+// is never constructed when the setting is off or output is quiet:
+// default config performs ZERO self-update network calls (spec
+// config-system, test-enforced).
+func maybeShowSelfUpdateHint(gf *GlobalFlags, r *output.Renderer, cfg *config.Config, version string, deps checkDeps) {
+	if deps.clientFactory == nil {
+		deps.clientFactory = func(cachePath string) *selfupdate.Client {
+			return selfupdate.NewClient(selfUpdateAPIBase, cachePath)
+		}
+	}
+
+	if !cfg.Settings.CheckSelfUpdate || gf.Quiet {
+		return
+	}
+
+	current, err := selfupdate.Parse(version)
+	if err != nil || current.Dev || current.Dirty {
+		return // unparseable/dev/dirty: never claim an update, no network
+	}
+
+	configDir, err := config.ConfigDir()
+	if err != nil {
+		return
+	}
+
+	latest, ok := deps.clientFactory(filepath.Join(configDir, selfUpdateCacheFile)).LatestCached()
+	if !ok {
+		return // offline or any failure: silent, exit unchanged
+	}
+
+	latestV, err := selfupdate.Parse(latest)
+	if err != nil {
+		return // unparseable upstream tag: silent, no hint
+	}
+	if current.Compare(latestV) >= 0 {
+		return // up to date (or newer locally): no hint
+	}
+
+	r.SelfUpdateHint(formatVersion(current), latest)
 }
 
 // buildAdapterList creates adapters for enabled tools from the config.
