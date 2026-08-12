@@ -51,7 +51,7 @@ func buildArchive(t *testing.T, entries ...archiveEntry) []byte {
 		if err := tw.WriteHeader(hdr); err != nil {
 			t.Fatalf("write tar header for %q: %v", e.name, err)
 		}
-		if typ == tar.TypeReg || typ == tar.TypeRegA {
+		if typ == tar.TypeReg {
 			if _, err := tw.Write([]byte(e.content)); err != nil {
 				t.Fatalf("write tar body for %q: %v", e.name, err)
 			}
@@ -169,7 +169,7 @@ func TestExtract(t *testing.T) {
 		{"gzip but not tar", func() []byte {
 			var buf bytes.Buffer
 			gz := gzip.NewWriter(&buf)
-			gz.Write([]byte("hello"))
+			_, _ = gz.Write([]byte("hello"))
 			gz.Close()
 			return buf.Bytes()
 		}(), true},
@@ -560,7 +560,7 @@ func TestReplace(t *testing.T) {
 		if err := os.Chmod(dir, 0o555); err != nil {
 			t.Fatalf("chmod dir read-only: %v", err)
 		}
-		t.Cleanup(func() { os.Chmod(dir, 0o755) })
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 		err := Replace(binPath, newPath)
 		if !errors.Is(err, ErrNotWritable) {

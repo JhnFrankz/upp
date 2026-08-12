@@ -124,7 +124,7 @@ func extract(asset []byte, assetName, destDir string) (string, error) {
 		if hdr.Name != binaryPath {
 			continue
 		}
-		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		if hdr.Typeflag != tar.TypeReg {
 			return "", fmt.Errorf("selfupdate: archive entry %s is not a regular file", binaryPath)
 		}
 		if !found {
