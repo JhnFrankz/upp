@@ -6,13 +6,16 @@ package adapters
 type TrustLevel int
 
 const (
-	// TrustOfficial is for official, built-in adapters.
-	TrustOfficial TrustLevel = iota
-	// TrustCustomTrusted is for custom, user-defined adapters marked trusted=true in config.
+	// TrustCustomUntrusted is for custom adapters, untrusted by default.
+	// It is the ZERO value on purpose: an unset TrustLevel MUST resolve to the
+	// least-privileged level so unset trust fails closed. The zero value MUST
+	// stay the least-privileged tier — never insert a new level before it.
+	TrustCustomUntrusted TrustLevel = 0
+	// TrustCustomTrusted is for custom adapters marked trusted=true in config.
 	// It must never alias TrustOfficial: trust level MUST NOT bypass the risk matrix.
-	TrustCustomTrusted
-	// TrustCustomUntrusted is for custom, user-defined adapters, untrusted by default.
-	TrustCustomUntrusted
+	TrustCustomTrusted TrustLevel = 1
+	// TrustOfficial is for official, built-in adapters.
+	TrustOfficial TrustLevel = 2
 )
 
 // String returns a human-readable trust label.

@@ -80,6 +80,10 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 
 	default: // RiskHigh
 		// High risk requires confirmation; trust never waives it.
+		// Deliberately a default, NOT `case RiskHigh:`: an unknown future
+		// RiskLevel (e.g. RiskLevel(99)) would otherwise exit the switch
+		// unhandled and return the zero-value ConfirmProceed (fail-open, R4-4).
+		// With the default branch, unknown risk values fall into High = fail-closed.
 		if cfg.CI {
 			return ConfirmError
 		}
