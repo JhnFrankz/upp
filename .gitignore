@@ -1,3 +1,6 @@
 dist/
 upp
 coverage.out
+# Local AI runtime state
+.atl/
+.codegraph/
