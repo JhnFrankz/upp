@@ -23,6 +23,17 @@ type Strings struct {
 	Proceed         string
 	Yes             string
 	No              string
+
+	// Self-update strings (design D8). The detection-hint string is
+	// added together with the check hint (U6), not here.
+	SelfUpdatePrompt       string // "Update upp from %s to %s?"
+	SelfUpdateTarget       string // "Target: %s"
+	SelfUpdateDevBuild     string
+	SelfUpdateUpToDate     string // "already up to date (%s)"
+	SelfUpdateDeniedCI     string
+	SelfUpdateDeniedNotTTY string
+	SelfUpdateUnsupported  string
+	SelfUpdateDone         string // "upp updated: %s → %s"
 }
 
 // DefaultStrings returns English strings.
@@ -47,6 +58,15 @@ func DefaultStrings() *Strings {
 		Proceed:         "Proceed? [y/N] ",
 		Yes:             "yes",
 		No:              "no",
+
+		SelfUpdatePrompt:       "Update upp from %s to %s?",
+		SelfUpdateTarget:       "Target: %s",
+		SelfUpdateDevBuild:     "development build; self-update is only available for release builds",
+		SelfUpdateUpToDate:     "already up to date (%s)",
+		SelfUpdateDeniedCI:     "self-update denied in --ci mode; run upp self-update interactively to confirm",
+		SelfUpdateDeniedNotTTY: "self-update requires an interactive terminal; run upp self-update in a terminal",
+		SelfUpdateUnsupported:  "self-update is not supported on this platform yet",
+		SelfUpdateDone:         "upp updated: %s → %s",
 	}
 }
 
@@ -72,6 +92,15 @@ func SpanishStrings() *Strings {
 		Proceed:         "¿Proceder? [s/N] ",
 		Yes:             "sí",
 		No:              "no",
+
+		SelfUpdatePrompt:       "¿Actualizar upp de %s a %s?",
+		SelfUpdateTarget:       "Destino: %s",
+		SelfUpdateDevBuild:     "build de desarrollo; self-update solo está disponible en builds de release",
+		SelfUpdateUpToDate:     "ya actualizado (%s)",
+		SelfUpdateDeniedCI:     "self-update denegado en modo --ci; ejecuta upp self-update de forma interactiva para confirmar",
+		SelfUpdateDeniedNotTTY: "self-update requiere una terminal interactiva; ejecuta upp self-update en una terminal",
+		SelfUpdateUnsupported:  "self-update aún no es compatible con esta plataforma",
+		SelfUpdateDone:         "upp actualizado: %s → %s",
 	}
 }
 

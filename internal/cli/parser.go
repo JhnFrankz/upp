@@ -59,6 +59,7 @@ func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 	root.AddCommand(
 		NewInitCommand(gf),
 		NewUpdateCommand(gf),
+		NewSelfUpdateCommand(gf),
 		NewCheckCommand(gf),
 		NewListCommand(gf),
 		NewExportCommand(gf),
