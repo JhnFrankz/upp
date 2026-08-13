@@ -25,7 +25,7 @@ PLATFORMS := \
 # Install prefix (override: PREFIX=/custom/path make install)
 PREFIX ?= /usr/local/bin
 
-.PHONY: all build build-all test test-verbose test-race test-cover vet lint clean fmt tidy smoke release install help
+.PHONY: all build build-all test test-verbose test-race test-cover vet lint clean fmt tidy smoke release publish install help
 
 ## all: build and test
 all: build test
@@ -122,6 +122,17 @@ release: build-all
 	fi
 	@echo "Release assets ready in $(DIST_DIR)/:"
 	@ls -1 $(DIST_DIR)/$(BINARY)-*.tar.gz $(DIST_DIR)/$(BINARY)-*.zip $(DIST_DIR)/checksums.txt
+
+## publish: guard (clean tree, main, vX.Y.Z, tag absent), git tag -a VERSION, push the tag — CI completes the release
+publish:
+	@test -z "$$(git status --porcelain 2>/dev/null)" || { echo "ERROR: working tree not clean"; exit 1; }
+	@test "$$(git branch --show-current)" = "main" || { echo "ERROR: must run on main"; exit 1; }
+	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "ERROR: version must match vX.Y.Z"; exit 1; }
+	@git rev-parse --verify "refs/tags/$(VERSION)" >/dev/null 2>&1 && { echo "ERROR: tag already exists"; exit 1; } || true
+	@git ls-remote --exit-code origin "refs/tags/$(VERSION)" >/dev/null 2>&1 && { echo "ERROR: tag already exists on origin"; exit 1; } || true
+	git tag -a "$(VERSION)"
+	git push origin "refs/tags/$(VERSION)"
+	@if command -v gh >/dev/null 2>&1; then gh run watch; fi
 
 ## install: build and install binary to PREFIX (default /usr/local/bin, no sudo)
 install: build

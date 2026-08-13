@@ -252,15 +252,21 @@ make smoke
 
 ### CI
 
-`.github/workflows/ci.yml` runs on every push/PR: vet, a gofmt format gate, unit and race tests, a build, and the smoke test, plus golangci-lint (v1.60.3) in a separate job. On version tags (`v*`) or manual dispatch it also builds the release assets into `dist/` and uploads them as artifacts.
+`.github/workflows/ci.yml` runs on every push/PR: vet, a gofmt format gate, unit and race tests, a build, and the smoke test, plus golangci-lint (v1.60.3) in a separate job. On version tags (`v*`) the release job (after `test` and `lint` pass) builds the assets and publishes the GitHub Release; a manual dispatch builds and uploads the assets as artifacts without publishing.
 
 ### Release
+
+```bash
+make publish VERSION=v0.2.0
+```
+
+Publishing is one command. `make publish` checks the guards first — working tree clean, current branch `main`, `VERSION` matching `vX.Y.Z`, and the tag absent locally and on `origin` — aborting with `ERROR:` and creating nothing if any fails. It then creates the annotated tag `vX.Y.Z` and pushes it. The tag message becomes the release notes: the first line is the summary, the following lines become the `## What's new` bullets. CI then builds the assets and completes the release (title `upp vX.Y.Z — <summary>`, `## Assets`, checksums warning). If CI fails after the tag push, retract the unpublished tag (`git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`), fix, and re-publish; a published tag is never retracted.
 
 ```bash
 make release
 ```
 
-Builds cross-platform assets into `dist/` and generates `checksums.txt`. No tag or publish happens automatically — create the tag yourself and attach the assets to a GitHub Release.
+Builds cross-platform assets into `dist/` and generates `checksums.txt` (sha256, one line per archive — the format `upp self-update` verifies). CI runs it automatically; it never tags or publishes.
 
 ## License
 
