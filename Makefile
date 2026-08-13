@@ -138,7 +138,7 @@ publish:
 		i=0; \
 		while [ -z "$$RUN_ID" ] && [ $$i -lt 30 ]; do \
 			i=$$((i+1)); \
-			RUN_ID="$$(gh run list --commit "$$SHA" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"; \
+			RUN_ID="$$(gh run list --commit "$$SHA" --limit 10 --json databaseId,headBranch --jq 'first(.[] | select(.headBranch == "$(VERSION)") | .databaseId) // empty' 2>/dev/null || true)"; \
 			[ -z "$$RUN_ID" ] && sleep 2; \
 		done; \
 		if [ -n "$$RUN_ID" ]; then \
