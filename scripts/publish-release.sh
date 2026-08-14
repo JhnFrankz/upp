@@ -18,8 +18,16 @@ usage() {
     exit 2
 }
 
+# Message of the annotated tag. actions/checkout can materialize a pushed
+# annotated tag as LIGHTWEIGHT (ref pointing at the commit); %(contents)
+# then resolves the COMMIT message and release notes come out wrong. Detect
+# the object type first and read the tag object body directly when present.
 tag_message() {
-    git tag -l --format='%(contents)' "$TAG"
+    if [ "$(git cat-file -t "$TAG" 2>/dev/null)" = "tag" ]; then
+        git cat-file tag "$TAG" | sed '1,/^$/d'
+    else
+        git tag -l --format='%(contents)' "$TAG"
+    fi
 }
 
 # First line of the annotated tag message, minus an optional leading

@@ -132,7 +132,21 @@ publish:
 	@git ls-remote --exit-code origin "refs/tags/$(VERSION)" >/dev/null 2>&1 && { echo "ERROR: tag already exists on origin"; exit 1; } || true
 	git tag -a "$(VERSION)"
 	git push origin "refs/tags/$(VERSION)"
-	@if command -v gh >/dev/null 2>&1; then gh run watch; fi
+	@if command -v gh >/dev/null 2>&1; then \
+		SHA="$$(git rev-parse "$(VERSION)^{commit}")"; \
+		RUN_ID=""; \
+		i=0; \
+		while [ -z "$$RUN_ID" ] && [ $$i -lt 30 ]; do \
+			i=$$((i+1)); \
+			RUN_ID="$$(gh run list --commit "$$SHA" --limit 10 --json databaseId,headBranch --jq 'first(.[] | select(.headBranch == "$(VERSION)") | .databaseId) // empty' 2>/dev/null || true)"; \
+			[ -z "$$RUN_ID" ] && sleep 2; \
+		done; \
+		if [ -n "$$RUN_ID" ]; then \
+			gh run watch "$$RUN_ID"; \
+		else \
+			echo "WARNING: CI run for $(VERSION) not found after 60s (tag pushed; release completes in CI)."; \
+		fi; \
+	fi
 
 ## install: build and install binary to PREFIX (default /usr/local/bin, no sudo)
 install: build
