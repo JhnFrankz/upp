@@ -3,10 +3,13 @@ package official
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 // Test seam (D1): package-level function variables swapped by tests via
@@ -17,29 +20,46 @@ import (
 // adapters and wrappers stay hermetic when a test swaps the seam.
 var (
 	runCmdFn = func(command string) (stdout, stderr string, err error) {
+		ctx, cancel := context.WithTimeout(context.Background(), adapters.UpdateTimeout)
+		defer cancel()
+
 		var stdoutBuf, stderrBuf bytes.Buffer
 
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", command)
+			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		} else {
-			cmd = exec.Command("sh", "-c", command)
+			cmd = exec.CommandContext(ctx, "sh", "-c", command)
 		}
 
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
 
 		err = cmd.Run()
+		if err != nil && ctx.Err() != nil {
+			// The command was killed by the timeout context; Go's exec.Wait
+			// returns the raw exit error, so chain the deadline error to stay
+			// errors.Is(err, context.DeadlineExceeded)-detectable.
+			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
+		}
 		return stdoutBuf.String(), stderrBuf.String(), err
 	}
 	runCmdArgsFn = func(name string, args ...string) (stdout, stderr string, err error) {
+		ctx, cancel := context.WithTimeout(context.Background(), adapters.CheckTimeout)
+		defer cancel()
+
 		var stdoutBuf, stderrBuf bytes.Buffer
 
-		cmd := exec.Command(name, args...)
+		cmd := exec.CommandContext(ctx, name, args...)
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
 
 		err = cmd.Run()
+		if err != nil && ctx.Err() != nil {
+			// See runCmdFn: chain the deadline error so timeout kills stay
+			// errors.Is(err, context.DeadlineExceeded)-detectable.
+			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
+		}
 		return stdoutBuf.String(), stderrBuf.String(), err
 	}
 	lookPathFn = func(name string) bool {

@@ -3,10 +3,12 @@ package adapters
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // CustomAdapter implements Adapter for user-defined tools from config.
@@ -47,7 +49,7 @@ func (c *CustomAdapter) Check() (UpdateInfo, error) {
 		return UpdateInfo{}, nil
 	}
 
-	stdout, err := shellExec(c.checkCmd)
+	stdout, err := shellExecWithTimeout(c.checkCmd, CheckTimeout)
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("check command failed for %s: %w", c.id, err)
 	}
@@ -118,21 +120,37 @@ func extractBaseCommand(cmd string) string {
 	return fields[0]
 }
 
-// shellExec runs a command via the platform shell.
+// shellExec runs a command via the platform shell, bounded by UpdateTimeout.
 func shellExec(command string) (string, error) {
+	return shellExecWithTimeout(command, UpdateTimeout)
+}
+
+// shellExecWithTimeout runs a command via the platform shell and kills it
+// once timeout expires. The returned error is errors.Is-detectable as
+// context.DeadlineExceeded.
+func shellExecWithTimeout(command string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	var stdoutBuf, stderrBuf bytes.Buffer
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", command)
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
-		cmd = exec.Command("sh", "-c", command)
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
 	}
 
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
 	err := cmd.Run()
+	if err != nil && ctx.Err() != nil {
+		// The command was killed by the timeout context; Go's exec.Wait
+		// returns the raw exit error, so chain the deadline error to stay
+		// errors.Is(err, context.DeadlineExceeded)-detectable.
+		return strings.TrimSpace(stdoutBuf.String()), fmt.Errorf("%w: %v", ctx.Err(), err)
+	}
 	return strings.TrimSpace(stdoutBuf.String()), err
 }
 
