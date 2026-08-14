@@ -19,8 +19,11 @@ permissions:
 concurrency:
   # One group per event+ref so a manual workflow_dispatch run does not
   # cancel (or get cancelled by) push/PR runs on the same ref, and vice
-  # versa. Tag pushes use the same shape but are never cancelled (below).
-  group: ci-${{ github.event_name }}-${{ github.ref }}
+  # versa. Tag refs fall back to a ref-only group so a dispatch against a
+  # tag serializes with the tag-push for the same tag (both queue, never
+  # run the publish path concurrently; publish is idempotent only
+  # sequentially).
+  group: ci-${{ startsWith(github.ref, 'refs/tags/') && github.ref || format('{0}-{1}', github.event_name, github.ref) }}
   # Tag pushes must never be cancelled mid-run: a release build interrupted
   # before the publish step leaves no release (the publish script is
   # idempotent only once the assets exist). Non-tag runs cancel their own
