@@ -582,6 +582,9 @@ func TestConfirmAction_DecisionMatrix(t *testing.T) {
 		{"unknown trust interactive high yes", adapters.TrustLevel(99), RiskHigh, false, "y\n", ConfirmProceed},
 		{"unknown trust interactive high no", adapters.TrustLevel(99), RiskHigh, false, "n\n", ConfirmDeny},
 
+		// Zero-value risk (unset): MUST resolve to High (fail-closed), never RiskLow auto-proceed
+		{"zero risk CI untrusted", adapters.TrustCustomUntrusted, RiskLevel(0), true, "", ConfirmError},
+
 		// Unknown risk value: default branch treats it as High (fail-closed)
 		{"unknown risk CI", adapters.TrustCustomUntrusted, RiskLevel(99), true, "", ConfirmError},
 		{"unknown risk interactive no", adapters.TrustCustomUntrusted, RiskLevel(99), false, "n\n", ConfirmDeny},
@@ -617,5 +620,23 @@ func TestTrustLevel_ZeroValueIsLeastPrivileged(t *testing.T) {
 	// (never auto-proceeds as TrustOfficial).
 	if adapters.TrustCustomUntrusted != 0 {
 		t.Errorf("TrustCustomUntrusted = %d, want 0 (zero value MUST be least-privileged)", adapters.TrustCustomUntrusted)
+	}
+}
+
+func TestRiskLevel_ZeroValueIsMostRestrictive(t *testing.T) {
+	// R4-1 invariant: the zero value of RiskLevel MUST be the most restrictive
+	// tier, so an unset RiskLevel resolves to High and fails closed
+	// (never silently auto-proceeds as RiskLow).
+	if RiskHigh != 0 {
+		t.Errorf("RiskHigh = %d, want 0 (zero value MUST be most-restrictive)", RiskHigh)
+	}
+}
+
+func TestConfirmDecision_ZeroValueIsFailure(t *testing.T) {
+	// R4-1 invariant: the zero value of ConfirmDecision MUST be the failure
+	// outcome, so an unset decision fails visibly — tool marked failed, --ci
+	// exits non-zero — never auto-proceeds as ConfirmProceed.
+	if ConfirmError != 0 {
+		t.Errorf("ConfirmError = %d, want 0 (zero value MUST be the failure outcome)", ConfirmError)
 	}
 }

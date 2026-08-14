@@ -8,12 +8,14 @@ import "strings"
 type RiskLevel int
 
 const (
-	// RiskLow is non-destructive, no privileges required.
-	RiskLow RiskLevel = iota
+	// RiskHigh is the ZERO value on purpose: an unset RiskLevel MUST resolve to
+	// the most restrictive member so unclassified risk fails closed. The zero
+	// value MUST stay the most restrictive tier — never insert a tier before it.
+	RiskHigh RiskLevel = 0
 	// RiskMedium may modify system state.
-	RiskMedium
-	// RiskHigh involves sudo, rm, untrusted network, or destructive actions.
-	RiskHigh
+	RiskMedium RiskLevel = 1
+	// RiskLow is non-destructive, no privileges required.
+	RiskLow RiskLevel = 2
 )
 
 // String returns a human-readable risk label.

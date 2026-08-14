@@ -14,14 +14,16 @@ import (
 type ConfirmDecision int
 
 const (
-	// ConfirmProceed means the user approved the action.
-	ConfirmProceed ConfirmDecision = iota
+	// ConfirmError is the ZERO value on purpose: an unset decision MUST fail
+	// visibly — tool marked failed, --ci exits non-zero — never auto-proceed.
+	// The zero value MUST stay the failure outcome — never insert before it.
+	ConfirmError ConfirmDecision = 0
 	// ConfirmDeny means the user denied the action.
-	ConfirmDeny
+	ConfirmDeny ConfirmDecision = 1
 	// ConfirmAuto means --ci mode auto-proceeded (no prompt shown).
-	ConfirmAuto
-	// ConfirmError means --ci mode rejected the tool (medium untrusted or high risk).
-	ConfirmError
+	ConfirmAuto ConfirmDecision = 2
+	// ConfirmProceed means the user approved the action.
+	ConfirmProceed ConfirmDecision = 3
 )
 
 // ConfirmConfig holds the parameters for a confirmation prompt.
@@ -81,9 +83,9 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 	default: // RiskHigh
 		// High risk requires confirmation; trust never waives it.
 		// Deliberately a default, NOT `case RiskHigh:`: an unknown future
-		// RiskLevel (e.g. RiskLevel(99)) would otherwise exit the switch
-		// unhandled and return the zero-value ConfirmProceed (fail-open, R4-4).
-		// With the default branch, unknown risk values fall into High = fail-closed.
+		// RiskLevel (e.g. RiskLevel(99)) MUST resolve to High by semantics —
+		// interactive prompt, CI error — not by zero-value coincidence.
+		// Relying on the zero value would be fragile against future enum edits.
 		if cfg.CI {
 			return ConfirmError
 		}
