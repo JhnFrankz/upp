@@ -200,7 +200,8 @@ install_binary() {
 
     # Backup existing binary if present
     if [ -f "$install_path" ]; then
-        local backup_path="${install_path}.backup.$(date +%s)"
+        local backup_path
+        backup_path="${install_path}.backup.$(date +%s)"
         warn "Backing up existing binary to ${backup_path}"
         mv "$install_path" "$backup_path"
     fi
