@@ -17,7 +17,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # One group per event+ref so a manual workflow_dispatch run does not
+  # cancel (or get cancelled by) push/PR runs on the same ref, and vice
+  # versa. Tag pushes use the same shape but are never cancelled (below).
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  # Tag pushes must never be cancelled mid-run: a release build interrupted
+  # before the publish step leaves no release (the publish script is
+  # idempotent only once the assets exist). Non-tag runs cancel their own
+  # stale in-flight runs to save minutes when new commits land.
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
@@ -81,6 +88,9 @@ jobs:
         run: shellcheck -S warning scripts/install.sh scripts/smoke-test.sh scripts/publish-release.sh
 
       - name: Actionlint
+        # Pinned to the exact version used by the local `go run` gate so the
+        # CI check and the local check can never disagree; bump deliberately
+        # and verify locally first.
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/ci.yml
 
   release:
