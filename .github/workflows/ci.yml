@@ -78,9 +78,7 @@ jobs:
           args: ./...
 
       - name: Shellcheck
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck -S warning scripts/install.sh scripts/smoke-test.sh scripts/publish-release.sh
+        run: shellcheck -S warning scripts/install.sh scripts/smoke-test.sh scripts/publish-release.sh
 
       - name: Actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/ci.yml
@@ -119,7 +117,7 @@ jobs:
         # checkout may materialize the pushed annotated tag as lightweight;
         # publish-release.sh needs the tag object for correct release notes.
         if: startsWith(github.ref, 'refs/tags/v')
-        run: 'for i in 1 2 3 4 5; do git fetch --force origin "refs/tags/${{ github.ref_name }}:refs/tags/${{ github.ref_name }}" && exit 0; sleep 2; done; echo "WARNING: could not restore annotated tag object; release notes may fall back to the commit message"; exit 1'
+        run: 'for _ in 1 2 3 4 5; do git fetch --force origin "refs/tags/${{ github.ref_name }}:refs/tags/${{ github.ref_name }}" && exit 0; sleep 2; done; echo "WARNING: could not restore annotated tag object; release notes may fall back to the commit message"; exit 1'
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
