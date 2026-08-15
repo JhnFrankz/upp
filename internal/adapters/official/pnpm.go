@@ -29,8 +29,13 @@ func (a *PnpmAdapter) Check() (adapters.UpdateInfo, error) {
 		current = "unknown"
 	}
 
-	// Check for outdated packages (non-blocking, timeout-safe)
-	stdout := shellOutput("timeout 15 pnpm outdated -g 2>/dev/null || true")
+	// Check for outdated packages. pnpm exits 1 when outdated packages
+	// exist — a valid detection, not a failure (D4); any other non-zero
+	// exit (incl. GNU timeout's 124) is a structured failure.
+	stdout, err := shellOutputErr("timeout 15 pnpm outdated -g 2>/dev/null")
+	if err != nil && !isExitCode(err, 1) {
+		return adapters.UpdateInfo{}, err
+	}
 	updateAvailable := strings.Contains(stdout, "│") && !strings.Contains(stdout, "Package")
 
 	return adapters.UpdateInfo{

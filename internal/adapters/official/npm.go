@@ -27,8 +27,13 @@ func (a *NpmAdapter) Check() (adapters.UpdateInfo, error) {
 		current = "unknown"
 	}
 
-	// Check for npm updates (timeout-safe)
-	stdout := shellOutput("timeout 15 npm outdated -g --depth=0 2>/dev/null || true")
+	// Check for npm updates. npm exits 1 when outdated packages exist —
+	// a valid detection, not a failure (D4); any other non-zero exit
+	// (incl. GNU timeout's 124) is a structured failure.
+	stdout, err := shellOutputErr("timeout 15 npm outdated -g --depth=0 2>/dev/null")
+	if err != nil && !isExitCode(err, 1) {
+		return adapters.UpdateInfo{}, err
+	}
 	updateAvailable := strings.TrimSpace(stdout) != ""
 
 	return adapters.UpdateInfo{

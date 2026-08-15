@@ -4,6 +4,7 @@ package official
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -185,6 +186,66 @@ func shellOutput(command string) string {
 		return ""
 	}
 	return strings.TrimSpace(stdout)
+}
+
+// commandOutputErr runs a command and returns its trimmed stdout, or a
+// structured failure when the subprocess fails (design D3). Delegates to the
+// same runCmdArgsFn seam variable as commandOutput, so seam fakes keep
+// working. stdout is preserved on failure: the npm/pnpm exit-1 convention
+// (D4) needs it to decide availability.
+func commandOutputErr(name string, args ...string) (string, error) {
+	stdout, stderr, err := runCmdArgsFn(name, args...)
+	if err != nil {
+		return strings.TrimSpace(stdout), commandFailureErr(name, stderr, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// shellOutputErr runs a shell command and returns its trimmed stdout, or a
+// structured failure when the subprocess fails (design D3). Delegates to the
+// same runCmdFn seam variable as shellOutput, so seam fakes keep working.
+// stdout is preserved on failure: the npm/pnpm exit-1 convention (D4) needs
+// it to decide availability.
+func shellOutputErr(command string) (string, error) {
+	stdout, stderr, err := runCmdFn(command)
+	if err != nil {
+		return strings.TrimSpace(stdout), commandFailureErr(shellToolName(command), stderr, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// commandFailureErr builds the structured Check() failure message
+// "<tool> check failed (exit N): <stderr excerpt>: %w". The exit code is
+// extracted via errors.As(*exec.ExitError) and omitted when not extractable;
+// the seam error stays %w-chained so timeout mapping
+// (errors.Is(err, context.DeadlineExceeded), CLI timeoutErr) survives (D3).
+func commandFailureErr(tool, stderr string, err error) error {
+	var exitErr *exec.ExitError
+	code := ""
+	if errors.As(err, &exitErr) {
+		code = fmt.Sprintf(" (exit %d)", exitErr.ExitCode())
+	}
+	if excerpt := truncate(strings.TrimSpace(stderr), 200); excerpt != "" {
+		return fmt.Errorf("%s check failed%s: %s: %w", tool, code, excerpt, err)
+	}
+	return fmt.Errorf("%s check failed%s: %w", tool, code, err)
+}
+
+// shellToolName returns the first whitespace-delimited token of a shell
+// command — the first binary in the pipeline — used as the failure label.
+func shellToolName(command string) string {
+	if i := strings.IndexAny(command, " \t"); i >= 0 {
+		return command[:i]
+	}
+	return command
+}
+
+// isExitCode reports whether err is an *exec.ExitError with the given exit
+// code — the npm/pnpm `outdated` convention where exit 1 means updates are
+// available (design D4).
+func isExitCode(err error, code int) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == code
 }
 
 // formatUpdateCmd returns a human-readable description of the update command.

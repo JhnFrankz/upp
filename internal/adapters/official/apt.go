@@ -22,14 +22,20 @@ func (a *AptAdapter) Check() (adapters.UpdateInfo, error) {
 	}
 
 	// Get installed version.
-	stdout := shellOutput("apt-cache policy apt 2>/dev/null | grep 'Installed:' | awk '{print $2}'")
+	stdout, err := shellOutputErr("apt-cache policy apt 2>/dev/null | grep 'Installed:' | awk '{print $2}'")
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	current := strings.TrimSpace(stdout)
 	if current == "" || current == "(none)" {
 		current = "unknown"
 	}
 
 	// Get latest version.
-	stdout = shellOutput("apt-cache policy apt 2>/dev/null | grep 'Candidate:' | awk '{print $2}'")
+	stdout, err = shellOutputErr("apt-cache policy apt 2>/dev/null | grep 'Candidate:' | awk '{print $2}'")
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	latest := strings.TrimSpace(stdout)
 	if latest == "" {
 		latest = "unknown"

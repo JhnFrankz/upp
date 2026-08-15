@@ -1,9 +1,14 @@
 package official
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -18,6 +23,17 @@ type checkCase struct {
 	setup   func(t *testing.T)
 	want    adapters.UpdateInfo
 	wantErr bool
+	// wantErrContains, when set with wantErr, requires the error message to
+	// contain the substring (structured tool/operation failure, task 3.2).
+	wantErrContains string
+	// wantDeadline requires errors.Is(err, context.DeadlineExceeded) — the
+	// CLI timeoutErr mapping must survive the %w chain (D3).
+	wantDeadline bool
+	// exitCode, when non-nil, replaces the fakes' seam errors with a REAL
+	// *exec.ExitError from an `sh -c exit N` child so exit-code
+	// interpretation runs against a genuine ExitError, not a plain fake
+	// (task 3.3). Skipped on windows like TestRunCmd_*.
+	exitCode *int
 }
 
 const (
@@ -25,9 +41,21 @@ const (
 	aptCandidateCmd = "apt-cache policy apt 2>/dev/null | grep 'Candidate:' | awk '{print $2}'"
 	nvmCurrentCmd   = "source ~/.nvm/nvm.sh 2>/dev/null && nvm current"
 	nvmRemoteCmd    = "source ~/.nvm/nvm.sh 2>/dev/null && nvm ls-remote --lts | tail -1 | awk '{print $1}'"
-	npmOutdatedCmd  = "timeout 15 npm outdated -g --depth=0 2>/dev/null || true"
-	pnpmOutdatedCmd = "timeout 15 pnpm outdated -g 2>/dev/null || true"
+	npmOutdatedCmd  = "timeout 15 npm outdated -g --depth=0 2>/dev/null"
+	pnpmOutdatedCmd = "timeout 15 pnpm outdated -g 2>/dev/null"
 )
+
+// exitErrFromChild runs `sh -c "exit N"` for real and returns its error — a
+// genuine *exec.ExitError — so exit-code interpretation rows exercise a real
+// child result (precedent: TestRunCmd_*, task 3.1).
+func exitErrFromChild(t *testing.T, code int) error {
+	t.Helper()
+	err := exec.Command("sh", "-c", fmt.Sprintf("exit %d", code)).Run()
+	if err == nil {
+		t.Fatal("sh -c exit N unexpectedly succeeded")
+	}
+	return err
+}
 
 func nvmInstalledSetup(t *testing.T) {
 	t.Helper()
@@ -96,7 +124,8 @@ func TestCheck(t *testing.T) {
 					aptCandidateCmd: {err: errors.New("apt-cache: command not found")},
 				},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
+			wantErr:         true,
+			wantErrContains: "apt-cache check failed",
 		},
 		{
 			name:    "apt/not-installed-error",
@@ -181,6 +210,51 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
 		},
 		{
+			name:    "npm/exit-1-outdated",
+			newAdpt: func() adapters.Adapter { return &NpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"npm": true},
+				cmdArgs:  map[string]fakeResult{"npm": {stdout: "10.2.4"}},
+				shell:    map[string]fakeResult{npmOutdatedCmd: {stdout: "npm  10.2.5  10.2.5  10.2.5", err: errors.New("sentinel")}},
+			},
+			exitCode: &one,
+			want:     adapters.UpdateInfo{CurrentVersion: "10.2.4", LatestVersion: "10.2.4", UpdateAvailable: true},
+		},
+		{
+			name:    "npm/exit-1-empty-output",
+			newAdpt: func() adapters.Adapter { return &NpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"npm": true},
+				cmdArgs:  map[string]fakeResult{"npm": {stdout: "10.2.4"}},
+				shell:    map[string]fakeResult{npmOutdatedCmd: {stdout: "", err: errors.New("sentinel")}},
+			},
+			exitCode: &one,
+			want:     adapters.UpdateInfo{CurrentVersion: "10.2.4", LatestVersion: "10.2.4", UpdateAvailable: false},
+		},
+		{
+			name:    "npm/exit-124-timeout",
+			newAdpt: func() adapters.Adapter { return &NpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"npm": true},
+				cmdArgs:  map[string]fakeResult{"npm": {stdout: "10.2.4"}},
+				shell:    map[string]fakeResult{npmOutdatedCmd: {stdout: "", err: errors.New("sentinel")}},
+			},
+			exitCode:        &oneTwentyFour,
+			wantErr:         true,
+			wantErrContains: "(exit 124)",
+		},
+		{
+			name:    "npm/deadline-exceeded",
+			newAdpt: func() adapters.Adapter { return &NpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"npm": true},
+				cmdArgs:  map[string]fakeResult{"npm": {stdout: "10.2.4"}},
+				shell:    map[string]fakeResult{npmOutdatedCmd: {err: context.DeadlineExceeded}},
+			},
+			wantErr:      true,
+			wantDeadline: true,
+		},
+		{
 			name:    "npm/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &NpmAdapter{} },
 			fakes:   execFakes{lookPath: map[string]bool{"npm": false}},
@@ -217,6 +291,29 @@ func TestCheck(t *testing.T) {
 				shell:    map[string]fakeResult{pnpmOutdatedCmd: {stdout: ""}},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
+		},
+		{
+			name:    "pnpm/exit-1-outdated",
+			newAdpt: func() adapters.Adapter { return &PnpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pnpm": true},
+				cmdArgs:  map[string]fakeResult{"pnpm": {stdout: "8.14.0"}},
+				shell:    map[string]fakeResult{pnpmOutdatedCmd: {stdout: "├─ foo │ 1.0.0 │ 2.0.0 │", err: errors.New("sentinel")}},
+			},
+			exitCode: &one,
+			want:     adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: true},
+		},
+		{
+			name:    "pnpm/exit-124-timeout",
+			newAdpt: func() adapters.Adapter { return &PnpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pnpm": true},
+				cmdArgs:  map[string]fakeResult{"pnpm": {stdout: "8.14.0"}},
+				shell:    map[string]fakeResult{pnpmOutdatedCmd: {stdout: "", err: errors.New("sentinel")}},
+			},
+			exitCode:        &oneTwentyFour,
+			wantErr:         true,
+			wantErrContains: "(exit 124)",
 		},
 		{
 			name:    "pnpm/not-installed-error",
@@ -427,6 +524,19 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "v20.11.0", UpdateAvailable: false},
 		},
 		{
+			name:    "nvm/command-fails",
+			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
+			setup:   nvmInstalledSetup,
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					nvmCurrentCmd: {err: errors.New("nvm: command not found")},
+					nvmRemoteCmd:  {err: errors.New("nvm: command not found")},
+				},
+			},
+			wantErr:         true,
+			wantErrContains: "source check failed",
+		},
+		{
 			name:    "nvm/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
 			setup:   nvmMissingSetup,
@@ -441,11 +551,29 @@ func TestCheck(t *testing.T) {
 				tt.setup(t)
 			}
 			setExecFakes(t, tt.fakes)
+			if tt.exitCode != nil {
+				if runtime.GOOS == "windows" {
+					t.Skip("exit-code rows run a real sh child")
+				}
+				realErr := exitErrFromChild(t, *tt.exitCode)
+				for key, r := range tt.fakes.shell {
+					if r.err != nil {
+						r.err = realErr
+						tt.fakes.shell[key] = r
+					}
+				}
+			}
 
 			got, err := tt.newAdpt().Check()
 			if tt.wantErr {
 				if err == nil {
-					t.Fatal("Check() error = nil, want error when tool is not installed")
+					t.Fatal("Check() error = nil, want error")
+				}
+				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("Check() error = %q, want contains %q", err, tt.wantErrContains)
+				}
+				if tt.wantDeadline && !errors.Is(err, context.DeadlineExceeded) {
+					t.Errorf("Check() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 				}
 				return
 			}
@@ -458,3 +586,8 @@ func TestCheck(t *testing.T) {
 		})
 	}
 }
+
+var (
+	one           = 1
+	oneTwentyFour = 124
+)

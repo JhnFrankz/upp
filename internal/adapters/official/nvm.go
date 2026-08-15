@@ -41,14 +41,20 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 	}
 
 	// Get current node version via nvm.
-	stdout := shellOutput("source ~/.nvm/nvm.sh 2>/dev/null && nvm current")
+	stdout, err := shellOutputErr("source ~/.nvm/nvm.sh 2>/dev/null && nvm current")
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	current := strings.TrimSpace(stdout)
 	if current == "" {
 		current = "unknown"
 	}
 
 	// Get latest stable version.
-	stdout = shellOutput("source ~/.nvm/nvm.sh 2>/dev/null && nvm ls-remote --lts | tail -1 | awk '{print $1}'")
+	stdout, err = shellOutputErr("source ~/.nvm/nvm.sh 2>/dev/null && nvm ls-remote --lts | tail -1 | awk '{print $1}'")
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	latest := strings.TrimSpace(stdout)
 	if latest == "" {
 		latest = "unknown"
