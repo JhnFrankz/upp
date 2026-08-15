@@ -40,6 +40,18 @@ type updateDeps struct {
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
 }
 
+// gatedOfficialAdapters lists the official adapters whose check() performs
+// real update detection; update() for these runs only when check() reported
+// an update available. Adapters absent from this set (brew, bun, docker, gh,
+// go, opencode) have no update detection and always update by design, as do
+// winget/scoop (UpdateAvailable=true) and custom adapters.
+var gatedOfficialAdapters = map[string]bool{
+	"apt":  true,
+	"npm":  true,
+	"nvm":  true,
+	"pnpm": true,
+}
+
 func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -163,11 +175,12 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 			continue
 		}
 
-		// Gate: official adapters update only when check() reported an
-		// update available (design D4, spec Update Gating). Custom
-		// adapters (TrustCustom*) and winget/scoop (UpdateAvailable=true
-		// by design) pass naturally; dynamic adapters follow the result.
-		if info.Trust == adapters.TrustOfficial && !updateInfo.UpdateAvailable {
+		// Gate: official adapters with real update detection update only
+		// when check() reported an update available (design D4, spec Update
+		// Gating). Only the dynamic-detection adapters are gated; adapters
+		// without update detection (brew, bun, docker, gh, go, opencode) and
+		// winget/scoop always update by design, as do custom adapters.
+		if info.Trust == adapters.TrustOfficial && gatedOfficialAdapters[info.ID] && !updateInfo.UpdateAvailable {
 			results = append(results, output.ToolResult{
 				Name:    info.Name,
 				Status:  output.StatusCurrent,

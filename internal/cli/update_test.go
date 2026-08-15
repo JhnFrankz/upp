@@ -66,34 +66,55 @@ func runUpdateWith(t *testing.T, fake *fakeUpdateAdapter) string {
 }
 
 // TestRunUpdate_GatingMatrix proves the Update Gating requirement (spec
-// tool-adapter): update() runs for an official adapter only when check()
-// reported update_available=true; custom adapters are exempt (they report
-// false by design and still update); winget/scoop are exempt (true by design
-// and always update); dynamic detection respects the check result.
+// tool-adapter): update() runs for a gated official adapter (real update
+// detection: apt, npm, nvm, pnpm) only when check() reported
+// update_available=true; official adapters WITHOUT update detection (stubs
+// like brew) are exempt and always update; winget/scoop are exempt; custom
+// adapters are exempt (they report false by design and still update).
 func TestRunUpdate_GatingMatrix(t *testing.T) {
 	tests := []struct {
 		name            string
+		id              string
 		trust           adapters.TrustLevel
 		updateAvailable bool
 		wantUpdated     bool
 		wantStatus      output.Status
 	}{
 		{
-			name:            "official with update available runs update",
+			name:            "gated dynamic apt with update available runs update",
+			id:              "apt",
 			trust:           adapters.TrustOfficial,
 			updateAvailable: true,
 			wantUpdated:     true,
 			wantStatus:      output.StatusUpdated,
 		},
 		{
-			name:            "official without update is reported current and update is skipped",
+			name:            "gated dynamic apt without update is reported current and update is skipped",
+			id:              "apt",
 			trust:           adapters.TrustOfficial,
 			updateAvailable: false,
 			wantUpdated:     false,
 			wantStatus:      output.StatusCurrent,
 		},
 		{
+			name:            "official stub brew exempt: update still runs without update available",
+			id:              "brew",
+			trust:           adapters.TrustOfficial,
+			updateAvailable: false,
+			wantUpdated:     true,
+			wantStatus:      output.StatusUpdated,
+		},
+		{
+			name:            "winget exempt: update still runs without update available",
+			id:              "winget",
+			trust:           adapters.TrustOfficial,
+			updateAvailable: false,
+			wantUpdated:     true,
+			wantStatus:      output.StatusUpdated,
+		},
+		{
 			name:            "custom trusted exempt: update still runs without update available",
+			id:              "custom",
 			trust:           adapters.TrustCustomTrusted,
 			updateAvailable: false,
 			wantUpdated:     true,
@@ -101,30 +122,17 @@ func TestRunUpdate_GatingMatrix(t *testing.T) {
 		},
 		{
 			name:            "custom untrusted exempt: update still runs without update available",
+			id:              "custom",
 			trust:           adapters.TrustCustomUntrusted,
 			updateAvailable: false,
 			wantUpdated:     true,
 			wantStatus:      output.StatusUpdated,
 		},
-		{
-			name:            "winget scoop exempt: update always runs",
-			trust:           adapters.TrustOfficial,
-			updateAvailable: true,
-			wantUpdated:     true,
-			wantStatus:      output.StatusUpdated,
-		},
-		{
-			name:            "dynamic detection without update is skipped",
-			trust:           adapters.TrustOfficial,
-			updateAvailable: false,
-			wantUpdated:     false,
-			wantStatus:      output.StatusCurrent,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fake := &fakeUpdateAdapter{
-				name:  "tool",
+				name:  tt.id,
 				trust: tt.trust,
 				info: adapters.UpdateInfo{
 					CurrentVersion:  "1.0.0",
@@ -138,7 +146,7 @@ func TestRunUpdate_GatingMatrix(t *testing.T) {
 				t.Errorf("Update called = %v, want %v", fake.updated, tt.wantUpdated)
 			}
 			if tt.wantStatus == output.StatusUpdated {
-				if !strings.Contains(out, "Updated: tool") {
+				if !strings.Contains(out, "Updated: "+tt.id) {
 					t.Errorf("output does not report tool as updated; got: %q", out)
 				}
 			} else if strings.Contains(out, "Updated:") || strings.Contains(out, "Failed:") {
