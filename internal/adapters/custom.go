@@ -3,10 +3,13 @@ package adapters
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // CustomAdapter implements Adapter for user-defined tools from config.
@@ -47,7 +50,7 @@ func (c *CustomAdapter) Check() (UpdateInfo, error) {
 		return UpdateInfo{}, nil
 	}
 
-	stdout, err := shellExec(c.checkCmd)
+	stdout, err := shellExecWithTimeout(c.checkCmd, CheckTimeout)
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("check command failed for %s: %w", c.id, err)
 	}
@@ -118,22 +121,56 @@ func extractBaseCommand(cmd string) string {
 	return fields[0]
 }
 
-// shellExec runs a command via the platform shell.
+// shellExec runs a command via the platform shell, bounded by UpdateTimeout.
 func shellExec(command string) (string, error) {
+	return shellExecWithTimeout(command, UpdateTimeout)
+}
+
+// shellExecWithTimeout runs a command via the platform shell and kills it —
+// including its whole process group on Unix — once timeout expires, so
+// pipeline/grandchild work (curl|tar, sudo apt, brew...) cannot outlive the
+// deadline. The returned error is errors.Is-detectable as
+// context.DeadlineExceeded. On Windows only the direct child is terminated.
+func shellExecWithTimeout(command string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	var stdoutBuf, stderrBuf bytes.Buffer
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", command)
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
-		cmd = exec.Command("sh", "-c", command)
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		// Own process group so the timeout can kill shell grandchildren too.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
-
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
+	// Reap pipes even if an orphaned grandchild keeps them open.
+	cmd.WaitDelay = 5 * time.Second
 
-	err := cmd.Run()
-	return strings.TrimSpace(stdoutBuf.String()), err
+	if err := cmd.Start(); err != nil {
+		return strings.TrimSpace(stdoutBuf.String()), err
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return strings.TrimSpace(stdoutBuf.String()), err
+	case <-ctx.Done():
+		// Kill the whole process group so the actual work (grandchildren)
+		// cannot keep mutating state after the reported timeout.
+		if cmd.Process != nil && runtime.GOOS != "windows" {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		<-done // reap; WaitDelay bounds the wait if pipes are held
+		// Go's exec.Wait returns the raw exit error, so chain the deadline
+		// error to stay errors.Is(err, context.DeadlineExceeded)-detectable.
+		return strings.TrimSpace(stdoutBuf.String()), fmt.Errorf("%w: %v", ctx.Err(), "process group killed after timeout")
+	}
 }
 
 // extractVersionFromOutput extracts a version-like string from command output.

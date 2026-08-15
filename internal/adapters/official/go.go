@@ -54,7 +54,7 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 	switch runtime.GOOS {
 	case "linux":
 		// Manual binary update: download latest from go.dev.
-		cmd = "curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
+		cmd = "curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"
 		privileges = []string{"sudo"}
 	case "darwin":
 		cmd = "brew upgrade go"
@@ -106,6 +106,13 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		Platforms: []string{"linux", "macos", "windows"},
 		Trust:     adapters.TrustOfficial,
 	}
+}
+
+// goTarballURL returns the go.dev Linux tarball URL for the given
+// architecture, so downloads match the running process instead of
+// hardcoding amd64.
+func goTarballURL(goarch string) string {
+	return fmt.Sprintf("https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-%s.tar.gz", goarch)
 }
 
 // extractGoVersion extracts the version from "go version go1.22.0 linux/amd64".

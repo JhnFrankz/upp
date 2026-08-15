@@ -1,10 +1,13 @@
 package adapters
 
 import (
+	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestNewCustomAdapter_RequiresCommand(t *testing.T) {
@@ -260,5 +263,39 @@ func TestCustomAdapter_Detect_WithRealCommand(t *testing.T) {
 	}
 	if !ca.Detect() {
 		t.Error("Detect() should find test-tool in temp PATH")
+	}
+}
+
+func TestShellExec_UpdateTimeoutKills(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping shell test on windows")
+	}
+
+	orig := UpdateTimeout
+	UpdateTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { UpdateTimeout = orig })
+
+	_, err := shellExec("sleep 2")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("shellExec() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+	}
+}
+
+func TestCustomAdapter_Check_CheckTimeoutKills(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping shell test on windows")
+	}
+
+	orig := CheckTimeout
+	CheckTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { CheckTimeout = orig })
+
+	ca, err := NewCustomAdapter("mytool", "mytool --update", "sleep 2", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ca.Check()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Check() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
 }
