@@ -1,109 +1,116 @@
 package cli
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
-// runUpdateCmd executes `upp update` with the given args and returns the
-// captured stdout plus the error from root.Execute().
-func runUpdateCmd(args ...string) (string, error) {
-	var runErr error
-	out := withCapturedStdout(func() {
-		root, gf := BuildRoot()
-		AddCommands(root, gf)
-		root.SetArgs(append([]string{"update"}, args...))
-		runErr = root.Execute()
-	})
-	return out, runErr
-}
+// The probes exercise the security-classification path through runUpdate with
+// an injected fake adapter (design D4): the fake's Command string drives
+// ClassifyCommand (sudo → High, "&&" → Medium) and its Privileges flow into
+// ConfirmConfig (update.go), while the updated flag proves whether Update()
+// ever executed. ConfirmAction is string-driven, so the CI error / interactive
+// deny / trusted proceed branches fire exactly as with real subprocesses;
+// os.Stdin is /dev/null under `go test`, so interactive prompts deny, same as
+// before. Real-subprocess proof of the security branches lives in
+// internal/adapters tests and scripts/smoke-test.sh.
 
-// Probe (converted from audit): trusted custom high-risk (sudo) must fail with
-// a non-zero exit in --ci mode and never execute — trust does not waive the
-// high-risk gate in non-interactive mode (security-model spec).
+// TestProbe_TrustedCustomHighRisk_CI: trusted custom high-risk (sudo) must
+// fail with a non-zero exit in --ci mode and never execute — trust does not
+// waive the high-risk gate in non-interactive mode (security-model spec).
 func TestProbe_TrustedCustomHighRisk_CI(t *testing.T) {
-	marker := probeSetup(t, config.CustomTool{
-		Command: "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
-		Trusted: true,
-	})
-	_, err := runUpdateCmd("--ci", "--only", "evil-tool")
+	fake := &fakeUpdateAdapter{
+		name:       "evil-tool",
+		trust:      adapters.TrustCustomTrusted,
+		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
+		privileges: []string{"sudo"},
+	}
+	_, err := runUpdateWithFlags(t, fake, &GlobalFlags{CI: true}, &UpdateFlags{})
 	if err == nil {
 		t.Error("SECURITY BYPASS: high-risk trusted custom tool did not fail in --ci mode")
 	}
-	if _, statErr := os.Stat(marker); statErr == nil {
+	if fake.updated {
 		t.Error("SECURITY BYPASS: high-risk trusted custom tool EXECUTED in --ci mode")
 	}
 }
 
-// Probe (converted from audit): trusted custom high-risk (rm -rf via sudo) must
-// prompt in interactive mode; with no stdin available the prompt denies and
-// nothing executes.
+// TestProbe_TrustedCustomHighRisk_Interactive: trusted custom high-risk
+// (rm -rf via sudo) must prompt in interactive mode; with no stdin available
+// the prompt denies and nothing executes.
 func TestProbe_TrustedCustomHighRisk_Interactive(t *testing.T) {
-	marker := probeSetup(t, config.CustomTool{
-		Command: "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
-		Trusted: true,
-	})
-	_, err := runUpdateCmd("--only", "evil-tool")
+	fake := &fakeUpdateAdapter{
+		name:       "evil-tool",
+		trust:      adapters.TrustCustomTrusted,
+		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
+		privileges: []string{"sudo"},
+	}
+	_, err := runUpdateWithFlags(t, fake, &GlobalFlags{}, &UpdateFlags{})
 	if err != nil {
 		t.Fatalf("interactive update should not error on deny: %v", err)
 	}
-	if _, statErr := os.Stat(marker); statErr == nil {
+	if fake.updated {
 		t.Error("SECURITY BYPASS: high-risk trusted custom tool EXECUTED interactively without prompt")
 	}
 }
 
-// Probe (converted from audit): untrusted custom high-risk (rm -rf via sudo)
-// must prompt in interactive mode and never execute without confirmation.
+// TestProbe_UntrustedCustomHighRisk_Interactive: untrusted custom high-risk
+// (rm -rf via sudo) must prompt in interactive mode and never execute without
+// confirmation.
 func TestProbe_UntrustedCustomHighRisk_Interactive(t *testing.T) {
-	marker := probeSetup(t, config.CustomTool{
-		Command: "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
-		Trusted: false,
-	})
-	_, err := runUpdateCmd("--only", "evil-tool")
+	fake := &fakeUpdateAdapter{
+		name:       "evil-tool",
+		trust:      adapters.TrustCustomUntrusted,
+		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
+		privileges: []string{"sudo"},
+	}
+	_, err := runUpdateWithFlags(t, fake, &GlobalFlags{}, &UpdateFlags{})
 	if err != nil {
 		t.Fatalf("interactive update should not error on deny: %v", err)
 	}
-	if _, statErr := os.Stat(marker); statErr == nil {
+	if fake.updated {
 		t.Error("SECURITY BYPASS: untrusted high-risk custom tool EXECUTED interactively without prompt")
 	}
 }
 
-// Probe (correct-pass): a trusted low-risk custom tool must execute — the
-// marker proves the command actually ran.
+// TestProbe_TrustedLowRisk_Executes: a trusted low-risk custom tool must
+// execute — the updated flag proves Update() actually ran.
 func TestProbe_TrustedLowRisk_Executes(t *testing.T) {
-	marker := probeSetup(t, config.CustomTool{
-		Command: "harmless-tool --version",
-		Trusted: true,
-	})
-	_, err := runUpdateCmd("--only", "evil-tool")
+	fake := &fakeUpdateAdapter{
+		name:    "evil-tool",
+		trust:   adapters.TrustCustomTrusted,
+		command: "harmless-tool --version",
+		result:  adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
+	}
+	_, err := runUpdateWithFlags(t, fake, &GlobalFlags{}, &UpdateFlags{})
 	if err != nil {
 		t.Fatalf("low-risk update should not error: %v", err)
 	}
-	if _, statErr := os.Stat(marker); statErr != nil {
-		t.Error("low-risk trusted custom tool should have executed (marker missing)")
+	if !fake.updated {
+		t.Error("low-risk trusted custom tool should have executed (Update never called)")
 	}
 }
 
-// Probe: --quiet must NOT suppress the confirmation prompt for a medium-risk
-// untrusted custom tool (ux-patterns: quiet affects detail, not prompts).
-// The prompt is shown and, with no stdin available, denies execution.
+// TestProbe_QuietMediumRisk_StillPrompts: --quiet must NOT suppress the
+// confirmation prompt for a medium-risk untrusted custom tool (ux-patterns:
+// quiet affects detail, not prompts). The prompt is shown and, with no stdin
+// available, denies execution.
 func TestProbe_QuietMediumRisk_StillPrompts(t *testing.T) {
-	marker := probeSetup(t, config.CustomTool{
-		Command: "evil-tool --update && echo done",
-		Trusted: false,
-	})
-	out, err := runUpdateCmd("--quiet", "--only", "evil-tool")
+	fake := &fakeUpdateAdapter{
+		name:    "evil-tool",
+		trust:   adapters.TrustCustomUntrusted,
+		command: "evil-tool --update && echo done",
+	}
+	out, err := runUpdateWithFlags(t, fake, &GlobalFlags{Quiet: true}, &UpdateFlags{})
 	if err != nil {
 		t.Fatalf("interactive update should not error on deny: %v", err)
 	}
 	if !strings.Contains(out, "Proceed? [y/N]") {
 		t.Errorf("--quiet suppressed the confirmation prompt; output: %q", out)
 	}
-	if _, statErr := os.Stat(marker); statErr == nil {
+	if fake.updated {
 		t.Error("SECURITY BYPASS: medium-risk untrusted tool EXECUTED under --quiet without confirmation")
 	}
 }

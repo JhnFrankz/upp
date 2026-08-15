@@ -14,16 +14,20 @@ import (
 
 // fakeUpdateAdapter is a test double for the update gating matrix. It records
 // whether Update was invoked — the behavioral signal the gating requirement
-// is about — and lets each test control trust, check result, and update
-// outcome.
+// is about — and lets each test control trust, command, privileges, check
+// result, and update outcome. The command/privileges fields drive the
+// security-risk classification path (update.go) exactly like a real custom
+// adapter's ToolInfo.
 type fakeUpdateAdapter struct {
-	name      string
-	trust     adapters.TrustLevel
-	info      adapters.UpdateInfo
-	checkErr  error
-	updateErr error
-	result    adapters.Result
-	updated   bool
+	name       string
+	trust      adapters.TrustLevel
+	command    string
+	privileges []string
+	info       adapters.UpdateInfo
+	checkErr   error
+	updateErr  error
+	result     adapters.Result
+	updated    bool
 }
 
 func (f *fakeUpdateAdapter) Name() string { return f.name }
@@ -41,27 +45,44 @@ func (f *fakeUpdateAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:    f.name,
-		Name:  f.name,
-		Trust: f.trust,
+		ID:         f.name,
+		Name:       f.name,
+		Trust:      f.trust,
+		Command:    f.command,
+		Privileges: f.privileges,
 	}
+}
+
+// fakeAdapterList returns a buildAdapterList seam yielding only the given
+// fake adapter, hermetic and deterministic.
+func fakeAdapterList(fake *fakeUpdateAdapter) func(*config.Config, string) []adapters.Adapter {
+	return func(*config.Config, string) []adapters.Adapter {
+		return []adapters.Adapter{fake}
+	}
+}
+
+// runUpdateWithFlags runs runUpdate with the given global/update flags
+// against a single fake adapter in a hermetic HOME, returning the captured
+// stdout and the runUpdate error.
+func runUpdateWithFlags(t *testing.T, fake *fakeUpdateAdapter, gf *GlobalFlags, uf *UpdateFlags) (string, error) {
+	t.Helper()
+	probeHome(t)
+	deps := updateDeps{buildAdapterList: fakeAdapterList(fake)}
+	var runErr error
+	out := withCapturedStdout(func() {
+		runErr = runUpdate(gf, uf, deps)
+	})
+	return out, runErr
 }
 
 // runUpdateWith runs runUpdate against a single fake adapter in a hermetic
 // HOME, returning the captured stdout.
 func runUpdateWith(t *testing.T, fake *fakeUpdateAdapter) string {
 	t.Helper()
-	probeHome(t)
-	deps := updateDeps{
-		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
-			return []adapters.Adapter{fake}
-		},
+	out, err := runUpdateWithFlags(t, fake, &GlobalFlags{}, &UpdateFlags{})
+	if err != nil {
+		t.Errorf("runUpdate returned error: %v", err)
 	}
-	out := withCapturedStdout(func() {
-		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
-			t.Errorf("runUpdate returned error: %v", err)
-		}
-	})
 	return out
 }
 
