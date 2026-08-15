@@ -99,9 +99,10 @@ func (a *PnpmAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *PnpmAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "pnpm",
-		Name:      "pnpm",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "pnpm",
+		Name:         "pnpm",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyGated,
 	}
 }

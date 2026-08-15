@@ -101,10 +101,11 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *GoAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "go",
-		Name:      "Go",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "go",
+		Name:         "Go",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }
 

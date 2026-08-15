@@ -100,9 +100,10 @@ func (a *GhAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *GhAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "gh",
-		Name:      "GitHub CLI",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "gh",
+		Name:         "GitHub CLI",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }

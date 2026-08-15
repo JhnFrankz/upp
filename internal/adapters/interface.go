@@ -32,6 +32,22 @@ func (t TrustLevel) String() string {
 	}
 }
 
+// UpdatePolicy controls when update() may run for a tool adapter.
+type UpdatePolicy int
+
+const (
+	// PolicyGated means update() runs only when check() reported
+	// update_available=true (apt, npm, pnpm, nvm).
+	// It is the ZERO value on purpose: an unset UpdatePolicy MUST resolve
+	// to the most conservative behavior (fail closed), mirroring the
+	// TrustLevel convention above — never insert a new value before it.
+	PolicyGated UpdatePolicy = 0
+	// PolicyAlwaysUpdate means update() always runs when requested,
+	// regardless of the check() result (brew, bun, docker, gh, go,
+	// opencode, winget, scoop, and custom adapters).
+	PolicyAlwaysUpdate UpdatePolicy = 1
+)
+
 // Adapter is the contract every tool adapter must implement.
 // Each adapter handles detection, version checking, and updating for one tool.
 type Adapter interface {
@@ -65,10 +81,11 @@ type Result struct {
 
 // ToolInfo holds static metadata about a tool.
 type ToolInfo struct {
-	ID         string
-	Name       string
-	Platforms  []string
-	Trust      TrustLevel
-	Command    string   // real update command; empty for official adapters
-	Privileges []string // e.g., ["sudo"]
+	ID           string
+	Name         string
+	Platforms    []string
+	Trust        TrustLevel
+	UpdatePolicy UpdatePolicy
+	Command      string   // real update command; empty for official adapters
+	Privileges   []string // e.g., ["sudo"]
 }

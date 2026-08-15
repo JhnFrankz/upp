@@ -83,10 +83,11 @@ func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *BrewAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "brew",
-		Name:      "Homebrew",
-		Platforms: []string{"linux", "macos"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "brew",
+		Name:         "Homebrew",
+		Platforms:    []string{"linux", "macos"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }
 

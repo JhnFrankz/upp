@@ -292,9 +292,10 @@ func TestListCommand_NoConfig(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	fake := &fakeUpdateAdapter{
-		name:  "apt",
-		trust: adapters.TrustOfficial,
-		info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	setCLIDeps(t, checkDeps{}, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(fake)}, selfUpdateDeps{})
 
@@ -318,9 +319,10 @@ func TestCheckCommand_NoConfig(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	fake := &fakeUpdateAdapter{
-		name:  "apt",
-		trust: adapters.TrustOfficial,
-		info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fake)}, updateDeps{}, listDeps{}, selfUpdateDeps{})
 
@@ -390,6 +392,7 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 	// rejects under D4 (an untrusted CI low-risk command would auto-proceed).
 	fake := &fakeUpdateAdapter{
 		name:    "untrusted-tool",
+		policy:  adapters.PolicyAlwaysUpdate,
 		trust:   adapters.TrustCustomUntrusted,
 		command: "untrusted-tool --update && echo done",
 	}
@@ -417,8 +420,9 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	fake := &fakeUpdateAdapter{
-		name:  "apt",
-		trust: adapters.TrustOfficial,
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
 		info: adapters.UpdateInfo{
 			CurrentVersion:  "1.0.0",
 			LatestVersion:   "2.0.0",
@@ -446,9 +450,9 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 
 func TestAdapterIDs(t *testing.T) {
 	adapterList := []adapters.Adapter{
-		&fakeUpdateAdapter{name: "apt"},
-		&fakeUpdateAdapter{name: "brew"},
-		&fakeUpdateAdapter{name: "npm"},
+		&fakeUpdateAdapter{name: "apt", policy: adapters.PolicyGated},
+		&fakeUpdateAdapter{name: "brew", policy: adapters.PolicyAlwaysUpdate},
+		&fakeUpdateAdapter{name: "npm", policy: adapters.PolicyGated},
 	}
 
 	ids := adapterIDs(adapterList)
@@ -462,8 +466,8 @@ func TestAdapterIDs(t *testing.T) {
 
 func TestAdapterByID(t *testing.T) {
 	adapterList := []adapters.Adapter{
-		&fakeUpdateAdapter{name: "apt"},
-		&fakeUpdateAdapter{name: "brew"},
+		&fakeUpdateAdapter{name: "apt", policy: adapters.PolicyGated},
+		&fakeUpdateAdapter{name: "brew", policy: adapters.PolicyAlwaysUpdate},
 	}
 
 	m := adapterByID(adapterList)
@@ -486,8 +490,8 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 
 	// Two tools so progress WOULD print without --quiet (multi-tool loop).
 	fakes := []*fakeUpdateAdapter{
-		{name: "apt", trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
-		{name: "npm", trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
+		{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
+		{name: "npm", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
 	}
 	setCLIDeps(t, checkDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
 		return []adapters.Adapter{fakes[0], fakes[1]}
@@ -603,8 +607,9 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	fake := &fakeUpdateAdapter{
-		name:  "apt",
-		trust: adapters.TrustOfficial,
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
 		info: adapters.UpdateInfo{
 			CurrentVersion:  "1.0.0",
 			LatestVersion:   "2.0.0",
@@ -766,8 +771,9 @@ func TestInitCheckUpdateLifecycle(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	fake := &fakeUpdateAdapter{
-		name:  "apt",
-		trust: adapters.TrustOfficial,
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
 		info: adapters.UpdateInfo{
 			CurrentVersion:  "1.0.0",
 			LatestVersion:   "2.0.0",
@@ -924,9 +930,10 @@ func TestCheckCommand_SummaryOutput(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	fake := &fakeUpdateAdapter{
-		name:  "apt",
-		trust: adapters.TrustOfficial,
-		info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fake)}, updateDeps{}, listDeps{}, selfUpdateDeps{})
 

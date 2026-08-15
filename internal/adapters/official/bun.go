@@ -81,9 +81,10 @@ func (a *BunAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *BunAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "bun",
-		Name:      "Bun",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "bun",
+		Name:         "Bun",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }

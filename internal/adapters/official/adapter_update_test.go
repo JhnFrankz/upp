@@ -153,6 +153,15 @@ func TestAllAdapters_InfoConsistency(t *testing.T) {
 			if info.Trust != adapters.TrustOfficial {
 				t.Errorf("Info().Trust = %d, want TrustOfficial", info.Trust)
 			}
+
+			// UpdatePolicy must be one of the declared values (design D6,
+			// spec Update Gating). The zero value is PolicyGated (fail
+			// closed), so a missed AlwaysUpdate site is caught by the
+			// TestInfo goldens; this assertion rejects any value outside
+			// the declared set.
+			if info.UpdatePolicy != adapters.PolicyGated && info.UpdatePolicy != adapters.PolicyAlwaysUpdate {
+				t.Errorf("Info().UpdatePolicy = %d, want PolicyGated or PolicyAlwaysUpdate", info.UpdatePolicy)
+			}
 		})
 	}
 }

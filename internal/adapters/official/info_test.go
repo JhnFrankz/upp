@@ -15,22 +15,24 @@ type infoCase struct {
 }
 
 // TestInfo verifies Info() for all 12 official adapters: golden
-// ID/Name/Platforms/Trust, plus Name() consistency with the adapter ID.
-// No exec seam involved — pure static metadata.
+// ID/Name/Platforms/Trust/UpdatePolicy, plus Name() consistency with the
+// adapter ID. UpdatePolicy is declared explicitly at every Info() site
+// (design D6, spec Update Gating) — the golden value pins the declared
+// policy per adapter. No exec seam involved — pure static metadata.
 func TestInfo(t *testing.T) {
 	tests := []infoCase{
-		{"apt", func() adapters.Adapter { return &AptAdapter{} }, adapters.ToolInfo{ID: "apt", Name: "APT Package Manager", Platforms: []string{"linux"}, Trust: adapters.TrustOfficial}},
-		{"brew", func() adapters.Adapter { return &BrewAdapter{} }, adapters.ToolInfo{ID: "brew", Name: "Homebrew", Platforms: []string{"linux", "macos"}, Trust: adapters.TrustOfficial}},
-		{"npm", func() adapters.Adapter { return &NpmAdapter{} }, adapters.ToolInfo{ID: "npm", Name: "npm", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"pnpm", func() adapters.Adapter { return &PnpmAdapter{} }, adapters.ToolInfo{ID: "pnpm", Name: "pnpm", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"bun", func() adapters.Adapter { return &BunAdapter{} }, adapters.ToolInfo{ID: "bun", Name: "Bun", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"gh", func() adapters.Adapter { return &GhAdapter{} }, adapters.ToolInfo{ID: "gh", Name: "GitHub CLI", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"docker", func() adapters.Adapter { return &DockerAdapter{} }, adapters.ToolInfo{ID: "docker", Name: "Docker", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"go", func() adapters.Adapter { return &GoAdapter{} }, adapters.ToolInfo{ID: "go", Name: "Go", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"opencode", func() adapters.Adapter { return &OpenCodeAdapter{} }, adapters.ToolInfo{ID: "opencode", Name: "OpenCode", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
-		{"winget", func() adapters.Adapter { return &WingetAdapter{} }, adapters.ToolInfo{ID: "winget", Name: "Windows Package Manager", Platforms: []string{"windows"}, Trust: adapters.TrustOfficial}},
-		{"scoop", func() adapters.Adapter { return &ScoopAdapter{} }, adapters.ToolInfo{ID: "scoop", Name: "Scoop", Platforms: []string{"windows"}, Trust: adapters.TrustOfficial}},
-		{"nvm", func() adapters.Adapter { return &NVMAdapter{} }, adapters.ToolInfo{ID: "nvm", Name: "Node Version Manager", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial}},
+		{"apt", func() adapters.Adapter { return &AptAdapter{} }, adapters.ToolInfo{ID: "apt", Name: "APT Package Manager", Platforms: []string{"linux"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated}},
+		{"brew", func() adapters.Adapter { return &BrewAdapter{} }, adapters.ToolInfo{ID: "brew", Name: "Homebrew", Platforms: []string{"linux", "macos"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"npm", func() adapters.Adapter { return &NpmAdapter{} }, adapters.ToolInfo{ID: "npm", Name: "npm", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated}},
+		{"pnpm", func() adapters.Adapter { return &PnpmAdapter{} }, adapters.ToolInfo{ID: "pnpm", Name: "pnpm", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated}},
+		{"bun", func() adapters.Adapter { return &BunAdapter{} }, adapters.ToolInfo{ID: "bun", Name: "Bun", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"gh", func() adapters.Adapter { return &GhAdapter{} }, adapters.ToolInfo{ID: "gh", Name: "GitHub CLI", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"docker", func() adapters.Adapter { return &DockerAdapter{} }, adapters.ToolInfo{ID: "docker", Name: "Docker", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"go", func() adapters.Adapter { return &GoAdapter{} }, adapters.ToolInfo{ID: "go", Name: "Go", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"opencode", func() adapters.Adapter { return &OpenCodeAdapter{} }, adapters.ToolInfo{ID: "opencode", Name: "OpenCode", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"winget", func() adapters.Adapter { return &WingetAdapter{} }, adapters.ToolInfo{ID: "winget", Name: "Windows Package Manager", Platforms: []string{"windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"scoop", func() adapters.Adapter { return &ScoopAdapter{} }, adapters.ToolInfo{ID: "scoop", Name: "Scoop", Platforms: []string{"windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate}},
+		{"nvm", func() adapters.Adapter { return &NVMAdapter{} }, adapters.ToolInfo{ID: "nvm", Name: "Node Version Manager", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated}},
 	}
 
 	for _, tt := range tests {

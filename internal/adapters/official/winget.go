@@ -72,9 +72,10 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *WingetAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "winget",
-		Name:      "Windows Package Manager",
-		Platforms: []string{"windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "winget",
+		Name:         "Windows Package Manager",
+		Platforms:    []string{"windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }
