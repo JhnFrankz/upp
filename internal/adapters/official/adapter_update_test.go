@@ -1,7 +1,9 @@
 package official
 
 import (
+	"context"
 	"errors"
+	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
@@ -75,6 +77,135 @@ func TestShellOutput(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- Error-Aware Helper Variants (design D3) ---
+//
+// commandOutputErr/shellOutputErr delegate to the SAME seam vars as their
+// plain counterparts, so the fakes above drive them hermetically. The
+// real-child rows (precedent: TestRunCmd_*) prove exit-code extraction
+// against a genuine *exec.ExitError; the deadline rows prove the %w chain
+// keeps context.DeadlineExceeded errors.Is-detectable for the CLI timeoutErr
+// mapping.
+
+func TestCommandOutputErr(t *testing.T) {
+	fakeErr := errors.New("boom")
+
+	t.Run("success-passthrough", func(t *testing.T) {
+		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "hello\n"}}})
+		out, err := commandOutputErr("echo", "hello")
+		if err != nil {
+			t.Fatalf("commandOutputErr unexpected error: %v", err)
+		}
+		if out != "hello" {
+			t.Errorf("commandOutputErr() = %q, want %q", out, "hello")
+		}
+	})
+
+	t.Run("failure-structured-and-chained", func(t *testing.T) {
+		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "partial\n", stderr: "boom details\n", err: fakeErr}}})
+		out, err := commandOutputErr("echo", "hello")
+		if err == nil {
+			t.Fatal("commandOutputErr error = nil, want structured error")
+		}
+		if out != "partial" {
+			t.Errorf("commandOutputErr() out = %q, want stdout preserved on failure (D4)", out)
+		}
+		if !errors.Is(err, fakeErr) {
+			t.Errorf("commandOutputErr() error = %v, want %v-chain to seam error", err, fakeErr)
+		}
+		msg := err.Error()
+		for _, want := range []string{"echo check failed", "boom details"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("commandOutputErr() error = %q, want contains %q", msg, want)
+			}
+		}
+	})
+
+	t.Run("real-exit-code", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("real sh child not available on windows")
+		}
+		_, err := commandOutputErr("sh", "-c", "exit 7")
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("commandOutputErr() error = %v, want *exec.ExitError", err)
+		}
+		if exitErr.ExitCode() != 7 {
+			t.Errorf("commandOutputErr() exit code = %d, want 7", exitErr.ExitCode())
+		}
+		if !strings.Contains(err.Error(), "(exit 7)") {
+			t.Errorf("commandOutputErr() error = %q, want contains (exit 7)", err.Error())
+		}
+	})
+
+	t.Run("deadline-exceeded-preserved", func(t *testing.T) {
+		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {err: context.DeadlineExceeded}}})
+		_, err := commandOutputErr("echo", "hello")
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("commandOutputErr() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+		}
+	})
+}
+
+func TestShellOutputErr(t *testing.T) {
+	fakeErr := errors.New("boom")
+
+	t.Run("success-passthrough", func(t *testing.T) {
+		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "hello\n"}}})
+		out, err := shellOutputErr("echo hello", "echo")
+		if err != nil {
+			t.Fatalf("shellOutputErr unexpected error: %v", err)
+		}
+		if out != "hello" {
+			t.Errorf("shellOutputErr() = %q, want %q", out, "hello")
+		}
+	})
+
+	t.Run("failure-structured-and-chained", func(t *testing.T) {
+		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "partial\n", stderr: "boom details\n", err: fakeErr}}})
+		out, err := shellOutputErr("echo hello", "echo")
+		if err == nil {
+			t.Fatal("shellOutputErr error = nil, want structured error")
+		}
+		if out != "partial" {
+			t.Errorf("shellOutputErr() out = %q, want stdout preserved on failure (D4)", out)
+		}
+		if !errors.Is(err, fakeErr) {
+			t.Errorf("shellOutputErr() error = %v, want %v-chain to seam error", err, fakeErr)
+		}
+		msg := err.Error()
+		for _, want := range []string{"echo check failed", "boom details"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("shellOutputErr() error = %q, want contains %q", msg, want)
+			}
+		}
+	})
+
+	t.Run("real-exit-code", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("real sh child not available on windows")
+		}
+		_, err := shellOutputErr("exit 7", "sh")
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("shellOutputErr() error = %v, want *exec.ExitError", err)
+		}
+		if exitErr.ExitCode() != 7 {
+			t.Errorf("shellOutputErr() exit code = %d, want 7", exitErr.ExitCode())
+		}
+		if !strings.Contains(err.Error(), "(exit 7)") {
+			t.Errorf("shellOutputErr() error = %q, want contains (exit 7)", err.Error())
+		}
+	})
+
+	t.Run("deadline-exceeded-preserved", func(t *testing.T) {
+		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {err: context.DeadlineExceeded}}})
+		_, err := shellOutputErr("echo hello", "echo")
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("shellOutputErr() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+		}
+	})
 }
 
 // --- Platform-Specific Adapter Tests ---

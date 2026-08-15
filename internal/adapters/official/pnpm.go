@@ -29,8 +29,19 @@ func (a *PnpmAdapter) Check() (adapters.UpdateInfo, error) {
 		current = "unknown"
 	}
 
-	// Check for outdated packages (non-blocking, timeout-safe)
-	stdout := shellOutput("timeout 15 pnpm outdated -g 2>/dev/null || true")
+	// Check for outdated packages. Run pnpm directly (no shell wrapper):
+	// the runCmdArgsFn seam bounds the check with CheckTimeout, portable
+	// (no GNU `timeout` dependency — macOS) and keeps stderr for the
+	// failure excerpt. pnpm exits 1 when outdated packages exist — a valid
+	// detection only when stdout carries the outdated table; exit 1 with
+	// empty stdout is an operational failure, and any other non-zero exit
+	// is a structured failure.
+	stdout, err := commandOutputErr("pnpm", "outdated", "-g")
+	if err != nil {
+		if !(isExitCode(err, 1) && strings.Contains(stdout, "│")) {
+			return adapters.UpdateInfo{}, err
+		}
+	}
 	updateAvailable := strings.Contains(stdout, "│") && !strings.Contains(stdout, "Package")
 
 	return adapters.UpdateInfo{
