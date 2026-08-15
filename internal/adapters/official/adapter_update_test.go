@@ -153,7 +153,7 @@ func TestShellOutputErr(t *testing.T) {
 
 	t.Run("success-passthrough", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "hello\n"}}})
-		out, err := shellOutputErr("echo hello")
+		out, err := shellOutputErr("echo hello", "echo")
 		if err != nil {
 			t.Fatalf("shellOutputErr unexpected error: %v", err)
 		}
@@ -164,7 +164,7 @@ func TestShellOutputErr(t *testing.T) {
 
 	t.Run("failure-structured-and-chained", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "partial\n", stderr: "boom details\n", err: fakeErr}}})
-		out, err := shellOutputErr("echo hello")
+		out, err := shellOutputErr("echo hello", "echo")
 		if err == nil {
 			t.Fatal("shellOutputErr error = nil, want structured error")
 		}
@@ -186,7 +186,7 @@ func TestShellOutputErr(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("real sh child not available on windows")
 		}
-		_, err := shellOutputErr("exit 7")
+		_, err := shellOutputErr("exit 7", "sh")
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
 			t.Fatalf("shellOutputErr() error = %v, want *exec.ExitError", err)
@@ -201,7 +201,7 @@ func TestShellOutputErr(t *testing.T) {
 
 	t.Run("deadline-exceeded-preserved", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {err: context.DeadlineExceeded}}})
-		_, err := shellOutputErr("echo hello")
+		_, err := shellOutputErr("echo hello", "echo")
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("shellOutputErr() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 		}

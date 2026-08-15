@@ -40,8 +40,10 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("nvm is not installed")
 	}
 
-	// Get current node version via nvm.
-	stdout, err := shellOutputErr("source ~/.nvm/nvm.sh 2>/dev/null && nvm current")
+	// Get current node version via nvm. nvm is bash-only, so run through
+	// bash explicitly (POSIX sh — dash/ash — lacks `source`); honour
+	// NVM_DIR installs with a fallback to ~/.nvm.
+	stdout, err := shellOutputErr("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -50,8 +52,9 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 		current = "unknown"
 	}
 
-	// Get latest stable version.
-	stdout, err = shellOutputErr("source ~/.nvm/nvm.sh 2>/dev/null && nvm ls-remote --lts | tail -1 | awk '{print $1}'")
+	// Get latest stable version. pipefail makes a failed nvm ls-remote
+	// surface as an error instead of an empty awk result.
+	stdout, err = shellOutputErr("bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | tail -1 | awk \"{print \\$1}\"'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -122,7 +125,7 @@ func (a *NVMAdapter) Info() adapters.ToolInfo {
 }
 
 func (a *NVMAdapter) currentVersion() (string, error) {
-	stdout := shellOutput("source ~/.nvm/nvm.sh 2>/dev/null && nvm current")
+	stdout := shellOutput("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'")
 	v := strings.TrimSpace(stdout)
 	if v == "" {
 		return "unknown", nil

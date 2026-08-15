@@ -1,6 +1,9 @@
 package official
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // fakeResult is the canned output of a mocked command.
 type fakeResult struct {
@@ -11,7 +14,8 @@ type fakeResult struct {
 
 // execFakes holds per-command fakes keyed the same way the production
 // helpers key their lookups: shell by full command string, cmdArgs by
-// binary name, lookPath by binary name.
+// binary name (or "name arg1 arg2..." for a specific invocation), lookPath
+// by binary name.
 type execFakes struct {
 	shell    map[string]fakeResult
 	cmdArgs  map[string]fakeResult
@@ -33,6 +37,15 @@ func setExecFakes(t *testing.T, f execFakes) {
 		return r.stdout, r.stderr, r.err
 	}
 	runCmdArgsFn = func(name string, args ...string) (stdout, stderr string, err error) {
+		// Prefer an invocation-specific key ("name arg1 arg2..."), falling
+		// back to the binary-name key for callers that only fake by name.
+		key := name
+		if len(args) > 0 {
+			key = name + " " + strings.Join(args, " ")
+		}
+		if r, ok := f.cmdArgs[key]; ok {
+			return r.stdout, r.stderr, r.err
+		}
 		r := f.cmdArgs[name]
 		return r.stdout, r.stderr, r.err
 	}

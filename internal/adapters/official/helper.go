@@ -205,11 +205,12 @@ func commandOutputErr(name string, args ...string) (string, error) {
 // structured failure when the subprocess fails (design D3). Delegates to the
 // same runCmdFn seam variable as shellOutput, so seam fakes keep working.
 // stdout is preserved on failure: the npm/pnpm exit-1 convention (D4) needs
-// it to decide availability.
-func shellOutputErr(command string) (string, error) {
+// it to decide availability. The failure label is the explicit tool name,
+// not the command's first token (a wrapper or shell builtin).
+func shellOutputErr(command, tool string) (string, error) {
 	stdout, stderr, err := runCmdFn(command)
 	if err != nil {
-		return strings.TrimSpace(stdout), commandFailureErr(shellToolName(command), stderr, err)
+		return strings.TrimSpace(stdout), commandFailureErr(tool, stderr, err)
 	}
 	return strings.TrimSpace(stdout), nil
 }
@@ -229,15 +230,6 @@ func commandFailureErr(tool, stderr string, err error) error {
 		return fmt.Errorf("%s check failed%s: %s: %w", tool, code, excerpt, err)
 	}
 	return fmt.Errorf("%s check failed%s: %w", tool, code, err)
-}
-
-// shellToolName returns the first whitespace-delimited token of a shell
-// command — the first binary in the pipeline — used as the failure label.
-func shellToolName(command string) string {
-	if i := strings.IndexAny(command, " \t"); i >= 0 {
-		return command[:i]
-	}
-	return command
 }
 
 // isExitCode reports whether err is an *exec.ExitError with the given exit

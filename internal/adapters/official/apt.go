@@ -21,8 +21,10 @@ func (a *AptAdapter) Check() (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("apt is not installed")
 	}
 
-	// Get installed version.
-	stdout, err := shellOutputErr("apt-cache policy apt 2>/dev/null | grep 'Installed:' | awk '{print $2}'")
+	// Get installed version. bash -o pipefail makes the pipeline exit
+	// non-zero when apt-cache itself fails (a POSIX pipeline would exit 0
+	// through awk even on failure, silently masking it).
+	stdout, err := shellOutputErr("bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'", "apt")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -32,7 +34,7 @@ func (a *AptAdapter) Check() (adapters.UpdateInfo, error) {
 	}
 
 	// Get latest version.
-	stdout, err = shellOutputErr("apt-cache policy apt 2>/dev/null | grep 'Candidate:' | awk '{print $2}'")
+	stdout, err = shellOutputErr("bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'", "apt")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -107,7 +109,7 @@ func (a *AptAdapter) Info() adapters.ToolInfo {
 
 // CurrentVersion returns the currently installed apt version.
 func (a *AptAdapter) CurrentVersion() (string, error) {
-	stdout := shellOutput("apt-cache policy apt 2>/dev/null | grep 'Installed:' | awk '{print $2}'")
+	stdout := shellOutput("bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'")
 	v := strings.TrimSpace(stdout)
 	if v == "" || v == "(none)" {
 		return "unknown", nil
