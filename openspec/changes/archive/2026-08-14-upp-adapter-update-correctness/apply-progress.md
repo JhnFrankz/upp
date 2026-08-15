@@ -3,7 +3,7 @@
 ## Status
 
 - **Slice**: 2 of 2 (chained PRs, stacked-to-main). PR 1 (timeouts + go arch) merged on main. PR 2 = gating + seam + timeoutErr (Phase 3/4).
-- **Delivery boundary**: tasks 3.1–3.5 + 4.1–4.5 ONLY. All 11 tasks of the change COMPLETE.
+- **Delivery boundary**: tasks 3.1–3.5 + 4.1–4.5 ONLY. All 19 tasks of the change COMPLETE (slice 1: 1.1–1.7 + 2.1–2.2; slice 2: 3.1–3.5 + 4.1–4.5).
 - **Mode**: Strict TDD (RED first, minimal GREEN). Runner: `go test ./... -count=1`.
 - **All slice-2 gates PASS**: focused, full suite, race, vet, gofmt, smoke test (23/23).
 
@@ -108,7 +108,7 @@ Note: the update flow's summary renders only tool names ("Failed: brew"), not er
 1. **Assertion-layer adjustment (not a design deviation)**: the gating matrix asserts the summary labels ("Updated: tool" / absence of "Updated:"/"Failed:") plus the fake's `updated` flag instead of per-tool icon lines — `runUpdate` never calls `ToolLine`, and quiet mode suppresses per-tool lines entirely, so icons are not rendered in this flow. Design's planned RED shape (matrix via updateDeps fakes + withCapturedStdout) preserved.
 2. **check.go:91 timeoutErr wiring has no direct unit test**: `runCheck` has no adapter-list seam (design D5 adds one only to `runUpdate`), so the check-error site cannot be exercised with fakes without out-of-scope seam work; the helper is fully tested via TestTimeoutErr and the identical runUpdate check-error site is flow-tested. Wiring mirrors the tested site exactly.
 
-Everything else matches design.md D3/D4/D5 and the Interfaces/Contracts blocks exactly (updateDeps struct shape, zero-value production default, gating predicate/placement, timeoutErr message shape).
+Everything else matches design.md D3/D4/D5 and the Interfaces/Contracts blocks exactly (updateDeps struct shape, zero-value production default, timeoutErr message shape) — with one review-corrected deviation: the gating predicate was restricted to the dynamic-detection adapters (`gatedOfficialAdapters` = apt/npm/nvm/pnpm) so the six stub adapters remain exempt and keep updating (PR #39 review correction; see the delta spec and archive-report).
 
 ## Files Changed (slice 2)
 
@@ -130,4 +130,4 @@ Everything else matches design.md D3/D4/D5 and the Interfaces/Contracts blocks e
 
 ## Remaining
 
-None — all 11 tasks complete. Next: sdd-verify.
+None — all 19 tasks complete. Next: sdd-verify.

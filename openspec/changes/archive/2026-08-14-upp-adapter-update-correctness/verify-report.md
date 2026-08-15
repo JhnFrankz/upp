@@ -37,7 +37,7 @@ All gates executed fresh on current main (HEAD e758d409, both PRs merged):
 
 | Gate | Command | Result | Exit | Output hash (sha256) |
 |------|---------|--------|------|----------------------|
-| Full suite | `go test ./... -count=1` | 8 packages `ok` (cmd/upp no test files; cli 36.865s) | 0 | `41c7c627f3f3de3bf4bb381b16f425d8755fc447375a1d3ba8255a7c0da13eba` |
+| Full suite | `go test ./... -count=1` | 9 Go packages, 8 with test files `ok` (cmd/upp no test files; cli 36.865s) | 0 | `41c7c627f3f3de3bf4bb381b16f425d8755fc447375a1d3ba8255a7c0da13eba` |
 | Race | `go test ./... -count=1 -race` | 8 packages `ok` (cli 37.620s) | 0 | `d727738066f861ca91914289785b3ee5560fe6ae58bb1b2f55147538533d8f4b` |
 | Vet | `go vet ./...` | clean, no output | 0 | — |
 | gofmt | `gofmt -l internal/` | empty | 0 | — |
@@ -86,7 +86,7 @@ Authoritative counts from the retrieved delta spec: **3 requirements / 12 scenar
 | Distinct check/update timeouts | ✅ | timeouts.go:8 `CheckTimeout=30s`, :11 `UpdateTimeout=10m`; helper.go:25 runCmdFn→UpdateTimeout, :68 runCmdArgsFn→CheckTimeout; custom.go:53 Check→CheckTimeout, :126 shellExec→UpdateTimeout |
 | Process-group kill + WaitDelay | ✅ | helper.go:38 Setpgid, :59 `syscall.Kill(-pid, SIGKILL)`, :43 `WaitDelay=5s`; custom.go:146,167,151 identical; proven live by `TestRunCmd_GroupKillProvesGrandchildrenDie` (pgrep: no survivor) |
 | Structured timeout error | ✅ | update.go:242-251 `timeoutErr(name,op,err)` — `%w` preserves `errors.Is`; wired at update.go:119 (check), :198 (update err), :218 (update failure result), check.go:94 |
-| Run continues after timeout | ✅ | update.go:121-123, 200-201, 221 `continue`; flow-proven by `TestRunRunUpdate_CheckTimeoutStructuredError` (npm updated after brew check timeout) |
+| Run continues after timeout | ✅ | update.go:121-123, 200-201, 221 `continue`; flow-proven by `TestRunUpdate_CheckTimeoutStructuredError` (npm updated after brew check timeout) |
 | goTarballURL no hardcoded arch | ✅ | go.go:114-116 arch parameterized; sole caller go.go:57 uses `runtime.GOARCH` |
 | Gated set exact | ✅ | update.go:48-53 — apt/npm/nvm/pnpm only; stubs brew/bun/docker/gh/go/opencode, winget/scoop, and custom exempt by predicate (TrustOfficial + set membership) |
 
@@ -95,7 +95,7 @@ Authoritative counts from the retrieved delta spec: **3 requirements / 12 scenar
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
 | D3 — `timeoutErr(name, op, err)` structured message | ✅ Yes | update.go:242-251; message shape `"%s %s timed out after %s"` proven by TestTimeoutErr; `%w` chain keeps `errors.Is` |
-| D4 — gate official updates on check availability | ✅ Yes | update.go:183 predicate + placement between confirm (161-176) and `Update(false)` (193); gated set = apt/npm/nvm/pnpm per design |
+| D4 — gate official updates on check availability | ✅ Yes | update.go:183 predicate + placement between confirm (161-176) and `Update(false)` (193); gated set = apt/npm/nvm/pnpm (corrected in PR #39 review — see delta spec; design.md pre-correction predicate had no set) |
 | D5 — `updateDeps` seam (mirrors check.go:38-40, zero→prod default) | ✅ Yes | update.go:39-41 struct, :65-67 zero-value default `buildAdapterList`, :27 call site `runUpdate(gf, uf, updateDeps{})` |
 | PR-1 design — `goTarballURL(goarch)` + `runtime.GOARCH` | ✅ Yes | go.go:114-116, :57 |
 

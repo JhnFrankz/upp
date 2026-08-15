@@ -15,7 +15,7 @@ Three targeted fixes on the existing subprocess seams, plus a testability seam: 
 | D5 | `runUpdateDeps` seam | Adding a param churns `NewUpdateCommand`; without it gating is untestable at CLI level | `type updateDeps struct{ buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter }`; zero value → production default (mirrors check.go:38-40); `runUpdate(gf, uf, deps)`; tests inject fakes; probe test (audit_probe_test.go:77-89) runs the production path and stays green via custom exemption |
 | D6 | `goTarballURL(goarch)` | `runtime.GOARCH` is compile-time — amd64 CI can't exercise arm64 inline | `func goTarballURL(goarch string) string` in official/go.go returning the `linux-<goarch>.tar.gz` template; call site go.go:57 composes the curl\|tar pipeline with `runtime.GOARCH`; table tests amd64/arm64 |
 | D7 | Scope boundaries | Creep risks review budget | No custom-id collision fix; no version-helper dedup; no dead `Update(dryRun)` cleanup; no GNU `timeout 15` wrapper changes (npm.go:31, pnpm.go:33); `lookPathFn` unbounded (no subprocess) |
-| D8 | Timeout kill semantics | `CommandContext` kills only the direct child; `sh -c` grandchildren (`curl \| sh`) can linger | Accepted, documented limitation; durations as test-overridable vars enable a real kill-path integration test (`sleep 2` with 100ms timeout) |
+| D8 | Timeout kill semantics | `CommandContext` kills only the direct child; `sh -c` grandchildren (`curl \| sh`) can linger | Accepted, documented limitation; durations as test-overridable vars enable a real kill-path integration test (`sleep 2` with 100ms timeout). **SUPERSEDED by review correction (PR #38)**: the delivered implementation kills the whole process group on Unix (Setpgid + negative-pid SIGKILL + WaitDelay=5s), proven by `TestRunCmd_GroupKillProvesGrandchildrenDie`. Grandchildren can no longer outlive the deadline. |
 
 ## Data Flow
 
@@ -102,7 +102,7 @@ func goTarballURL(goarch string) string {
 
 ## Migration / Rollout
 
-No migration. Documented behavior change: the six stubs (brew, bun, docker, gh, go, opencode) now report `StatusCurrent` and stop updating — intended per spec (their `UpdateAvailable: false` is by design; winget/scoop and custom are exempt). Rollback: single PR revert (~150-250 lines, under the 400-line review budget) restores unconditional updates, no timeouts, amd64-only URL.
+No migration. Documented behavior change: the six stubs (brew, bun, docker, gh, go, opencode) now report `StatusCurrent` and stop updating — intended per spec (their `UpdateAvailable: false` is by design; winget/scoop and custom are exempt). **SUPERSEDED by review correction (PR #39)**: the gating predicate was restricted to the dynamic-detection adapters (apt, npm, nvm, pnpm) via `gatedOfficialAdapters`; the six stubs are EXEMPT and keep updating unconditionally, as do winget/scoop and custom adapters. The authoritative gating semantics are in the delta spec and the synced main spec. Rollback: single PR revert (~150-250 lines, under the 400-line review budget) restores unconditional updates, no timeouts, amd64-only URL.
 
 ## Open Questions
 
