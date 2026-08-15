@@ -87,7 +87,7 @@ func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("source ~/.nvm/nvm.sh 2>/dev/null && nvm install stable")
+	_, stderr, err := runCmd("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

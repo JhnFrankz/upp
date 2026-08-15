@@ -32,7 +32,7 @@ const (
 	opencodeUpdateCmd      = "curl -fsSL https://opencode.ai/install | bash"
 	wingetUpdateCmd        = "winget upgrade --all --accept-source-agreements --accept-package-agreements"
 	scoopUpdateCmd         = "scoop update *"
-	nvmInstallStableCmd    = "source ~/.nvm/nvm.sh 2>/dev/null && nvm install stable"
+	nvmInstallStableCmd    = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
 )
 
 // failIfRun is a fake result that fails loudly: any row that keys a command
