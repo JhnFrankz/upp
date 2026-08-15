@@ -422,13 +422,13 @@ func (r *Renderer) SelfUpdateDevBuild() {
 // SelfUpdateUpToDate prints the already-up-to-date message with the
 // current release tag (spec R1). Always shown.
 func (r *Renderer) SelfUpdateUpToDate(tag string) {
-	_, _ = fmt.Fprintln(r.w, fmt.Sprintf("already up to date (%s)", tag))
+	_, _ = fmt.Fprintf(r.w, "already up to date (%s)\n", tag)
 }
 
 // SelfUpdateDone prints the replacement success line: current → latest.
 // Always shown.
 func (r *Renderer) SelfUpdateDone(current, latest string) {
-	_, _ = fmt.Fprintln(r.w, fmt.Sprintf("upp updated: %s → %s", current, latest))
+	_, _ = fmt.Fprintf(r.w, "upp updated: %s → %s\n", current, latest)
 }
 
 // SelfUpdateHint appends the opt-in update-detection hint (design D9):
@@ -441,7 +441,7 @@ func (r *Renderer) SelfUpdateHint(current, latest string) {
 	}
 	// The template leads with the latest version: "⬆️ upp v{latest}
 	// available (current {current})" (spec ux-patterns).
-	_, _ = fmt.Fprintln(r.w, fmt.Sprintf("⬆️ upp %s available (current %s) — run \"upp self-update\"", latest, current))
+	_, _ = fmt.Fprintf(r.w, "⬆️ upp %s available (current %s) — run \"upp self-update\"\n", latest, current)
 }
 
 // --- Error output ---

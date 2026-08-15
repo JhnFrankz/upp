@@ -25,7 +25,6 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 func runInit(gf *GlobalFlags) error {
-	cfg, _ := config.Load()
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 	r.InitHeader()
 
@@ -66,7 +65,7 @@ func runInit(gf *GlobalFlags) error {
 	}
 
 	// Build config with detected tools
-	cfg = config.DefaultConfigWithDefaults()
+	cfg := config.DefaultConfigWithDefaults()
 
 	// Enable only detected tools
 	for id := range cfg.Tools {
