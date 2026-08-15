@@ -3,7 +3,9 @@ package official
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,5 +94,35 @@ func TestRunCmdArgs_CheckTimeoutKills(t *testing.T) {
 	_, _, err := runCmdArgs("sleep", "2")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("runCmdArgs() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+	}
+}
+
+// TestRunCmd_GroupKillProvesGrandchildrenDie verifies that the process-group
+// kill reaches shell grandchildren (pipelines/&& chains), not just the direct
+// shell child: after the timeout, a unique background marker process started
+// by the shell must no longer exist.
+func TestRunCmd_GroupKillProvesGrandchildrenDie(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("process-group kill verification requires linux")
+	}
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("pgrep not available")
+	}
+
+	orig := adapters.UpdateTimeout
+	adapters.UpdateTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { adapters.UpdateTimeout = orig })
+
+	marker := "sleep 29.17" // unique marker; only this test ever runs it
+	_, _, err := runCmd("sh -c '" + marker + " & wait'")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("runCmd() error = %v, want DeadlineExceeded", err)
+	}
+
+	// Give the SIGKILL a moment to land, then prove no survivor remains.
+	time.Sleep(300 * time.Millisecond)
+	out, err := exec.Command("pgrep", "-f", marker).Output()
+	if err == nil && len(out) > 0 {
+		t.Errorf("orphaned grandchild survived the timeout: %s", strings.TrimSpace(string(out)))
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 )
@@ -30,19 +32,37 @@ var (
 			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		} else {
 			cmd = exec.CommandContext(ctx, "sh", "-c", command)
+			// Own process group so the timeout can kill shell grandchildren
+			// (curl|tar, sudo apt, brew...) too — the direct child alone is
+			// not enough for the compound commands every adapter runs.
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		}
-
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
+		// Reap pipes even if an orphaned grandchild keeps them open.
+		cmd.WaitDelay = 5 * time.Second
 
-		err = cmd.Run()
-		if err != nil && ctx.Err() != nil {
-			// The command was killed by the timeout context; Go's exec.Wait
-			// returns the raw exit error, so chain the deadline error to stay
-			// errors.Is(err, context.DeadlineExceeded)-detectable.
-			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
+		if err := cmd.Start(); err != nil {
+			return stdoutBuf.String(), stderrBuf.String(), err
 		}
-		return stdoutBuf.String(), stderrBuf.String(), err
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+
+		select {
+		case err := <-done:
+			return stdoutBuf.String(), stderrBuf.String(), err
+		case <-ctx.Done():
+			// Kill the whole process group so the actual work (grandchildren)
+			// cannot keep mutating state after the reported timeout.
+			if cmd.Process != nil && runtime.GOOS != "windows" {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			<-done // reap; WaitDelay bounds the wait if pipes are held
+			// Go's exec.Wait returns the raw exit error, so chain the deadline
+			// error to stay errors.Is(err, context.DeadlineExceeded)-detectable.
+			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), "process group killed after timeout")
+		}
 	}
 	runCmdArgsFn = func(name string, args ...string) (stdout, stderr string, err error) {
 		ctx, cancel := context.WithTimeout(context.Background(), adapters.CheckTimeout)
