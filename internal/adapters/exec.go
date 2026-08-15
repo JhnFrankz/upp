@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"syscall"
@@ -58,11 +57,15 @@ func RunCommandWithTimeout(ctx context.Context, cmd *exec.Cmd) (stdout, stderr s
 	case err := <-done:
 		if err != nil && ctx.Err() != nil {
 			// The command finished (or closed its pipes) exactly as the
-			// deadline fired. On ErrWaitDelay the child may still be alive —
-			// kill the group so descendants cannot outlive the timeout; on a
-			// real completion the process is already reaped, so no kill runs
-			// (a killed PID would be a stale-PID hazard).
-			if errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, exec.ErrWaitDelay) {
+			// deadline fired. On a deadline-class Wait error the child may
+			// still have live descendants holding the pipes (watchCtx returns
+			// context.DeadlineExceeded when the kill races the child's
+			// successful exit; ErrWaitDelay means the child closed its pipes
+			// but descendants keep them open) — kill the group so they cannot
+			// outlive the timeout. Any other done-branch error means the
+			// process is already reaped, so no kill runs (a killed PID would
+			// be a stale-PID hazard).
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, exec.ErrWaitDelay) {
 				killProcessGroup(cmd)
 			}
 			// Classify deterministically as a timeout on both paths, matching
