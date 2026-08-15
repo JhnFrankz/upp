@@ -39,34 +39,20 @@ type Summary struct {
 
 // Renderer handles formatted terminal output.
 type Renderer struct {
-	w       io.Writer
-	color   bool
-	emoji   bool
-	quiet   bool
-	strings *Strings
+	w     io.Writer
+	color bool
+	emoji bool
+	quiet bool
 }
 
 // NewRenderer creates a Renderer that detects color/emoji support.
 func NewRenderer(w io.Writer, quiet bool) *Renderer {
 	color := isTerminal(w)
 	return &Renderer{
-		w:       w,
-		color:   color,
-		emoji:   color, // emoji follows color support
-		quiet:   quiet,
-		strings: DefaultStrings(),
-	}
-}
-
-// NewRendererWithLang creates a Renderer with a specific language.
-func NewRendererWithLang(w io.Writer, quiet bool, lang string) *Renderer {
-	color := isTerminal(w)
-	return &Renderer{
-		w:       w,
-		color:   color,
-		emoji:   color,
-		quiet:   quiet,
-		strings: GetStrings(lang),
+		w:     w,
+		color: color,
+		emoji: color, // emoji follows color support
+		quiet: quiet,
 	}
 }
 
@@ -422,27 +408,27 @@ func (r *Renderer) InitConfigGenerated(path string) {
 // Proceed question. It is never suppressed by quiet mode (spec flag
 // semantics: --quiet must not hide the confirm prompt).
 func (r *Renderer) SelfUpdatePrompt(current, latest, target string) {
-	_, _ = fmt.Fprintf(r.w, "  %s\n", fmt.Sprintf(r.strings.SelfUpdatePrompt, current, latest))
-	_, _ = fmt.Fprintf(r.w, "    %s\n", fmt.Sprintf(r.strings.SelfUpdateTarget, target))
-	_, _ = fmt.Fprintf(r.w, "  %s", r.strings.Proceed)
+	_, _ = fmt.Fprintf(r.w, "  %s\n", fmt.Sprintf("Update upp from %s to %s?", current, latest))
+	_, _ = fmt.Fprintf(r.w, "    %s\n", fmt.Sprintf("Target: %s", target))
+	_, _ = fmt.Fprintf(r.w, "  %s", "Proceed? [y/N] ")
 }
 
 // SelfUpdateDevBuild prints the development-build message (spec R1:
 // exit 0, no update claim). Always shown, including quiet mode.
 func (r *Renderer) SelfUpdateDevBuild() {
-	_, _ = fmt.Fprintln(r.w, r.strings.SelfUpdateDevBuild)
+	_, _ = fmt.Fprintln(r.w, "development build; self-update is only available for release builds")
 }
 
 // SelfUpdateUpToDate prints the already-up-to-date message with the
 // current release tag (spec R1). Always shown.
 func (r *Renderer) SelfUpdateUpToDate(tag string) {
-	_, _ = fmt.Fprintln(r.w, fmt.Sprintf(r.strings.SelfUpdateUpToDate, tag))
+	_, _ = fmt.Fprintln(r.w, fmt.Sprintf("already up to date (%s)", tag))
 }
 
 // SelfUpdateDone prints the replacement success line: current → latest.
 // Always shown.
 func (r *Renderer) SelfUpdateDone(current, latest string) {
-	_, _ = fmt.Fprintln(r.w, fmt.Sprintf(r.strings.SelfUpdateDone, current, latest))
+	_, _ = fmt.Fprintln(r.w, fmt.Sprintf("upp updated: %s → %s", current, latest))
 }
 
 // SelfUpdateHint appends the opt-in update-detection hint (design D9):
@@ -455,7 +441,7 @@ func (r *Renderer) SelfUpdateHint(current, latest string) {
 	}
 	// The template leads with the latest version: "⬆️ upp v{latest}
 	// available (current {current})" (spec ux-patterns).
-	_, _ = fmt.Fprintln(r.w, fmt.Sprintf(r.strings.SelfUpdateHint, latest, current))
+	_, _ = fmt.Fprintln(r.w, fmt.Sprintf("⬆️ upp %s available (current %s) — run \"upp self-update\"", latest, current))
 }
 
 // --- Error output ---

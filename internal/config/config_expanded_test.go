@@ -25,7 +25,7 @@ func TestConfigVersion_Migration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
 				Version:  tt.version,
-				Settings: Settings{Language: "en"},
+				Settings: Settings{},
 				Tools:    make(map[string]ToolConfig),
 				Custom:   make(map[string]CustomTool),
 			}
@@ -57,7 +57,6 @@ func TestConfigVersion_PreservedOnLoad(t *testing.T) {
 	tomlContent := `version = 1
 
 [settings]
-language = "en"
 interactive = true
 `
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
@@ -80,7 +79,6 @@ func TestRoundTrip_ComplexConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	original := DefaultConfig()
-	original.Settings.Language = "es"
 	original.Settings.Interactive = false
 	original.Tools["apt"] = ToolConfig{Enabled: true, Platforms: []string{"linux"}}
 	original.Tools["npm"] = ToolConfig{Enabled: false}
@@ -108,9 +106,6 @@ func TestRoundTrip_ComplexConfig(t *testing.T) {
 	}
 
 	// Verify all fields preserved
-	if imported.Settings.Language != "es" {
-		t.Errorf("language = %q, want %q", imported.Settings.Language, "es")
-	}
 	if imported.Settings.Interactive {
 		t.Error("interactive should be false")
 	}
@@ -205,29 +200,10 @@ func TestRoundTrip_MultipleCustomTools(t *testing.T) {
 
 // --- Config Validation Edge Cases ---
 
-func TestValidate_EmptyLanguage(t *testing.T) {
-	cfg := &Config{
-		Version:  1,
-		Settings: Settings{Language: ""},
-		Tools:    make(map[string]ToolConfig),
-		Custom:   make(map[string]CustomTool),
-	}
-
-	err := Validate(cfg)
-	if err != nil {
-		t.Errorf("Validate() with empty language should not error: %v", err)
-	}
-
-	// Should be set to default
-	if cfg.Settings.Language != "en" {
-		t.Errorf("language should be set to 'en', got %q", cfg.Settings.Language)
-	}
-}
-
 func TestValidate_EnabledToolNotOfficialNoCustom(t *testing.T) {
 	cfg := &Config{
 		Version:  1,
-		Settings: Settings{Language: "en"},
+		Settings: Settings{},
 		Tools: map[string]ToolConfig{
 			"nonexistent-tool": {Enabled: true},
 		},
@@ -243,7 +219,7 @@ func TestValidate_EnabledToolNotOfficialNoCustom(t *testing.T) {
 func TestValidate_EnabledToolWithCustomCommand(t *testing.T) {
 	cfg := &Config{
 		Version:  1,
-		Settings: Settings{Language: "en"},
+		Settings: Settings{},
 		Tools: map[string]ToolConfig{
 			"mytool": {Enabled: true},
 		},
@@ -261,7 +237,7 @@ func TestValidate_EnabledToolWithCustomCommand(t *testing.T) {
 func TestValidate_CustomToolMissingCommand(t *testing.T) {
 	cfg := &Config{
 		Version:  1,
-		Settings: Settings{Language: "en"},
+		Settings: Settings{},
 		Tools:    make(map[string]ToolConfig),
 		Custom: map[string]CustomTool{
 			"mytool": {Command: ""},
@@ -277,7 +253,7 @@ func TestValidate_CustomToolMissingCommand(t *testing.T) {
 func TestValidate_MultipleTools(t *testing.T) {
 	cfg := &Config{
 		Version:  1,
-		Settings: Settings{Language: "en"},
+		Settings: Settings{},
 		Tools: map[string]ToolConfig{
 			"apt":   {Enabled: true},
 			"npm":   {Enabled: false},
@@ -302,7 +278,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cfg := DefaultConfig()
-	cfg.Settings.Language = "fr"
 	cfg.Settings.Interactive = false
 	cfg.Tools["apt"] = ToolConfig{Enabled: true}
 	cfg.Custom["test"] = CustomTool{Command: "test --update", Trusted: true}
@@ -316,9 +291,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if loaded.Settings.Language != "fr" {
-		t.Errorf("language = %q, want %q", loaded.Settings.Language, "fr")
-	}
 	if loaded.Settings.Interactive {
 		t.Error("interactive should be false")
 	}
@@ -445,7 +417,6 @@ func TestImportFromFile_InvalidVersion(t *testing.T) {
 	tomlContent := `version = 0
 
 [settings]
-language = "en"
 `
 	if err := os.WriteFile(path, []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
@@ -494,9 +465,6 @@ func TestDefaultConfigWithDefaults_AllPlatforms(t *testing.T) {
 	if cfg.Version != 1 {
 		t.Errorf("version = %d, want 1", cfg.Version)
 	}
-	if cfg.Settings.Language != "en" {
-		t.Errorf("language = %q, want %q", cfg.Settings.Language, "en")
-	}
 	if !cfg.Settings.Interactive {
 		t.Error("interactive should be true")
 	}
@@ -537,29 +505,12 @@ func TestConfigDir_Linux(t *testing.T) {
 	}
 }
 
-// --- Validate Language Default ---
-
-func TestValidate_SetsDefaultLanguage(t *testing.T) {
-	cfg := &Config{
-		Version:  1,
-		Settings: Settings{Language: ""},
-		Tools:    make(map[string]ToolConfig),
-		Custom:   make(map[string]CustomTool),
-	}
-
-	_ = Validate(cfg)
-
-	if cfg.Settings.Language != "en" {
-		t.Errorf("Validate should set default language to 'en', got %q", cfg.Settings.Language)
-	}
-}
-
 // --- Validate Disabled Tool Not Checked ---
 
 func TestValidate_DisabledToolNotChecked(t *testing.T) {
 	cfg := &Config{
 		Version:  1,
-		Settings: Settings{Language: "en"},
+		Settings: Settings{},
 		Tools: map[string]ToolConfig{
 			"nonexistent": {Enabled: false},
 		},

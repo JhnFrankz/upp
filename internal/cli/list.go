@@ -46,11 +46,7 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 	}
 	adapterList := deps.buildAdapterList(cfg, p.OS)
 
-	lang := "en"
-	if cfg != nil {
-		lang = cfg.Settings.Language
-	}
-	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
+	r := output.NewRenderer(os.Stdout, gf.Quiet)
 
 	var entries []output.ListEntry
 	for _, a := range adapterList {

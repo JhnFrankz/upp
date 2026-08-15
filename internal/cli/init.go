@@ -26,11 +26,7 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 
 func runInit(gf *GlobalFlags) error {
 	cfg, _ := config.Load()
-	lang := "en"
-	if cfg != nil {
-		lang = cfg.Settings.Language
-	}
-	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
+	r := output.NewRenderer(os.Stdout, gf.Quiet)
 	r.InitHeader()
 
 	// Detect platform

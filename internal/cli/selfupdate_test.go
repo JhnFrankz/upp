@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/selfupdate"
 )
@@ -462,33 +461,5 @@ func TestSelfUpdate_ChecksumMismatch(t *testing.T) {
 	}
 	if got := reqs.Load(); got != 3 {
 		t.Errorf("mismatch flow should make exactly 3 requests, got %d", got)
-	}
-}
-
-func TestSelfUpdate_SpanishConfigPrompt(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	cfg := config.DefaultConfigWithDefaults()
-	cfg.Settings.Language = "es"
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save es config: %v", err)
-	}
-	const assetName = "upp-linux-amd64.tar.gz"
-	asset := cliArchive(t, assetName, "NEW-BINARY")
-	checksums := []byte(cliChecksumLine(t, asset, assetName))
-	ts := selfUpdateServer(t, "v0.1.1", asset, checksums, nil)
-	defer ts.Close()
-	bin := fakeBinary(t, "OLD-BINARY")
-
-	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "n\n", bin)); err != nil {
-			t.Fatalf("flow should exit 0, got: %v", err)
-		}
-	})
-
-	if !strings.Contains(output, "¿Actualizar upp de v0.1.0 a v0.1.1?") {
-		t.Errorf("prompt should follow the configured language, got: %q", output)
-	}
-	if !strings.Contains(output, "Destino:") {
-		t.Errorf("target line should be localized, got: %q", output)
 	}
 }

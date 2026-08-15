@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/selfupdate"
@@ -76,13 +75,10 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 		deps.execPath = os.Executable
 	}
 
-	lang := selfUpdateLanguage()
-	s := output.GetStrings(lang)
-
 	// --ci denies always, before any work: never auto-proceed, never
 	// hang, no network (spec Confirmation Gate + flag semantics).
 	if gf.CI {
-		return fmt.Errorf("%s: %w", s.SelfUpdateDeniedCI, selfupdate.ErrDeniedCI)
+		return fmt.Errorf("%s: %w", "self-update denied in --ci mode; run upp self-update interactively to confirm", selfupdate.ErrDeniedCI)
 	}
 
 	current, err := selfupdate.Parse(version)
@@ -92,7 +88,7 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	// Development builds: informational exit 0, no update claim, no
 	// network (spec R1).
 	if current.Dev || current.Dirty {
-		r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
+		r := output.NewRenderer(os.Stdout, gf.Quiet)
 		r.SelfUpdateDevBuild()
 		return nil
 	}
@@ -113,13 +109,13 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	case errors.Is(err, selfupdate.ErrUpToDate):
 		// Up to date: latest lookup happened (1 request), no download
 		// (spec R1).
-		r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
+		r := output.NewRenderer(os.Stdout, gf.Quiet)
 		r.SelfUpdateUpToDate(formatVersion(current))
 		return nil
 	case errors.Is(err, selfupdate.ErrUnsupportedPlatform):
 		// Windows (and any other unmapped platform): clear
 		// not-supported-yet refusal, nothing modified (spec R7).
-		return fmt.Errorf("%s: %w", s.SelfUpdateUnsupported, err)
+		return fmt.Errorf("%s: %w", "self-update is not supported on this platform yet", err)
 	case err != nil:
 		// Network failures, checksum mismatches, etc.: propagate with
 		// their clear package error (spec R2/R4).
@@ -140,10 +136,10 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	// Confirmation gate (design D8): TTY only. Non-TTY stdin never
 	// hangs, never auto-proceeds, never silently skips.
 	if !deps.isTTY() {
-		return fmt.Errorf("%s: %w", s.SelfUpdateDeniedNotTTY, selfupdate.ErrNotTTY)
+		return fmt.Errorf("%s: %w", "self-update requires an interactive terminal; run upp self-update in a terminal", selfupdate.ErrNotTTY)
 	}
 
-	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
+	r := output.NewRenderer(os.Stdout, gf.Quiet)
 	if !confirmReplace(r, deps.stdin, formatVersion(current), rel.Tag, target) {
 		return nil // declined: nothing modified, exit 0 (spec R7)
 	}
@@ -153,17 +149,6 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	}
 	r.SelfUpdateDone(formatVersion(current), rel.Tag)
 	return nil
-}
-
-// selfUpdateLanguage returns the configured language for self-update
-// messages, defaulting to English when the config is missing or broken:
-// self-update must stay usable regardless of config state.
-func selfUpdateLanguage() string {
-	cfg, err := config.Load()
-	if err == nil && cfg != nil {
-		return cfg.Settings.Language
-	}
-	return "en"
 }
 
 // formatVersion renders a parsed Version as its vX.Y.Z tag for display.

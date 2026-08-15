@@ -100,7 +100,6 @@ func TestInitProbe_ExistingConfig_ConfirmedOverwrites(t *testing.T) {
 	probeHome(t)
 
 	cfg := config.DefaultConfig()
-	cfg.Settings.Language = "es"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -111,12 +110,5 @@ func TestInitProbe_ExistingConfig_ConfirmedOverwrites(t *testing.T) {
 	}
 	if !strings.Contains(out, "Config written to") {
 		t.Errorf("confirmed overwrite should regenerate config, got: %q", out)
-	}
-	loaded, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Settings.Language == "es" {
-		t.Error("confirmed overwrite should regenerate config from fresh detection, not keep old settings")
 	}
 }
