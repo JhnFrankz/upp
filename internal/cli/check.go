@@ -91,7 +91,7 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusFailed,
-				Error:  err,
+				Error:  timeoutErr(info.Name, "check", err),
 			})
 			continue
 		}
