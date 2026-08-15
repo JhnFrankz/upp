@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -22,7 +24,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Apply updates to enabled tools",
 		Long:  "Process each enabled tool: detect, check, confirm, and update.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdate(gf, uf)
+			return runUpdate(gf, uf, updateDeps{})
 		},
 	}
 
@@ -31,7 +33,26 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
+// updateDeps carries the injectable seam for runUpdate (design D5), mirroring
+// checkDeps/selfUpdateDeps. The zero value uses the production adapter list
+// builder.
+type updateDeps struct {
+	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
+}
+
+// gatedOfficialAdapters lists the official adapters whose check() performs
+// real update detection; update() for these runs only when check() reported
+// an update available. Adapters absent from this set (brew, bun, docker, gh,
+// go, opencode) have no update detection and always update by design, as do
+// winget/scoop (UpdateAvailable=true) and custom adapters.
+var gatedOfficialAdapters = map[string]bool{
+	"apt":  true,
+	"npm":  true,
+	"nvm":  true,
+	"pnpm": true,
+}
+
+func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("cannot load config: %w", err)
@@ -41,7 +62,10 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 	if err != nil {
 		return fmt.Errorf("cannot detect platform: %w", err)
 	}
-	adapterList := buildAdapterList(cfg, p.OS)
+	if deps.buildAdapterList == nil {
+		deps.buildAdapterList = buildAdapterList
+	}
+	adapterList := deps.buildAdapterList(cfg, p.OS)
 
 	toolIDs := adapterIDs(adapterList)
 	onlyList, skipList := ParseFilter(gf.Only, gf.Skip)
@@ -92,7 +116,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusFailed,
-				Error:  err,
+				Error:  timeoutErr(info.Name, "check", err),
 			})
 			hasFailure = true
 			continue
@@ -151,13 +175,27 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 			continue
 		}
 
+		// Gate: official adapters with real update detection update only
+		// when check() reported an update available (design D4, spec Update
+		// Gating). Only the dynamic-detection adapters are gated; adapters
+		// without update detection (brew, bun, docker, gh, go, opencode) and
+		// winget/scoop always update by design, as do custom adapters.
+		if info.Trust == adapters.TrustOfficial && gatedOfficialAdapters[info.ID] && !updateInfo.UpdateAvailable {
+			results = append(results, output.ToolResult{
+				Name:    info.Name,
+				Status:  output.StatusCurrent,
+				Version: updateInfo.CurrentVersion,
+			})
+			continue
+		}
+
 		// Update
 		result, err := a.Update(false)
 		if err != nil {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusFailed,
-				Error:  err,
+				Error:  timeoutErr(info.Name, "update", err),
 			})
 			hasFailure = true
 			continue
@@ -177,7 +215,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusFailed,
-				Error:  errMsg,
+				Error:  timeoutErr(info.Name, "update", errMsg),
 			})
 			hasFailure = true
 		}
@@ -195,4 +233,19 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags) error {
 	}
 
 	return nil
+}
+
+// timeoutErr maps a context deadline exceeded onto a structured error naming
+// the tool, operation, and timeout limit (design D3, spec Subprocess
+// Timeouts). Non-timeout errors pass through unchanged; the %w chain
+// preserves errors.Is detection.
+func timeoutErr(name, op string, err error) error {
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	limit := adapters.UpdateTimeout
+	if op == "check" {
+		limit = adapters.CheckTimeout
+	}
+	return fmt.Errorf("%s %s timed out after %s: %w", name, op, limit, err)
 }
