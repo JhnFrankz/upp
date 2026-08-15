@@ -24,7 +24,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Apply updates to enabled tools",
 		Long:  "Process each enabled tool: detect, check, confirm, and update.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdate(gf, uf, updateDeps{})
+			return runUpdate(gf, uf, cliDeps.update)
 		},
 	}
 

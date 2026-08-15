@@ -103,7 +103,9 @@ const enHintLine = "⬆️ upp v0.1.1 available (current v0.1.0) — run \"upp s
 // must not even construct a client — the factory failing on any call
 // proves it, and runCheck still exits 0.
 func TestCheckHint_DefaultOff_ZeroNetwork(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // no config file at all → defaults
+	// Empty [settings] keeps check_self_update off; every catalog tool is
+	// written disabled so the check loop is hermetic (writeCheckConfig).
+	writeCheckConfig(t, "")
 
 	ts := httptest.NewServer(httpNotFoundHandler())
 	defer ts.Close()

@@ -22,7 +22,7 @@ func NewCheckCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Check for available updates (read-only)",
 		Long:  "Query each enabled tool for updates without making any changes.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheck(gf, cmd.Root().Version, checkDeps{})
+			return runCheck(gf, cmd.Root().Version, cliDeps.check)
 		},
 	}
 }
@@ -37,6 +37,9 @@ const selfUpdateCacheFile = "self-update-cache.json"
 // at {config-dir}/self-update-cache.json.
 type checkDeps struct {
 	clientFactory func(cachePath string) *selfupdate.Client
+	// buildAdapterList mirrors updateDeps (update.go). The zero value
+	// uses the production builder.
+	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
 }
 
 func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
@@ -49,7 +52,10 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 	if err != nil {
 		return fmt.Errorf("cannot detect platform: %w", err)
 	}
-	adapterList := buildAdapterList(cfg, p.OS)
+	if deps.buildAdapterList == nil {
+		deps.buildAdapterList = buildAdapterList
+	}
+	adapterList := deps.buildAdapterList(cfg, p.OS)
 
 	toolIDs := adapterIDs(adapterList)
 	onlyList, skipList := ParseFilter(gf.Only, gf.Skip)

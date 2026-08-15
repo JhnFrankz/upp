@@ -41,7 +41,7 @@ func NewSelfUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Long: "Check for a newer upp release, verify its sha256 checksum, and replace the current binary after confirmation. " +
 			"--only and --skip are ignored: they filter tools for update/check, not releases.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSelfUpdate(gf, cmd.Root().Version, selfUpdateDeps{})
+			return runSelfUpdate(gf, cmd.Root().Version, cliDeps.selfUpdate)
 		},
 	}
 }

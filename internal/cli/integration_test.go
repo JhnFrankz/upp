@@ -14,40 +14,20 @@ import (
 	"github.com/JhnFrankz/upp/internal/config"
 )
 
-// --- Mock Adapter ---
+// --- Helper: inject package-level deps ---
 
-// mockAdapter is a test double that implements adapters.Adapter.
-type mockAdapter struct {
-	name       string
-	detect     bool
-	updateInfo adapters.UpdateInfo
-	checkErr   error
-	result     adapters.Result
-	updateErr  error
-}
-
-func (m *mockAdapter) Name() string { return m.name }
-
-func (m *mockAdapter) Detect() bool { return m.detect }
-
-func (m *mockAdapter) Check() (adapters.UpdateInfo, error) {
-	return m.updateInfo, m.checkErr
-}
-
-func (m *mockAdapter) Update(dryRun bool) (adapters.Result, error) {
-	if dryRun {
-		return adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"}, nil
-	}
-	return m.result, m.updateErr
-}
-
-func (m *mockAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:        m.name,
-		Name:      m.name,
-		Platforms: []string{"linux", "darwin", "windows"},
-		Trust:     adapters.TrustOfficial,
-	}
+// setCLIDeps swaps the package-level cliDeps var for the duration of the
+// test, restoring the previous value on cleanup. Unset fields keep the
+// production (zero) behavior. Sequential-only: no t.Parallel exists in this
+// package — adding any requires synchronization (see deps.go).
+func setCLIDeps(t *testing.T, check checkDeps, update updateDeps, list listDeps, selfUpdate selfUpdateDeps) {
+	t.Helper()
+	prev := cliDeps
+	cliDeps.check = check
+	cliDeps.update = update
+	cliDeps.list = list
+	cliDeps.selfUpdate = selfUpdate
+	t.Cleanup(func() { cliDeps = prev })
 }
 
 // --- Helper: capture stdout ---
@@ -311,6 +291,13 @@ func TestListCommand_NoConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
+	fake := &fakeUpdateAdapter{
+		name:  "apt",
+		trust: adapters.TrustOfficial,
+		info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	setCLIDeps(t, checkDeps{}, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(fake)}, selfUpdateDeps{})
+
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
@@ -329,6 +316,13 @@ func TestListCommand_NoConfig(t *testing.T) {
 func TestCheckCommand_NoConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+
+	fake := &fakeUpdateAdapter{
+		name:  "apt",
+		trust: adapters.TrustOfficial,
+		info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fake)}, updateDeps{}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -392,29 +386,14 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	// Create a mock script so the tool is detectable
-	mockDir := filepath.Join(tmpDir, "bin")
-	if err := os.MkdirAll(mockDir, 0o755); err != nil {
-		t.Fatal(err)
+	// Untrusted custom tool with command chaining → Medium risk, which CI
+	// rejects under D4 (an untrusted CI low-risk command would auto-proceed).
+	fake := &fakeUpdateAdapter{
+		name:    "untrusted-tool",
+		trust:   adapters.TrustCustomUntrusted,
+		command: "untrusted-tool --update && echo done",
 	}
-	mockScript := filepath.Join(mockDir, "untrusted-tool")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\necho 1.0.0"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Prepend mock dir to PATH
-	t.Setenv("PATH", mockDir+":"+os.Getenv("PATH"))
-
-	cfg := config.DefaultConfigWithDefaults()
-	cfg.Custom["untrusted-tool"] = config.CustomTool{
-		// Medium risk (command chaining) so CI rejects it under D4 —
-		// an untrusted CI low-risk command would now auto-proceed.
-		Command: "untrusted-tool --update && echo done",
-		Trusted: false,
-	}
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save config: %v", err)
-	}
+	setCLIDeps(t, checkDeps{}, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	// In CI mode, update should fail because untrusted tool can't be confirmed
 	root, gf := BuildRoot()
@@ -426,6 +405,9 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 	if err == nil {
 		t.Error("update --ci with untrusted tool should fail")
 	}
+	if fake.updated {
+		t.Error("untrusted tool must not execute in CI mode")
+	}
 }
 
 // --- Dry-Run Integration Test ---
@@ -434,10 +416,16 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	cfg := config.DefaultConfigWithDefaults()
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save config: %v", err)
+	fake := &fakeUpdateAdapter{
+		name:  "apt",
+		trust: adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
 	}
+	setCLIDeps(t, checkDeps{}, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -449,15 +437,18 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 	if !strings.Contains(output, "Dry run") {
 		t.Errorf("dry-run output should contain 'Dry run', got: %q", output)
 	}
+	if fake.updated {
+		t.Error("dry run must not execute updates (Update was called)")
+	}
 }
 
 // --- AdapterIDs Integration Test ---
 
 func TestAdapterIDs(t *testing.T) {
 	adapterList := []adapters.Adapter{
-		&mockAdapter{name: "apt"},
-		&mockAdapter{name: "brew"},
-		&mockAdapter{name: "npm"},
+		&fakeUpdateAdapter{name: "apt"},
+		&fakeUpdateAdapter{name: "brew"},
+		&fakeUpdateAdapter{name: "npm"},
 	}
 
 	ids := adapterIDs(adapterList)
@@ -471,8 +462,8 @@ func TestAdapterIDs(t *testing.T) {
 
 func TestAdapterByID(t *testing.T) {
 	adapterList := []adapters.Adapter{
-		&mockAdapter{name: "apt"},
-		&mockAdapter{name: "brew"},
+		&fakeUpdateAdapter{name: "apt"},
+		&fakeUpdateAdapter{name: "brew"},
 	}
 
 	m := adapterByID(adapterList)
@@ -493,10 +484,14 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	cfg := config.DefaultConfigWithDefaults()
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save config: %v", err)
+	// Two tools so progress WOULD print without --quiet (multi-tool loop).
+	fakes := []*fakeUpdateAdapter{
+		{name: "apt", trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
+		{name: "npm", trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
 	}
+	setCLIDeps(t, checkDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+		return []adapters.Adapter{fakes[0], fakes[1]}
+	}}, updateDeps{}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -607,10 +602,16 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	cfg := config.DefaultConfigWithDefaults()
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	fake := &fakeUpdateAdapter{
+		name:  "apt",
+		trust: adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
 	}
+	setCLIDeps(t, checkDeps{}, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -764,7 +765,22 @@ func TestInitCheckUpdateLifecycle(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	// Step 1: init --ci
+	fake := &fakeUpdateAdapter{
+		name:  "apt",
+		trust: adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+	}
+	setCLIDeps(t,
+		checkDeps{buildAdapterList: fakeAdapterList(fake)},
+		updateDeps{buildAdapterList: fakeAdapterList(fake)},
+		listDeps{},
+		selfUpdateDeps{})
+
+	// Step 1: init --ci (real runInit — LookPath-only, no subprocesses)
 	withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
@@ -907,10 +923,12 @@ func TestCheckCommand_SummaryOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
-	cfg := config.DefaultConfigWithDefaults()
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	fake := &fakeUpdateAdapter{
+		name:  "apt",
+		trust: adapters.TrustOfficial,
+		info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
+	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fake)}, updateDeps{}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
