@@ -319,7 +319,8 @@ func TestLoadPartialConfig_CatalogDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() on partial config should not error: %v", err)
 	}
-	// Explicit setting preserved; tool sections default to the catalog.
+	// Unknown settings (e.g. a leftover language key) are tolerated and
+	// ignored; tool sections default to the catalog.
 	if len(cfg.Tools) == 0 {
 		t.Error("partial config: tool sections should default to the platform catalog")
 	}

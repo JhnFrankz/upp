@@ -408,9 +408,9 @@ func (r *Renderer) InitConfigGenerated(path string) {
 // Proceed question. It is never suppressed by quiet mode (spec flag
 // semantics: --quiet must not hide the confirm prompt).
 func (r *Renderer) SelfUpdatePrompt(current, latest, target string) {
-	_, _ = fmt.Fprintf(r.w, "  %s\n", fmt.Sprintf("Update upp from %s to %s?", current, latest))
-	_, _ = fmt.Fprintf(r.w, "    %s\n", fmt.Sprintf("Target: %s", target))
-	_, _ = fmt.Fprintf(r.w, "  %s", "Proceed? [y/N] ")
+	_, _ = fmt.Fprintf(r.w, "  Update upp from %s to %s?\n", current, latest)
+	_, _ = fmt.Fprintf(r.w, "    Target: %s\n", target)
+	_, _ = fmt.Fprint(r.w, "  Proceed? [y/N] ")
 }
 
 // SelfUpdateDevBuild prints the development-build message (spec R1:

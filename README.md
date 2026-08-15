@@ -123,7 +123,6 @@ Config file: `~/.config/upp/config.toml` on Linux/macOS, `%APPDATA%/upp/config.t
 version = 1
 
 [settings]
-language = "en"          # output language ("en" or "es")
 interactive = true       # prompt before each update
 check_self_update = false  # opt-in update hint after check/bare upp (default: off, zero network)
 
