@@ -107,10 +107,11 @@ func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *NVMAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "nvm",
-		Name:      "Node Version Manager",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "nvm",
+		Name:         "Node Version Manager",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyGated,
 	}
 }
 

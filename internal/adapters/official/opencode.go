@@ -78,10 +78,11 @@ func (a *OpenCodeAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "opencode",
-		Name:      "OpenCode",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "opencode",
+		Name:         "OpenCode",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }
 

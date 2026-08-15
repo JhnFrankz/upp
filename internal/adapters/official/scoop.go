@@ -72,9 +72,10 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *ScoopAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "scoop",
-		Name:      "Scoop",
-		Platforms: []string{"windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "scoop",
+		Name:         "Scoop",
+		Platforms:    []string{"windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }

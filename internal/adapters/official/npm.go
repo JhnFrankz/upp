@@ -85,9 +85,10 @@ func (a *NpmAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *NpmAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "npm",
-		Name:      "npm",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "npm",
+		Name:         "npm",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyGated,
 	}
 }

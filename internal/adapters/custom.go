@@ -98,12 +98,13 @@ func (c *CustomAdapter) Info() ToolInfo {
 	}
 
 	return ToolInfo{
-		ID:         c.id,
-		Name:       c.id,
-		Platforms:  []string{"linux", "darwin", "windows"},
-		Trust:      trust,
-		Command:    c.command,
-		Privileges: detectPrivileges(c.command),
+		ID:           c.id,
+		Name:         c.id,
+		Platforms:    []string{"linux", "darwin", "windows"},
+		Trust:        trust,
+		UpdatePolicy: PolicyAlwaysUpdate,
+		Command:      c.command,
+		Privileges:   detectPrivileges(c.command),
 	}
 }
 

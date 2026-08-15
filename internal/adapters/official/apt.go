@@ -91,10 +91,11 @@ func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *AptAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "apt",
-		Name:      "APT Package Manager",
-		Platforms: []string{"linux"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "apt",
+		Name:         "APT Package Manager",
+		Platforms:    []string{"linux"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyGated,
 	}
 }
 

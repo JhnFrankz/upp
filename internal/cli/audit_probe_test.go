@@ -24,6 +24,7 @@ import (
 func TestProbe_TrustedCustomHighRisk_CI(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:       "evil-tool",
+		policy:     adapters.PolicyAlwaysUpdate,
 		trust:      adapters.TrustCustomTrusted,
 		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
 		privileges: []string{"sudo"},
@@ -43,6 +44,7 @@ func TestProbe_TrustedCustomHighRisk_CI(t *testing.T) {
 func TestProbe_TrustedCustomHighRisk_Interactive(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:       "evil-tool",
+		policy:     adapters.PolicyAlwaysUpdate,
 		trust:      adapters.TrustCustomTrusted,
 		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
 		privileges: []string{"sudo"},
@@ -62,6 +64,7 @@ func TestProbe_TrustedCustomHighRisk_Interactive(t *testing.T) {
 func TestProbe_UntrustedCustomHighRisk_Interactive(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:       "evil-tool",
+		policy:     adapters.PolicyAlwaysUpdate,
 		trust:      adapters.TrustCustomUntrusted,
 		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
 		privileges: []string{"sudo"},
@@ -80,6 +83,7 @@ func TestProbe_UntrustedCustomHighRisk_Interactive(t *testing.T) {
 func TestProbe_TrustedLowRisk_Executes(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:    "evil-tool",
+		policy:  adapters.PolicyAlwaysUpdate,
 		trust:   adapters.TrustCustomTrusted,
 		command: "harmless-tool --version",
 		result:  adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
@@ -100,6 +104,7 @@ func TestProbe_TrustedLowRisk_Executes(t *testing.T) {
 func TestProbe_QuietMediumRisk_StillPrompts(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:    "evil-tool",
+		policy:  adapters.PolicyAlwaysUpdate,
 		trust:   adapters.TrustCustomUntrusted,
 		command: "evil-tool --update && echo done",
 	}

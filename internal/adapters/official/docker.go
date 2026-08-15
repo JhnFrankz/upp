@@ -100,9 +100,10 @@ func (a *DockerAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *DockerAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:        "docker",
-		Name:      "Docker",
-		Platforms: []string{"linux", "macos", "windows"},
-		Trust:     adapters.TrustOfficial,
+		ID:           "docker",
+		Name:         "Docker",
+		Platforms:    []string{"linux", "macos", "windows"},
+		Trust:        adapters.TrustOfficial,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 	}
 }
