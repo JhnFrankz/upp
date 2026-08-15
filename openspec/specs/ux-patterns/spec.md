@@ -22,12 +22,11 @@ The system MUST be interactive by default. Official tool updates MUST NOT prompt
 
 ### Requirement: Output Language
 
-The system MUST output in English by default. Output language MUST be configurable via `settings.language` in config.
+The system MUST output in English only. Output language is NOT configurable: the `[settings]` section MUST NOT carry an output-language key (see config-system), and a stray `language` key in an existing config file is ignored.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Default language | No language setting | Any command | English output |
-| Spanish config | `language = "es"` | Any command | Spanish output |
+| Any command | Any config state | Any command | English output |
 
 ### Requirement: Color and Emoji
 

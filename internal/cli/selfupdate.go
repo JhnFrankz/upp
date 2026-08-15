@@ -78,7 +78,7 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	// --ci denies always, before any work: never auto-proceed, never
 	// hang, no network (spec Confirmation Gate + flag semantics).
 	if gf.CI {
-		return fmt.Errorf("%s: %w", "self-update denied in --ci mode; run upp self-update interactively to confirm", selfupdate.ErrDeniedCI)
+		return fmt.Errorf("self-update denied in --ci mode; run upp self-update interactively to confirm: %w", selfupdate.ErrDeniedCI)
 	}
 
 	current, err := selfupdate.Parse(version)
@@ -115,7 +115,7 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	case errors.Is(err, selfupdate.ErrUnsupportedPlatform):
 		// Windows (and any other unmapped platform): clear
 		// not-supported-yet refusal, nothing modified (spec R7).
-		return fmt.Errorf("%s: %w", "self-update is not supported on this platform yet", err)
+		return fmt.Errorf("self-update is not supported on this platform yet: %w", err)
 	case err != nil:
 		// Network failures, checksum mismatches, etc.: propagate with
 		// their clear package error (spec R2/R4).
@@ -136,7 +136,7 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	// Confirmation gate (design D8): TTY only. Non-TTY stdin never
 	// hangs, never auto-proceeds, never silently skips.
 	if !deps.isTTY() {
-		return fmt.Errorf("%s: %w", "self-update requires an interactive terminal; run upp self-update in a terminal", selfupdate.ErrNotTTY)
+		return fmt.Errorf("self-update requires an interactive terminal; run upp self-update in a terminal: %w", selfupdate.ErrNotTTY)
 	}
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
