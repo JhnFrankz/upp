@@ -69,11 +69,7 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 		}
 	}
 
-	lang := "en"
-	if cfg != nil {
-		lang = cfg.Settings.Language
-	}
-	r := output.NewRendererWithLang(os.Stdout, gf.Quiet, lang)
+	r := output.NewRenderer(os.Stdout, gf.Quiet)
 
 	var results []output.ToolResult
 	total := len(filteredAdapters)

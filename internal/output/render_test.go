@@ -307,7 +307,7 @@ func TestProgress_MultiTool(t *testing.T) {
 
 func TestSelfUpdatePrompt(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, false, "en")
+	r := NewRenderer(&buf, false)
 	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
 
 	want := "  Update upp from v0.1.0 to v0.1.1?\n    Target: /home/u/.local/bin/upp\n  Proceed? [y/N] "
@@ -316,20 +316,9 @@ func TestSelfUpdatePrompt(t *testing.T) {
 	}
 }
 
-func TestSelfUpdatePrompt_Spanish(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, false, "es")
-	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
-
-	want := "  ¿Actualizar upp de v0.1.0 a v0.1.1?\n    Destino: /home/u/.local/bin/upp\n  ¿Proceder? [s/N] "
-	if got := buf.String(); got != want {
-		t.Errorf("prompt = %q, want %q", got, want)
-	}
-}
-
 func TestSelfUpdatePrompt_QuietNeverSuppresses(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, true, "en")
+	r := NewRenderer(&buf, true)
 	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
 
 	if got := buf.String(); !strings.Contains(got, "Proceed?") {
@@ -339,7 +328,7 @@ func TestSelfUpdatePrompt_QuietNeverSuppresses(t *testing.T) {
 
 func TestSelfUpdateMessages(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, false, "en")
+	r := NewRenderer(&buf, false)
 	r.SelfUpdateDevBuild()
 	r.SelfUpdateUpToDate("v0.1.1")
 	r.SelfUpdateDone("v0.1.0", "v0.1.1")
@@ -352,38 +341,12 @@ func TestSelfUpdateMessages(t *testing.T) {
 	}
 }
 
-func TestSelfUpdateMessages_Spanish(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, false, "es")
-	r.SelfUpdateDevBuild()
-	r.SelfUpdateUpToDate("v0.1.1")
-	r.SelfUpdateDone("v0.1.0", "v0.1.1")
-
-	want := "build de desarrollo; self-update solo está disponible en builds de release\n" +
-		"ya actualizado (v0.1.1)\n" +
-		"upp actualizado: v0.1.0 → v0.1.1\n"
-	if got := buf.String(); got != want {
-		t.Errorf("messages = %q, want %q", got, want)
-	}
-}
-
 func TestSelfUpdateHint(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, false, "en")
+	r := NewRenderer(&buf, false)
 	r.SelfUpdateHint("v0.1.0", "v0.1.1")
 
 	want := "⬆️ upp v0.1.1 available (current v0.1.0) — run \"upp self-update\"\n"
-	if got := buf.String(); got != want {
-		t.Errorf("hint = %q, want %q", got, want)
-	}
-}
-
-func TestSelfUpdateHint_Spanish(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, false, "es")
-	r.SelfUpdateHint("v0.1.0", "v0.1.1")
-
-	want := "⬆️ upp v0.1.1 disponible (actual v0.1.0) — ejecuta \"upp self-update\"\n"
 	if got := buf.String(); got != want {
 		t.Errorf("hint = %q, want %q", got, want)
 	}
@@ -394,7 +357,7 @@ func TestSelfUpdateHint_Spanish(t *testing.T) {
 // (unlike the confirm prompt, which quiet never suppresses).
 func TestSelfUpdateHint_QuietSuppresses(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererWithLang(&buf, true, "en")
+	r := NewRenderer(&buf, true)
 	r.SelfUpdateHint("v0.1.0", "v0.1.1")
 
 	if got := buf.String(); got != "" {

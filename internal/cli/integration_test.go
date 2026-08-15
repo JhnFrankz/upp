@@ -226,7 +226,6 @@ func TestExportImport_RoundTrip(t *testing.T) {
 
 	// Create initial config
 	cfg := config.DefaultConfigWithDefaults()
-	cfg.Settings.Language = "es"
 	cfg.Settings.Interactive = false
 	cfg.Custom["test-tool"] = config.CustomTool{
 		Command:  "test-tool --update",
@@ -271,9 +270,6 @@ func TestExportImport_RoundTrip(t *testing.T) {
 		t.Fatalf("Load imported config: %v", err)
 	}
 
-	if loaded.Settings.Language != "es" {
-		t.Errorf("imported language = %q, want %q", loaded.Settings.Language, "es")
-	}
 	if loaded.Settings.Interactive {
 		t.Error("imported interactive should be false")
 	}
@@ -547,7 +543,6 @@ func TestComplexConfigRoundTrip(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfig()
-	cfg.Settings.Language = "es"
 	cfg.Settings.Interactive = false
 	cfg.Tools["apt"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux"}}
 	cfg.Tools["npm"] = config.ToolConfig{Enabled: false}
@@ -571,9 +566,6 @@ func TestComplexConfigRoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if loaded.Settings.Language != "es" {
-		t.Errorf("language = %q, want %q", loaded.Settings.Language, "es")
-	}
 	if loaded.Settings.Interactive {
 		t.Error("interactive should be false")
 	}
@@ -708,7 +700,7 @@ func TestConfigVersion_InvalidVersions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
 				Version:  tt.version,
-				Settings: config.Settings{Language: "en"},
+				Settings: config.Settings{},
 				Tools:    make(map[string]config.ToolConfig),
 				Custom:   make(map[string]config.CustomTool),
 			}
@@ -725,7 +717,7 @@ func TestConfigVersion_InvalidVersions(t *testing.T) {
 func TestCustomTool_MissingCommand(t *testing.T) {
 	cfg := &config.Config{
 		Version:  1,
-		Settings: config.Settings{Language: "en"},
+		Settings: config.Settings{},
 		Tools:    make(map[string]config.ToolConfig),
 		Custom: map[string]config.CustomTool{
 			"mytool": {Command: ""},

@@ -23,8 +23,7 @@ type Config struct {
 
 // Settings holds global preferences.
 type Settings struct {
-	Language    string `toml:"language"`
-	Interactive bool   `toml:"interactive"`
+	Interactive bool `toml:"interactive"`
 	// CheckSelfUpdate opts into the update-detection hint at the end of
 	// check/bare upp output (spec config-system). Default false: with
 	// default config, check performs ZERO self-update network calls.
@@ -49,7 +48,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: ConfigVersion,
 		Settings: Settings{
-			Language:        "en",
 			Interactive:     true,
 			CheckSelfUpdate: false, // opt-in hint: default OFF (spec config-system)
 		},
@@ -167,10 +165,6 @@ func Save(cfg *Config) error {
 func Validate(cfg *Config) error {
 	if cfg.Version < 1 {
 		return fmt.Errorf("config version must be >= 1, got %d", cfg.Version)
-	}
-
-	if cfg.Settings.Language == "" {
-		cfg.Settings.Language = "en"
 	}
 
 	// Detect current platform for compatibility checks

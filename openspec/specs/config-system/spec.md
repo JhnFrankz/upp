@@ -25,7 +25,6 @@ Minimum config structure:
 
 ```toml
 [settings]
-language = "en"          # output language
 interactive = true       # prompt before updates
 
 [tools]
@@ -42,6 +41,11 @@ interactive = true       # prompt before updates
   command = "mytool --update"
   trusted = false
 ```
+
+The `[settings]` section MUST NOT contain an output-language key: upp output is
+English-only. A `language` key in an existing config file is ignored (unknown
+settings are tolerated for forward compatibility) and MUST NOT be written by
+`upp init`, `upp export`, or `upp import`.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|

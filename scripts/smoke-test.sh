@@ -241,9 +241,9 @@ rm -rf "$TMPDIR_LOAD"
 TMPDIR_LOAD=$(mktemp -d)
 export HOME="$TMPDIR_LOAD"
 mkdir -p "$HOME/.config/upp"
-printf 'version = 1\n\n[settings]\nlanguage = "es"\n' > "$HOME/.config/upp/config.toml"
+printf 'version = 1\n\n[settings]\ninteractive = false\n' > "$HOME/.config/upp/config.toml"
 run_test_with_output "upp export (partial config → catalog defaults)" "tools.apt" "$BINARY" export
-run_test_with_output "upp export (partial config preserves explicit settings)" 'language = "es"' "$BINARY" export
+run_test_with_output "upp export (partial config preserves explicit settings)" 'interactive = false' "$BINARY" export
 export HOME="${HOME_ORIG:-$HOME}"
 rm -rf "$TMPDIR_LOAD"
 

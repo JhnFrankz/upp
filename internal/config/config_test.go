@@ -12,9 +12,6 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Version != 1 {
 		t.Errorf("expected version 1, got %d", cfg.Version)
 	}
-	if cfg.Settings.Language != "en" {
-		t.Errorf("expected language 'en', got %q", cfg.Settings.Language)
-	}
 	if !cfg.Settings.Interactive {
 		t.Error("expected interactive to be true")
 	}
@@ -44,7 +41,7 @@ func TestValidate(t *testing.T) {
 			name: "invalid version",
 			cfg: &Config{
 				Version:  0,
-				Settings: Settings{Language: "en"},
+				Settings: Settings{},
 			},
 			wantErr: true,
 		},
@@ -72,9 +69,6 @@ func TestLoadMissingFile(t *testing.T) {
 	if cfg.Version != 1 {
 		t.Errorf("expected default version 1, got %d", cfg.Version)
 	}
-	if cfg.Settings.Language != "en" {
-		t.Errorf("expected default language 'en', got %q", cfg.Settings.Language)
-	}
 }
 
 func TestLoadValidTOML(t *testing.T) {
@@ -90,7 +84,6 @@ func TestLoadValidTOML(t *testing.T) {
 version = 1
 
 [settings]
-language = "es"
 interactive = false
 
 [tools.apt]
@@ -105,9 +98,6 @@ enabled = true
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Settings.Language != "es" {
-		t.Errorf("expected language 'es', got %q", cfg.Settings.Language)
-	}
 	if cfg.Settings.Interactive {
 		t.Error("expected interactive to be false")
 	}
@@ -194,9 +184,6 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	if cfg.Tools == nil {
 		t.Fatal("ApplyDefaults should initialize Tools map")
 	}
-	if cfg.Settings.Language != "en" {
-		t.Errorf("expected default language 'en', got %q", cfg.Settings.Language)
-	}
 	// Should have tools from the platform catalog
 	if len(cfg.Tools) == 0 {
 		t.Error("expected at least one tool from platform catalog")
@@ -206,7 +193,7 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 func TestApplyDefaultsPartialConfig(t *testing.T) {
 	cfg := &Config{
 		Version:  ConfigVersion,
-		Settings: Settings{Language: "es"},
+		Settings: Settings{},
 		Tools: map[string]ToolConfig{
 			"apt": {Enabled: false},
 		},
@@ -216,9 +203,6 @@ func TestApplyDefaultsPartialConfig(t *testing.T) {
 	ApplyDefaults(cfg)
 
 	// User's explicit setting should be preserved
-	if cfg.Settings.Language != "es" {
-		t.Errorf("expected language 'es', got %q", cfg.Settings.Language)
-	}
 
 	// User's explicit tool config should be preserved
 	if cfg.Tools["apt"].Enabled {
@@ -316,9 +300,6 @@ func TestLoadEmptyFile_AppliesDefaults(t *testing.T) {
 	if len(cfg.Tools) == 0 {
 		t.Error("empty existing file should get platform catalog defaults")
 	}
-	if cfg.Settings.Language != "en" {
-		t.Errorf("empty existing file should default language to 'en', got %q", cfg.Settings.Language)
-	}
 }
 
 func TestLoadPartialConfig_CatalogDefaults(t *testing.T) {
@@ -339,9 +320,6 @@ func TestLoadPartialConfig_CatalogDefaults(t *testing.T) {
 		t.Fatalf("Load() on partial config should not error: %v", err)
 	}
 	// Explicit setting preserved; tool sections default to the catalog.
-	if cfg.Settings.Language != "es" {
-		t.Errorf("partial config: expected language 'es' preserved, got %q", cfg.Settings.Language)
-	}
 	if len(cfg.Tools) == 0 {
 		t.Error("partial config: tool sections should default to the platform catalog")
 	}
@@ -352,7 +330,6 @@ func TestLoadFullConfig_AsIs(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	orig := DefaultConfigWithDefaults()
-	orig.Settings.Language = "es"
 	orig.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
 	if err := Save(orig); err != nil {
 		t.Fatal(err)
@@ -361,9 +338,6 @@ func TestLoadFullConfig_AsIs(t *testing.T) {
 	loaded, err := Load()
 	if err != nil {
 		t.Fatalf("Load() on full config should not error: %v", err)
-	}
-	if loaded.Settings.Language != "es" {
-		t.Errorf("full config: expected language 'es', got %q", loaded.Settings.Language)
 	}
 	if len(loaded.Tools) != len(orig.Tools) {
 		t.Errorf("full config: defaults must not add tools (got %d, want %d)", len(loaded.Tools), len(orig.Tools))
@@ -431,7 +405,6 @@ func TestImportFromFile(t *testing.T) {
 	tomlContent := `version = 1
 
 [settings]
-language = "es"
 interactive = false
 
 [tools.apt]
@@ -449,9 +422,6 @@ enabled = false
 		t.Fatalf("ImportFromFile() error: %v", err)
 	}
 
-	if cfg.Settings.Language != "es" {
-		t.Errorf("expected language 'es', got %q", cfg.Settings.Language)
-	}
 	if cfg.Settings.Interactive {
 		t.Error("expected interactive to be false")
 	}
@@ -492,7 +462,6 @@ func TestRoundTrip(t *testing.T) {
 
 	// Create original config
 	original := DefaultConfig()
-	original.Settings.Language = "es"
 	original.Settings.Interactive = false
 	original.Tools["apt"] = ToolConfig{Enabled: true}
 	original.Tools["npm"] = ToolConfig{Enabled: false}
@@ -567,7 +536,6 @@ func TestImportValidatesConfig(t *testing.T) {
 	tomlContent := `version = 0
 
 [settings]
-language = "en"
 `
 	if err := os.WriteFile(path, []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)

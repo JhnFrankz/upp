@@ -22,9 +22,6 @@ func ApplyDefaults(cfg *Config) {
 		}
 	}
 
-	if cfg.Settings.Language == "" {
-		cfg.Settings.Language = "en"
-	}
 }
 
 // DefaultConfigWithDefaults returns a config pre-populated with platform catalog defaults.
