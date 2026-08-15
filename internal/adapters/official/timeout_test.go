@@ -97,6 +97,40 @@ func TestRunCmdArgs_CheckTimeoutKills(t *testing.T) {
 	}
 }
 
+// TestRunCommandWithTimeout_ErrWaitDelayKillsGroup verifies the done-branch
+// fix: when the child closes its output pipes but a descendant keeps them
+// open, Wait returns ErrWaitDelay (after the 5s WaitDelay) while the
+// descendant is still alive — the helper must group-kill it instead of
+// letting it escape every kill path.
+func TestRunCommandWithTimeout_ErrWaitDelayKillsGroup(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("process-group kill verification requires linux")
+	}
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("pgrep not available")
+	}
+
+	orig := adapters.CheckTimeout
+	adapters.CheckTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { adapters.CheckTimeout = orig })
+
+	marker := "sleep 28.83" // unique marker; only this test ever runs it
+	// sh backgrounds the sleeper and exits immediately; the sleeper inherits
+	// the pipes, so Wait cannot complete before WaitDelay.
+	_, _, err := runCmdArgs("sh", "-c", marker+" &")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("runCmdArgs() error = %v, want DeadlineExceeded", err)
+	}
+
+	// WaitDelay (5s) has elapsed; the group kill ran in the done branch. Give
+	// the SIGKILL a moment to land, then prove no survivor remains.
+	time.Sleep(300 * time.Millisecond)
+	out, err := exec.Command("pgrep", "-f", marker).Output()
+	if err == nil && len(out) > 0 {
+		t.Errorf("orphaned descendant survived the ErrWaitDelay path: %s", strings.TrimSpace(string(out)))
+	}
+}
+
 // TestRunCmdArgs_GroupKillProvesGrandchildrenDie verifies that the
 // process-group kill also reaches descendants of the direct-exec seam (the
 // npm/pnpm check path): after the timeout, a unique background marker

@@ -2,7 +2,6 @@
 package adapters
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -132,11 +131,10 @@ func shellExec(command string) (string, error) {
 // pipeline/grandchild work (curl|tar, sudo apt, brew...) cannot outlive the
 // deadline. The returned error is errors.Is-detectable as
 // context.DeadlineExceeded. On Windows only the direct child is terminated.
+// Delegates to the shared RunCommandWithTimeout implementation.
 func shellExecWithTimeout(command string, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-
-	var stdoutBuf, stderrBuf bytes.Buffer
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -146,32 +144,9 @@ func shellExecWithTimeout(command string, timeout time.Duration) (string, error)
 		// Own process group so the timeout can kill shell grandchildren too.
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-	// Reap pipes even if an orphaned grandchild keeps them open.
-	cmd.WaitDelay = 5 * time.Second
 
-	if err := cmd.Start(); err != nil {
-		return strings.TrimSpace(stdoutBuf.String()), err
-	}
-
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	select {
-	case err := <-done:
-		return strings.TrimSpace(stdoutBuf.String()), err
-	case <-ctx.Done():
-		// Kill the whole process group so the actual work (grandchildren)
-		// cannot keep mutating state after the reported timeout.
-		if cmd.Process != nil && runtime.GOOS != "windows" {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		<-done // reap; WaitDelay bounds the wait if pipes are held
-		// Go's exec.Wait returns the raw exit error, so chain the deadline
-		// error to stay errors.Is(err, context.DeadlineExceeded)-detectable.
-		return strings.TrimSpace(stdoutBuf.String()), fmt.Errorf("%w: %v", ctx.Err(), "process group killed after timeout")
-	}
+	stdout, _, err := RunCommandWithTimeout(ctx, cmd)
+	return strings.TrimSpace(stdout), err
 }
 
 // extractVersionFromOutput extracts a version-like string from command output.
