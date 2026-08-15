@@ -71,17 +71,42 @@ var (
 
 		var stdoutBuf, stderrBuf bytes.Buffer
 
-		cmd := exec.CommandContext(ctx, name, args...)
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.CommandContext(ctx, name, args...)
+		} else {
+			cmd = exec.CommandContext(ctx, name, args...)
+			// Own process group so the timeout can kill descendants too
+			// (npm/pnpm workers holding the pipes): the direct child alone
+			// is not enough, exactly like runCmdFn's shell path.
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		}
 		cmd.Stdout = &stdoutBuf
 		cmd.Stderr = &stderrBuf
+		// Reap pipes even if an orphaned descendant keeps them open.
+		cmd.WaitDelay = 5 * time.Second
 
-		err = cmd.Run()
-		if err != nil && ctx.Err() != nil {
-			// See runCmdFn: chain the deadline error so timeout kills stay
-			// errors.Is(err, context.DeadlineExceeded)-detectable.
-			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
+		if err := cmd.Start(); err != nil {
+			return stdoutBuf.String(), stderrBuf.String(), err
 		}
-		return stdoutBuf.String(), stderrBuf.String(), err
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+
+		select {
+		case err := <-done:
+			return stdoutBuf.String(), stderrBuf.String(), err
+		case <-ctx.Done():
+			// Kill the whole process group so descendants cannot keep
+			// holding the pipes (hanging cmd.Run) after the reported timeout.
+			if cmd.Process != nil && runtime.GOOS != "windows" {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			<-done // reap; WaitDelay bounds the wait if pipes are held
+			// Go's exec.Wait returns the raw exit error, so chain the deadline
+			// error to stay errors.Is(err, context.DeadlineExceeded)-detectable.
+			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), "process group killed after timeout")
+		}
 	}
 	lookPathFn = func(name string) bool {
 		_, err := exec.LookPath(name)

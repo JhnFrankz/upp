@@ -97,6 +97,36 @@ func TestRunCmdArgs_CheckTimeoutKills(t *testing.T) {
 	}
 }
 
+// TestRunCmdArgs_GroupKillProvesGrandchildrenDie verifies that the
+// process-group kill also reaches descendants of the direct-exec seam (the
+// npm/pnpm check path): after the timeout, a unique background marker
+// process spawned by the direct child must no longer exist.
+func TestRunCmdArgs_GroupKillProvesGrandchildrenDie(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("process-group kill verification requires linux")
+	}
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("pgrep not available")
+	}
+
+	orig := adapters.CheckTimeout
+	adapters.CheckTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { adapters.CheckTimeout = orig })
+
+	marker := "sleep 28.91" // unique marker; only this test ever runs it
+	_, _, err := runCmdArgs("sh", "-c", marker+" & wait")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("runCmdArgs() error = %v, want DeadlineExceeded", err)
+	}
+
+	// Give the SIGKILL a moment to land, then prove no survivor remains.
+	time.Sleep(300 * time.Millisecond)
+	out, err := exec.Command("pgrep", "-f", marker).Output()
+	if err == nil && len(out) > 0 {
+		t.Errorf("orphaned grandchild survived the timeout: %s", strings.TrimSpace(string(out)))
+	}
+}
+
 // TestRunCmd_GroupKillProvesGrandchildrenDie verifies that the process-group
 // kill reaches shell grandchildren (pipelines/&& chains), not just the direct
 // shell child: after the timeout, a unique background marker process started
