@@ -88,6 +88,33 @@ func TestCustomAdapter_Info_Trusted(t *testing.T) {
 	}
 }
 
+// TestCustomAdapter_InfoDeclaresExplicitUpdatePolicy guards the explicit
+// UpdatePolicy: PolicyAlwaysUpdate declared in CustomAdapter.Info(). The zero
+// value of UpdatePolicy is PolicyGated (policy-driven gate, PR #45), so a
+// refactor dropping the field would silently flip custom tools to gated
+// updates; this test pins the declaration to prevent that silent fallback.
+func TestCustomAdapter_InfoDeclaresExplicitUpdatePolicy(t *testing.T) {
+	tests := []struct {
+		name    string
+		trusted bool
+	}{
+		{"untrusted", false},
+		{"trusted", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ca, err := NewCustomAdapter("mytool", "mytool --update", "", tt.trusted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ca.Info().UpdatePolicy; got != PolicyAlwaysUpdate {
+				t.Errorf("Info().UpdatePolicy = %v, want PolicyAlwaysUpdate", got)
+			}
+		})
+	}
+}
+
 func TestCustomAdapter_Check_NoCheckCmd(t *testing.T) {
 	ca, err := NewCustomAdapter("mytool", "mytool --update", "", false)
 	if err != nil {
