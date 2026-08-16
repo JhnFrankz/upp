@@ -212,6 +212,34 @@ func TestBuildRoot_Flags(t *testing.T) {
 	}
 }
 
+// TestBuildRoot_BareInvocationRunsCheck locks the UX contract that a bare
+// `upp` (no subcommand) routes to the read-only status/check path — the
+// RunE wiring in BuildRoot (parser.go). It drives root.Execute() with
+// EMPTY args, which the direct runCheck hint tests cannot see: if the
+// RunE were removed or rerouted tomorrow, the hint tests would still
+// pass. The config disables every catalog tool (writeCheckConfig), so
+// the check loop is hermetic and the summary line is deterministic.
+func TestBuildRoot_BareInvocationRunsCheck(t *testing.T) {
+	writeCheckConfig(t, "")
+
+	root, gf := BuildRoot()
+	root.Version = "v0.1.0"
+	AddCommands(root, gf)
+	root.SetArgs([]string{})
+
+	output := withCapturedStdout(func() {
+		if err := root.Execute(); err != nil {
+			t.Errorf("bare upp must run check and exit 0, got error: %v", err)
+		}
+	})
+
+	// The check summary marker proves the bare invocation reached the
+	// runCheck path; update/self-update/list would never print it.
+	if !strings.Contains(output, "All tools up to date.") {
+		t.Errorf("bare upp must print the check summary, got:\n%s", output)
+	}
+}
+
 func TestAddCommands(t *testing.T) {
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
