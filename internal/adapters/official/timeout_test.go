@@ -119,12 +119,8 @@ func TestRunCmdArgs_GroupKillProvesGrandchildrenDie(t *testing.T) {
 		t.Fatalf("runCmdArgs() error = %v, want DeadlineExceeded", err)
 	}
 
-	// Give the SIGKILL a moment to land, then prove no survivor remains.
-	time.Sleep(300 * time.Millisecond)
-	out, err := exec.Command("pgrep", "-f", marker).Output()
-	if err == nil && len(out) > 0 {
-		t.Errorf("orphaned grandchild survived the timeout: %s", strings.TrimSpace(string(out)))
-	}
+	// Poll until the SIGKILL has landed; no fixed wait on the green path.
+	waitForMarkerGone(t, marker)
 }
 
 // TestRunCmd_GroupKillProvesGrandchildrenDie verifies that the process-group
@@ -149,10 +145,25 @@ func TestRunCmd_GroupKillProvesGrandchildrenDie(t *testing.T) {
 		t.Fatalf("runCmd() error = %v, want DeadlineExceeded", err)
 	}
 
-	// Give the SIGKILL a moment to land, then prove no survivor remains.
-	time.Sleep(300 * time.Millisecond)
-	out, err := exec.Command("pgrep", "-f", marker).Output()
-	if err == nil && len(out) > 0 {
-		t.Errorf("orphaned grandchild survived the timeout: %s", strings.TrimSpace(string(out)))
+	// Poll until the SIGKILL has landed; no fixed wait on the green path.
+	waitForMarkerGone(t, marker)
+}
+
+// waitForMarkerGone polls pgrep until the marker process is gone, failing the
+// test if it still survives after a 2s deadline. pgrep exits non-zero when
+// nothing matches, which is the success signal.
+func waitForMarkerGone(t *testing.T, marker string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		out, err := exec.Command("pgrep", "-f", marker).Output()
+		if err != nil || len(out) == 0 {
+			return // pgrep found nothing: the marker is gone
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("orphaned grandchild survived the timeout: %s", strings.TrimSpace(string(out)))
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
