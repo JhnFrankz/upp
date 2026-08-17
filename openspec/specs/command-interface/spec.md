@@ -113,3 +113,13 @@ The system MUST support: `init`, `update`, `self-update`, `check`, `list`, `expo
 | Export to file | Config exists | `upp export -o out.toml` | File written |
 | Import | Valid file | `upp import in.toml` | Config replaced |
 | Import invalid | Malformed file | `upp import bad.toml` | Error, no changes |
+
+### Requirement: Help Output Grouping
+
+`upp --help` and `upp help` MUST group commands into labeled sections (e.g., "Tool Commands": `check`/`update`/`list`; "Config Commands": `init`/`export`/`import`; "Maintenance": `self-update`). The cobra `completion` built-in MUST be hidden from help output.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Grouped help | All commands registered | `upp --help` | Commands listed under labeled groups; `completion` absent |
+| Help subcommand | All commands registered | `upp help` | Same grouped output as `--help` |
+| Completion hidden | Root command built | `upp --help` | `completion` not listed among commands |
