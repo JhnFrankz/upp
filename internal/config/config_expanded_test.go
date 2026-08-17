@@ -57,7 +57,6 @@ func TestConfigVersion_PreservedOnLoad(t *testing.T) {
 	tomlContent := `version = 1
 
 [settings]
-interactive = true
 `
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
@@ -79,7 +78,6 @@ func TestRoundTrip_ComplexConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	original := DefaultConfig()
-	original.Settings.Interactive = false
 	original.Tools["apt"] = ToolConfig{Enabled: true, Platforms: []string{"linux"}}
 	original.Tools["npm"] = ToolConfig{Enabled: false}
 	original.Tools["brew"] = ToolConfig{Enabled: true, Platforms: []string{"linux", "macos"}}
@@ -106,9 +104,6 @@ func TestRoundTrip_ComplexConfig(t *testing.T) {
 	}
 
 	// Verify all fields preserved
-	if imported.Settings.Interactive {
-		t.Error("interactive should be false")
-	}
 	if !imported.Tools["apt"].Enabled {
 		t.Error("apt should be enabled")
 	}
@@ -278,7 +273,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cfg := DefaultConfig()
-	cfg.Settings.Interactive = false
 	cfg.Tools["apt"] = ToolConfig{Enabled: true}
 	cfg.Custom["test"] = CustomTool{Command: "test --update", Trusted: true}
 
@@ -291,9 +285,6 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if loaded.Settings.Interactive {
-		t.Error("interactive should be false")
-	}
 	if !loaded.Tools["apt"].Enabled {
 		t.Error("apt should be enabled")
 	}
@@ -464,9 +455,6 @@ func TestDefaultConfigWithDefaults_AllPlatforms(t *testing.T) {
 
 	if cfg.Version != 1 {
 		t.Errorf("version = %d, want 1", cfg.Version)
-	}
-	if !cfg.Settings.Interactive {
-		t.Error("interactive should be true")
 	}
 	if len(cfg.Tools) == 0 {
 		t.Error("tools should not be empty")

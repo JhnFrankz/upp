@@ -226,7 +226,6 @@ func TestExportImport_RoundTrip(t *testing.T) {
 
 	// Create initial config
 	cfg := config.DefaultConfigWithDefaults()
-	cfg.Settings.Interactive = false
 	cfg.Custom["test-tool"] = config.CustomTool{
 		Command:  "test-tool --update",
 		CheckCmd: "test-tool --version",
@@ -270,9 +269,6 @@ func TestExportImport_RoundTrip(t *testing.T) {
 		t.Fatalf("Load imported config: %v", err)
 	}
 
-	if loaded.Settings.Interactive {
-		t.Error("imported interactive should be false")
-	}
 	if loaded.Custom["test-tool"].Command != "test-tool --update" {
 		t.Errorf("imported custom tool command = %q", loaded.Custom["test-tool"].Command)
 	}
@@ -571,7 +567,6 @@ func TestComplexConfigRoundTrip(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 
 	cfg := config.DefaultConfig()
-	cfg.Settings.Interactive = false
 	cfg.Tools["apt"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux"}}
 	cfg.Tools["npm"] = config.ToolConfig{Enabled: false}
 	cfg.Tools["brew"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux", "macos"}}
@@ -594,9 +589,6 @@ func TestComplexConfigRoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if loaded.Settings.Interactive {
-		t.Error("interactive should be false")
-	}
 	if !loaded.Tools["apt"].Enabled {
 		t.Error("apt should be enabled")
 	}
@@ -944,6 +936,67 @@ func TestImportCommand_RequiresArgs(t *testing.T) {
 }
 
 // --- Check Summary Output ---
+
+// fakeSkipAdapter is a hermetic adapter whose Detect() reports false, so
+// runCheck records it as StatusSkipped (check.go Detect gate) — the S2
+// check-with-skips honesty path.
+type fakeSkipAdapter struct {
+	id string
+}
+
+func (f *fakeSkipAdapter) Name() string { return f.id }
+
+func (f *fakeSkipAdapter) Detect() bool { return false }
+
+func (f *fakeSkipAdapter) Check() (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+
+func (f *fakeSkipAdapter) Update(dryRun bool) (adapters.Result, error) {
+	return adapters.Result{Success: true}, nil
+}
+
+func (f *fakeSkipAdapter) Info() adapters.ToolInfo {
+	return adapters.ToolInfo{ID: f.id, Name: f.id}
+}
+
+// TestCheckCommand_WithSkips locks the S2 D4 honesty contract end-to-end:
+// when one enabled tool is current and another is skipped (not installed),
+// the summary counts both ("1 up to date, 1 skipped") and never prints
+// "All tools up to date.".
+func TestCheckCommand_WithSkips(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	current := &fakeUpdateAdapter{
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	skipped := &fakeSkipAdapter{id: "nvm"}
+	setCLIDeps(t, checkDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+		return []adapters.Adapter{current, skipped}
+	}}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+
+	output := withCapturedStdout(func() {
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs([]string{"check"})
+		_ = root.Execute()
+	})
+
+	if !strings.Contains(output, "1 up to date, 1 skipped") {
+		t.Errorf("check summary must count skipped tools explicitly, got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("check must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
+	}
+	// Non-quiet detail lists the skipped tool.
+	if !strings.Contains(output, "nvm") {
+		t.Errorf("non-quiet check detail should list skipped tools, got:\n%s", output)
+	}
+}
 
 func TestCheckCommand_SummaryOutput(t *testing.T) {
 	tmpDir := t.TempDir()

@@ -560,6 +560,61 @@ func TestCheck(t *testing.T) {
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "v20.11.0", UpdateAvailable: false},
 		},
+		// S2 D7: newer current must NOT be reported as an update (no phantom
+		// downgrade) — semver comparison, not string inequality.
+		{
+			name:    "nvm/newer-current-no-downgrade",
+			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
+			setup:   nvmInstalledSetup,
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					nvmCurrentCmd: {stdout: "v26.7.0"},
+					nvmRemoteCmd:  {stdout: "v24.19.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v26.7.0", LatestVersion: "v24.19.0", UpdateAvailable: false},
+		},
+		// S2 D7: equal versions with/without the v prefix parse to the same
+		// version — no update.
+		{
+			name:    "nvm/equal-versions-v-prefix-tolerated",
+			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
+			setup:   nvmInstalledSetup,
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					nvmCurrentCmd: {stdout: "v20.11.0"},
+					nvmRemoteCmd:  {stdout: "20.11.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "20.11.0", UpdateAvailable: false},
+		},
+		// S2 D7: an unparseable latest (nvm ls-remote alias like "stable")
+		// is unknown — false, no error (adapter Unparseable scenario).
+		{
+			name:    "nvm/unparseable-stable-no-error",
+			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
+			setup:   nvmInstalledSetup,
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					nvmCurrentCmd: {stdout: "v26.7.0"},
+					nvmRemoteCmd:  {stdout: "stable"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v26.7.0", LatestVersion: "stable", UpdateAvailable: false},
+		},
+		// S2 D7: a dev-ish current parses as Dev → fail-closed false.
+		{
+			name:    "nvm/current-dev-no-update",
+			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
+			setup:   nvmInstalledSetup,
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					nvmCurrentCmd: {stdout: "dev"},
+					nvmRemoteCmd:  {stdout: "v22.0.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "dev", LatestVersion: "v22.0.0", UpdateAvailable: false},
+		},
 		{
 			name:    "nvm/command-fails",
 			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
