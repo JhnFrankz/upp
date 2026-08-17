@@ -215,13 +215,15 @@ func (r *Renderer) quietToolLine(result ToolResult) {
 
 // --- Progress ---
 
-// Progress shows a progress indicator for multi-tool operations.
-func (r *Renderer) Progress(current, total int, name string) {
+// Progress shows a progress indicator for multi-tool operations. The
+// operation label comes from the caller ("Checking" for read-only check,
+// "Updating" for update) so read-only runs never claim to update (D2).
+func (r *Renderer) Progress(op string, current, total int, name string) {
 	if r.quiet || total <= 1 {
 		return
 	}
-	_, _ = fmt.Fprintf(r.w, "  %s Updating %d/%d: %s\n",
-		r.dim("⟳"), current, total, r.cyan(name))
+	_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
+		r.dim("⟳"), op, current, total, r.cyan(name))
 }
 
 // --- Summary ---
@@ -263,10 +265,18 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 
 	summaryLine := strings.Join(parts, ", ")
 
+	// A run is only "clean" when it really updated something, nothing is
+	// pending, nothing failed, and nothing was skipped. A --dry-run with
+	// pending updates reports "N would update" and never claims "All clean!"
+	// (D3).
+	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0
+
 	if failed > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
-	} else if updated > 0 || available > 0 {
+	} else if allClean {
 		_, _ = fmt.Fprintf(r.w, "%s %s. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
+	} else if updated > 0 || available > 0 {
+		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else {
 		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusCurrent), summaryLine)
 	}
@@ -348,23 +358,23 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 func (r *Renderer) ListTools(tools []ListEntry) {
 	w := tabwriter.NewWriter(r.w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-		r.cyan("Tool"), "Name", "Status", "Version")
+		r.cyan("ID"), "Name", "Status", "Version")
 
 	for _, t := range tools {
-		icon := r.statusIcon(t.Status)
 		status := r.statusLabel(t.Status)
 		version := t.Version
 		if version == "" {
 			version = "-"
 		}
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			icon, t.Name, status, version)
+			t.ID, t.Name, status, version)
 	}
 	_ = w.Flush()
 }
 
 // ListEntry holds data for a single tool in the list output.
 type ListEntry struct {
+	ID      string // --only/--skip filter ID (e.g. "apt", "brew")
 	Name    string
 	Status  Status
 	Version string

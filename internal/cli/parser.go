@@ -40,6 +40,11 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 		Long:          "upp updates your development tools across Linux, macOS, and Windows.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// The cobra completion built-in is hidden from help (D6, spec
+		// command-interface).
+		CompletionOptions: cobra.CompletionOptions{
+			HiddenDefaultCmd: true,
+		},
 		// No args → show status (read-only, same as check)
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCheck(gf, cmd.Root().Version, checkDeps{})
@@ -55,15 +60,39 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 }
 
 // AddCommands registers all subcommands on the root command.
+// Commands are grouped for help output (D6, spec command-interface):
+// Tool Commands (check/list/update), Config Commands (init/export/import),
+// Maintenance (self-update).
 func AddCommands(root *cobra.Command, gf *GlobalFlags) {
+	root.AddGroup(
+		&cobra.Group{ID: "tool", Title: "Tool Commands"},
+		&cobra.Group{ID: "config", Title: "Config Commands"},
+		&cobra.Group{ID: "maintenance", Title: "Maintenance"},
+	)
+
+	check := NewCheckCommand(gf)
+	check.GroupID = "tool"
+	update := NewUpdateCommand(gf)
+	update.GroupID = "tool"
+	list := NewListCommand(gf)
+	list.GroupID = "tool"
+	init := NewInitCommand(gf)
+	init.GroupID = "config"
+	export := NewExportCommand(gf)
+	export.GroupID = "config"
+	importCmd := NewImportCommand(gf)
+	importCmd.GroupID = "config"
+	selfUpdate := NewSelfUpdateCommand(gf)
+	selfUpdate.GroupID = "maintenance"
+
 	root.AddCommand(
-		NewInitCommand(gf),
-		NewUpdateCommand(gf),
-		NewSelfUpdateCommand(gf),
-		NewCheckCommand(gf),
-		NewListCommand(gf),
-		NewExportCommand(gf),
-		NewImportCommand(gf),
+		init,
+		update,
+		selfUpdate,
+		check,
+		list,
+		export,
+		importCmd,
 	)
 }
 

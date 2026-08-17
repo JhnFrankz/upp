@@ -66,6 +66,7 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 		}
 
 		entries = append(entries, output.ListEntry{
+			ID:      info.ID,
 			Name:    info.Name,
 			Status:  status,
 			Version: version,

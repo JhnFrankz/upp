@@ -506,6 +506,34 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 	}
 }
 
+// TestCheckProgress_LabelsChecking locks the D2 wiring: the read-only check
+// command must pass the "Checking" verb to the renderer, so a multi-tool
+// `upp check` shows "Checking X/Y" progress and never "Updating X/Y".
+func TestCheckProgress_LabelsChecking(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	fakes := []*fakeUpdateAdapter{
+		{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
+		{name: "npm", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
+	}
+	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fakes[0], fakes[1])}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+
+	output := withCapturedStdout(func() {
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs([]string{"check"})
+		_ = root.Execute()
+	})
+
+	if !strings.Contains(output, "Checking 1/2") || !strings.Contains(output, "Checking 2/2") {
+		t.Errorf("check progress must read 'Checking X/Y', got:\n%s", output)
+	}
+	if strings.Contains(output, "Updating") {
+		t.Errorf("read-only check must never print 'Updating', got:\n%s", output)
+	}
+}
+
 // --- Error Handling Integration Tests ---
 
 func TestImport_MissingFile(t *testing.T) {

@@ -85,7 +85,7 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 		}
 
 		if !gf.Quiet && total > 1 {
-			r.Progress(i+1, total, info.Name)
+			r.Progress("Checking", i+1, total, info.Name)
 		}
 
 		updateInfo, err := a.Check()

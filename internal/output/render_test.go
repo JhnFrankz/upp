@@ -207,6 +207,32 @@ func TestUpdateSummary_DryRun(t *testing.T) {
 	if !strings.Contains(output, "would update") {
 		t.Errorf("dry-run summary should say 'would update', got:\n%s", output)
 	}
+	if strings.Contains(output, "All clean!") {
+		t.Errorf("dry-run summary must never claim 'All clean!' while updates are pending, got:\n%s", output)
+	}
+}
+
+func TestUpdateSummary_NotCleanWithSkips(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	summary := Summary{
+		Results: []ToolResult{
+			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
+			{Name: "npm", Status: StatusSkipped},
+		},
+		DryRun: false,
+	}
+
+	r.UpdateSummary(summary)
+
+	output := buf.String()
+	if !strings.Contains(output, "1 updated") {
+		t.Errorf("summary should count 1 updated, got:\n%s", output)
+	}
+	if strings.Contains(output, "All clean!") {
+		t.Errorf("summary must not claim 'All clean!' when tools were skipped, got:\n%s", output)
+	}
 }
 
 func TestCheckSummary_UpdatesAvailable(t *testing.T) {
@@ -251,8 +277,8 @@ func TestListTools(t *testing.T) {
 	r := NewRendererForced(&buf, false, true, false)
 
 	entries := []ListEntry{
-		{Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
-		{Name: "npm", Status: StatusSkipped, Version: ""},
+		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
+		{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
 	}
 
 	r.ListTools(entries)
@@ -263,6 +289,33 @@ func TestListTools(t *testing.T) {
 	}
 	if !strings.Contains(output, "4.1.0") {
 		t.Error("list should contain version")
+	}
+}
+
+func TestListTools_IDColumn(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	entries := []ListEntry{
+		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
+		{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
+	}
+
+	r.ListTools(entries)
+
+	output := buf.String()
+	header := strings.SplitN(output, "\n", 2)[0]
+	if !strings.Contains(header, "ID") || !strings.Contains(header, "Name") ||
+		!strings.Contains(header, "Status") || !strings.Contains(header, "Version") {
+		t.Errorf("list header must be 'ID | Name | Status | Version', got: %q", header)
+	}
+	if strings.Contains(header, "Tool") {
+		t.Errorf("list header must not mislabel the ID column as 'Tool', got: %q", header)
+	}
+	// The ID column shows the --only/--skip filter IDs, distinct from the
+	// display name.
+	if !strings.Contains(output, "brew") || !strings.Contains(output, "npm") {
+		t.Errorf("list rows must show tool IDs usable with --only/--skip, got:\n%s", output)
 	}
 }
 
@@ -283,25 +336,46 @@ func TestProgress_SingleTool(t *testing.T) {
 	r := NewRendererForced(&buf, false, true, false)
 
 	// Single tool should not show progress
-	r.Progress(1, 1, "brew")
+	r.Progress("Checking", 1, 1, "brew")
 
 	if buf.Len() > 0 {
 		t.Error("progress should not show for single tool")
 	}
 }
 
-func TestProgress_MultiTool(t *testing.T) {
+func TestProgress_CheckVerb(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, true, false)
 
-	r.Progress(2, 5, "brew")
+	r.Progress("Checking", 2, 5, "brew")
 
 	output := buf.String()
-	if !strings.Contains(output, "2/5") {
-		t.Errorf("progress should contain '2/5', got:\n%s", output)
+	if !strings.Contains(output, "Checking 2/5") {
+		t.Errorf("progress should say 'Checking 2/5', got:\n%s", output)
 	}
 	if !strings.Contains(output, "brew") {
 		t.Errorf("progress should contain tool name, got:\n%s", output)
+	}
+	if strings.Contains(output, "Updating") {
+		t.Errorf("read-only progress must not say 'Updating', got:\n%s", output)
+	}
+}
+
+func TestProgress_UpdateVerb(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	r.Progress("Updating", 3, 10, "npm")
+
+	output := buf.String()
+	if !strings.Contains(output, "Updating 3/10") {
+		t.Errorf("progress should say 'Updating 3/10', got:\n%s", output)
+	}
+	if !strings.Contains(output, "npm") {
+		t.Errorf("progress should contain tool name, got:\n%s", output)
+	}
+	if strings.Contains(output, "Checking") {
+		t.Errorf("update progress must not say 'Checking', got:\n%s", output)
 	}
 }
 

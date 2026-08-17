@@ -54,14 +54,14 @@ make build
 
 ## Quick start
 
-```bash
-# Initialize config (detects installed tools)
-upp init
+upp works with **zero configuration**: no `config.toml` is required to
+check or update your tools, so `upp init` is optional.
 
-# List detected tools
+```bash
+# List detected tools and their status
 upp list
 
-# Check for updates
+# Check for available updates (read-only)
 upp check
 
 # Apply updates
@@ -70,6 +70,17 @@ upp update
 # Preview updates without applying
 upp update --dry-run
 ```
+
+If you want to pin or customize the detected setup (enable/disable tools,
+platform restrictions, custom tools), generate a config with the
+interactive wizard:
+
+```bash
+upp init
+```
+
+Without a config file, upp detects installed tools on first run and
+applies safe defaults.
 
 ## Commands
 
