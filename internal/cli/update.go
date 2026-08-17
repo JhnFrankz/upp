@@ -91,7 +91,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 
 		// Progress
 		if !gf.Quiet && total > 1 {
-			r.Progress(i+1, total, info.Name)
+			r.Progress("Updating", i+1, total, info.Name)
 		}
 
 		// Check for updates

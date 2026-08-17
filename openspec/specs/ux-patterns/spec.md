@@ -99,11 +99,11 @@ When `settings.check_self_update` is enabled and a newer release is known, `chec
 
 ### Requirement: Self-Update Confirmation Prompt
 
-`upp self-update` MUST show a localized (en/es) confirmation before replacing the binary, including current and target versions and the resolved binary path. Non-TTY stdin or `--ci` MUST print a clear localized deny message and exit non-zero — never hang, auto-proceed, or silently skip.
+`upp self-update` MUST show an English confirmation before replacing the binary, including current and target versions and the resolved binary path. Non-TTY stdin or `--ci` MUST print a clear English deny message and exit non-zero — never hang, auto-proceed, or silently skip.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| TTY prompt | TTY, update available | `upp self-update` | Localized prompt with versions + path, waits for y/N |
+| TTY prompt | TTY, update available | `upp self-update` | English prompt with versions + path, waits for y/N |
 | User declines | TTY, user answers n | Prompt | No changes, exit 0 |
 | Non-TTY | stdin is not a TTY | `upp self-update` | Clear deny message, exit non-zero |
 | `--ci` | `upp self-update --ci` | Execution | Clear deny message, exit non-zero |

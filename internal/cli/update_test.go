@@ -56,10 +56,14 @@ func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
 }
 
 // fakeAdapterList returns a buildAdapterList seam yielding only the given
-// fake adapter, hermetic and deterministic.
-func fakeAdapterList(fake *fakeUpdateAdapter) func(*config.Config, string) []adapters.Adapter {
+// fake adapters, hermetic and deterministic.
+func fakeAdapterList(fakes ...*fakeUpdateAdapter) func(*config.Config, string) []adapters.Adapter {
 	return func(*config.Config, string) []adapters.Adapter {
-		return []adapters.Adapter{fake}
+		result := make([]adapters.Adapter, 0, len(fakes))
+		for _, f := range fakes {
+			result = append(result, f)
+		}
+		return result
 	}
 }
 
