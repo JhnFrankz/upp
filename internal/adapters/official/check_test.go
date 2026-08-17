@@ -40,7 +40,7 @@ const (
 	aptInstalledCmd = "bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'"
 	aptCandidateCmd = "bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'"
 	nvmCurrentCmd   = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'"
-	nvmRemoteCmd    = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | tail -1 | awk \"{print \\$1}\"'"
+	nvmRemoteCmd    = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'"
 )
 
 // exitErrFromChild runs `sh -c "exit N"` for real and returns its error — a
@@ -614,6 +614,22 @@ func TestCheck(t *testing.T) {
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "dev", LatestVersion: "v22.0.0", UpdateAvailable: false},
+		},
+		// Multi-LTS: ls-remote ends with an alias line ("lts/* -> lts/jod").
+		// The latest version must come from the last real vX.Y.Z line, not the
+		// alias line — otherwise a real update is silently missed (regression
+		// guard for the tail -1 | awk extraction).
+		{
+			name:    "nvm/multi-lts-alias-line",
+			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
+			setup:   nvmInstalledSetup,
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					nvmCurrentCmd: {stdout: "v20.11.0"},
+					nvmRemoteCmd:  {stdout: "v22.3.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "v22.3.0", UpdateAvailable: true},
 		},
 		{
 			name:    "nvm/command-fails",

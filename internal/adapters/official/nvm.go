@@ -54,8 +54,12 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 	}
 
 	// Get latest stable version. pipefail makes a failed nvm ls-remote
-	// surface as an error instead of an empty awk result.
-	stdout, err = shellOutputErr("bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | tail -1 | awk \"{print \\$1}\"'", "nvm")
+	// surface as an error instead of an empty awk result. On multi-LTS
+	// setups nvm appends an alias line ("lts/* -> lts/jod (-> v22.3.0)")
+	// after the real versions; grep filters to actual vX.Y.Z lines so the
+	// last one is the newest LTS — tail -1 alone would pick the alias and
+	// silently miss real updates.
+	stdout, err = shellOutputErr("bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
