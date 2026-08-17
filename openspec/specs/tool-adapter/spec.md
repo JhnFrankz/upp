@@ -63,8 +63,8 @@ Adapters MUST NOT abort the entire update run on individual tool failure. The or
 
 ### Requirement: Version Comparison
 
-Adapters MUST return semver-compatible version strings when available. Adapters SHOULD normalize version formats across platforms. When both current and latest versions parse as semver (leading `v` prefix tolerated), update availability MUST be determined by semantic version comparison, not string inequality: current > latest MUST report `update_available=false` (no downgrade). When either version cannot be parsed as semver, the adapter MUST NOT report an update based on string inequality alone; it reports unknown (`update_available=false`) without error. The nvm adapter MUST use this semver comparison for its update detection.
-(Previously: update detection compared raw version strings for inequality (nvm: `current != latest`), so a newer current version was reported as an "update" to an older latest.)
+Adapters MUST return semver-compatible version strings when available. Adapters SHOULD normalize version formats across platforms. The nvm adapter MUST determine update availability by semantic version comparison (leading `v` prefix tolerated), not string inequality: current > latest MUST report `update_available=false` (no downgrade); when either version cannot be parsed as semver, nvm MUST NOT report an update based on string inequality alone and reports unknown (`update_available=false`) without error. Other adapters (apt, npm, pnpm, and non-semver official tools) use their own detection contract; the general semver-comparison rule is scoped to the nvm adapter.
+(Previously: the requirement stated that all adapters determine update availability by semantic version comparison; in practice only the nvm adapter implements it, so the general wording is narrowed to the nvm adapter.)
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
