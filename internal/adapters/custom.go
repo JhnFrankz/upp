@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -142,7 +141,7 @@ func shellExecWithTimeout(command string, timeout time.Duration) (string, error)
 	} else {
 		cmd = exec.CommandContext(ctx, "sh", "-c", command)
 		// Own process group so the timeout can kill shell grandchildren too.
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		setpgid(cmd)
 	}
 
 	stdout, _, err := RunCommandWithTimeout(ctx, cmd)

@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"runtime"
-	"syscall"
 	"time"
 )
 
@@ -82,15 +80,5 @@ func RunCommandWithTimeout(ctx context.Context, cmd *exec.Cmd) (stdout, stderr s
 		// Go's exec.Wait returns the raw exit error, so chain the deadline
 		// error to stay errors.Is(err, context.DeadlineExceeded)-detectable.
 		return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), "killed after timeout")
-	}
-}
-
-// killProcessGroup kills the command's whole process group on Unix. On
-// Windows the group-kill primitive does not exist; the caller's context kill
-// terminates the direct child (and, for CommandContext, the process tree via
-// job objects).
-func killProcessGroup(cmd *exec.Cmd) {
-	if cmd.Process != nil && runtime.GOOS != "windows" {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
