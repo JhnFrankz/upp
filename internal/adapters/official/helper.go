@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 )
@@ -32,7 +31,7 @@ var (
 			// Own process group so the timeout can kill shell grandchildren
 			// (curl|tar, sudo apt, brew...) too — the direct child alone is
 			// not enough for the compound commands every adapter runs.
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			setpgid(cmd)
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
@@ -48,7 +47,7 @@ var (
 			// Own process group so the timeout can kill descendants too
 			// (npm/pnpm workers holding the pipes): the direct child alone
 			// is not enough, exactly like runCmdFn's shell path.
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			setpgid(cmd)
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
