@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,9 +12,6 @@ func TestDefaultConfig(t *testing.T) {
 
 	if cfg.Version != 1 {
 		t.Errorf("expected version 1, got %d", cfg.Version)
-	}
-	if !cfg.Settings.Interactive {
-		t.Error("expected interactive to be true")
 	}
 	if cfg.Settings.CheckSelfUpdate {
 		t.Error("expected check_self_update to default to false")
@@ -84,7 +82,7 @@ func TestLoadValidTOML(t *testing.T) {
 version = 1
 
 [settings]
-interactive = false
+check_self_update = false
 
 [tools.apt]
 enabled = true
@@ -98,8 +96,8 @@ enabled = true
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Settings.Interactive {
-		t.Error("expected interactive to be false")
+	if cfg.Settings.CheckSelfUpdate {
+		t.Error("expected check_self_update to be false")
 	}
 	if !cfg.Tools["apt"].Enabled {
 		t.Error("expected apt to be enabled")
@@ -265,6 +263,68 @@ func TestExists_ExistingFile(t *testing.T) {
 	}
 }
 
+// TestLoadStrayInteractiveKey locks the D8 tolerance contract: an existing
+// config with a leftover `interactive` key loads silently (unknown settings
+// ignored), and export/import NEVER re-emit the key.
+func TestLoadStrayInteractiveKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tomlContent := "version = 1\n\n[settings]\ninteractive = false\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with stray interactive key should not error: %v", err)
+	}
+	if cfg.Version != 1 {
+		t.Errorf("version = %d, want 1", cfg.Version)
+	}
+	if cfg.Settings.CheckSelfUpdate {
+		t.Error("stray interactive key must not affect check_self_update")
+	}
+}
+
+// TestExportNeverReEmitsInteractive locks the D8 hygiene contract: export
+// output must not contain an `interactive` key, even when the loaded config
+// carried one (config-system delta: key never written by init/export/import).
+func TestExportNeverReEmitsInteractive(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tomlContent := "version = 1\n\n[settings]\ninteractive = false\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	exportPath := filepath.Join(tmpDir, "exported.toml")
+	if err := ExportToFile(cfg, exportPath); err != nil {
+		t.Fatalf("ExportToFile() error: %v", err)
+	}
+	data, err := os.ReadFile(exportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "interactive") {
+		t.Errorf("export must never re-emit the dead interactive key, got:\n%s", data)
+	}
+}
+
 func TestLoadMissingFile_NoDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -406,7 +466,7 @@ func TestImportFromFile(t *testing.T) {
 	tomlContent := `version = 1
 
 [settings]
-interactive = false
+check_self_update = false
 
 [tools.apt]
 enabled = true
@@ -423,8 +483,8 @@ enabled = false
 		t.Fatalf("ImportFromFile() error: %v", err)
 	}
 
-	if cfg.Settings.Interactive {
-		t.Error("expected interactive to be false")
+	if cfg.Settings.CheckSelfUpdate {
+		t.Error("expected check_self_update to be false")
 	}
 	if !cfg.Tools["apt"].Enabled {
 		t.Error("expected apt to be enabled")
@@ -463,7 +523,6 @@ func TestRoundTrip(t *testing.T) {
 
 	// Create original config
 	original := DefaultConfig()
-	original.Settings.Interactive = false
 	original.Tools["apt"] = ToolConfig{Enabled: true}
 	original.Tools["npm"] = ToolConfig{Enabled: false}
 	original.Custom["mytool"] = CustomTool{

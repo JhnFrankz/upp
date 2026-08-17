@@ -307,14 +307,21 @@ func (r *Renderer) detailSummary(summary Summary) {
 }
 
 // CheckSummary renders the summary for a check (read-only) operation.
+// The "All tools up to date." tagline appears ONLY when every enabled tool
+// was checked and current (current>0, nothing available/skipped/failed) or
+// when the enabled-tool list is empty (parser_test bare-upp / integration
+// all-disabled contract). Any skipped or failed tool suppresses the tagline
+// and is counted explicitly (D4).
 func (r *Renderer) CheckSummary(results []ToolResult) {
-	var available, current, failed int
+	var available, current, skipped, failed int
 	for _, res := range results {
 		switch res.Status {
 		case StatusAvailable:
 			available++
 		case StatusCurrent:
 			current++
+		case StatusSkipped:
+			skipped++
 		case StatusFailed:
 			failed++
 		}
@@ -322,29 +329,46 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 
 	_, _ = fmt.Fprintln(r.w)
 
-	if available == 0 && failed == 0 {
+	if available == 0 && skipped == 0 && failed == 0 {
+		// current>0 (everything up to date) or empty enabled-tool list:
+		// keep the tagline (spec + test-enforced).
 		_, _ = fmt.Fprintf(r.w, "%s All tools up to date.\n", r.statusIcon(StatusCurrent))
 		return
 	}
 
-	var parts []string
-	if available > 0 {
-		parts = append(parts, r.yellow(fmt.Sprintf("%d available", available)))
-	}
-	if current > 0 {
-		parts = append(parts, fmt.Sprintf("%d current", current))
-	}
-	if failed > 0 {
-		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
+	if available == 0 && failed == 0 {
+		// Nothing pending or failed — only skipped tools: "Nothing to do."
+		// unless some tools are actually current.
+		if current > 0 {
+			_, _ = fmt.Fprintf(r.w, "%s %d up to date, %d skipped\n",
+				r.statusIcon(StatusCurrent), current, skipped)
+		} else {
+			_, _ = fmt.Fprintf(r.w, "%s Nothing to do.\n", r.statusIcon(StatusSkipped))
+		}
+	} else {
+		var parts []string
+		if available > 0 {
+			parts = append(parts, r.yellow(fmt.Sprintf("%d available", available)))
+		}
+		if current > 0 {
+			parts = append(parts, fmt.Sprintf("%d up to date", current))
+		}
+		if skipped > 0 {
+			parts = append(parts, fmt.Sprintf("%d skipped", skipped))
+		}
+		if failed > 0 {
+			parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
+		}
+
+		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusAvailable), strings.Join(parts, ", "))
 	}
 
-	_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusAvailable), strings.Join(parts, ", "))
-
+	// Non-quiet detail lists the pending and skipped tools (D4).
 	if !r.quiet {
 		for _, res := range results {
-			if res.Status == StatusAvailable {
+			if res.Status == StatusAvailable || res.Status == StatusSkipped {
 				_, _ = fmt.Fprintf(r.w, "  %s %s %s\n",
-					r.statusIcon(StatusAvailable),
+					r.statusIcon(res.Status),
 					r.cyan(res.Name),
 					r.dim(res.Version))
 			}

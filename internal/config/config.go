@@ -23,7 +23,6 @@ type Config struct {
 
 // Settings holds global preferences.
 type Settings struct {
-	Interactive bool `toml:"interactive"`
 	// CheckSelfUpdate opts into the update-detection hint at the end of
 	// check/bare upp output (spec config-system). Default false: with
 	// default config, check performs ZERO self-update network calls.
@@ -48,7 +47,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: ConfigVersion,
 		Settings: Settings{
-			Interactive:     true,
 			CheckSelfUpdate: false, // opt-in hint: default OFF (spec config-system)
 		},
 		Tools:  make(map[string]ToolConfig),

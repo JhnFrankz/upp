@@ -237,13 +237,14 @@ run_test_with_output "upp export (empty config → catalog defaults)" "tools.apt
 export HOME="${HOME_ORIG:-$HOME}"
 rm -rf "$TMPDIR_LOAD"
 
-# Test 13: partial config ([settings] only) → tool sections default to catalog
+# Test 13: partial config ([settings] only) → tool sections default to catalog;
+# a stray `interactive` key loads silently but is NEVER re-emitted (D8).
 TMPDIR_LOAD=$(mktemp -d)
 export HOME="$TMPDIR_LOAD"
 mkdir -p "$HOME/.config/upp"
 printf 'version = 1\n\n[settings]\ninteractive = false\n' > "$HOME/.config/upp/config.toml"
 run_test_with_output "upp export (partial config → catalog defaults)" "tools.apt" "$BINARY" export
-run_test_with_output "upp export (partial config preserves explicit settings)" 'interactive = false' "$BINARY" export
+run_test_without_output "upp export (stray interactive key never re-emitted)" "interactive" "$BINARY" export
 export HOME="${HOME_ORIG:-$HOME}"
 rm -rf "$TMPDIR_LOAD"
 

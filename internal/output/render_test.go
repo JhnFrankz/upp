@@ -250,8 +250,12 @@ func TestCheckSummary_UpdatesAvailable(t *testing.T) {
 	if !strings.Contains(output, "1 available") {
 		t.Errorf("check summary should show '1 available', got:\n%s", output)
 	}
-	if !strings.Contains(output, "1 current") {
-		t.Errorf("check summary should show '1 current', got:\n%s", output)
+	// Current tools are "up to date", never "current" (D4 wording).
+	if !strings.Contains(output, "1 up to date") {
+		t.Errorf("check summary should show '1 up to date', got:\n%s", output)
+	}
+	if strings.Contains(output, "1 current") {
+		t.Errorf("check summary must say 'up to date' not 'current', got:\n%s", output)
 	}
 }
 
@@ -269,6 +273,115 @@ func TestCheckSummary_AllCurrent(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "All tools up to date") {
 		t.Errorf("check summary should say 'All tools up to date', got:\n%s", output)
+	}
+}
+
+// TestCheckSummary_CurrentAndSkipped locks the D4 honesty contract: when an
+// enabled tool is skipped (not installed), the check summary must count it
+// explicitly and MUST NOT print the "All tools up to date." tagline.
+func TestCheckSummary_CurrentAndSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	results := []ToolResult{
+		{Name: "apt", Status: StatusCurrent, Version: "2.4.0"},
+		{Name: "npm", Status: StatusSkipped},
+	}
+
+	r.CheckSummary(results)
+
+	output := buf.String()
+	if !strings.Contains(output, "1 up to date, 1 skipped") {
+		t.Errorf("check summary must count skipped tools explicitly, got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("check must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
+	}
+	// Non-quiet detail lists the skipped tools too (D4).
+	if !strings.Contains(output, "npm") {
+		t.Errorf("non-quiet check detail should list skipped tools, got:\n%s", output)
+	}
+}
+
+// TestCheckSummary_AllSkipped locks the all-skipped branch: with nothing
+// current, available, or failed, check must say "Nothing to do." — never the
+// up-to-date tagline.
+func TestCheckSummary_AllSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	results := []ToolResult{
+		{Name: "brew", Status: StatusSkipped},
+		{Name: "docker", Status: StatusSkipped},
+	}
+
+	r.CheckSummary(results)
+
+	output := buf.String()
+	if !strings.Contains(output, "Nothing to do") {
+		t.Errorf("all-skipped check summary should say 'Nothing to do.', got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("all-skipped check must never claim 'All tools up to date.', got:\n%s", output)
+	}
+}
+
+// TestCheckSummary_EmptyResults preserves the empty enabled-tool list case:
+// with zero results the tagline stays (parser_test.go bare-upp and the
+// all-tools-disabled integration test depend on it).
+func TestCheckSummary_EmptyResults(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	r.CheckSummary(nil)
+
+	output := buf.String()
+	if !strings.Contains(output, "All tools up to date.") {
+		t.Errorf("empty check must keep the 'All tools up to date.' tagline, got:\n%s", output)
+	}
+}
+
+// TestCheckSummary_AvailableAndSkipped triangulates the parts path: pending
+// updates plus skipped tools are both counted, never the tagline.
+func TestCheckSummary_AvailableAndSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	results := []ToolResult{
+		{Name: "apt", Status: StatusAvailable, Version: "2.4.0 → 2.4.5"},
+		{Name: "npm", Status: StatusSkipped},
+	}
+
+	r.CheckSummary(results)
+
+	output := buf.String()
+	if !strings.Contains(output, "1 available, 1 skipped") {
+		t.Errorf("check summary must count available and skipped tools, got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("check must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
+	}
+}
+
+// TestCheckSummary_CurrentAndFailed triangulates the parts path with a
+// failure: current tools are still counted as up to date alongside failed.
+func TestCheckSummary_CurrentAndFailed(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	results := []ToolResult{
+		{Name: "apt", Status: StatusCurrent, Version: "2.4.0"},
+		{Name: "npm", Status: StatusFailed, Error: fmt.Errorf("timeout")},
+	}
+
+	r.CheckSummary(results)
+
+	output := buf.String()
+	if !strings.Contains(output, "1 up to date, 1 failed") {
+		t.Errorf("check summary must count current and failed tools, got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("check must never claim 'All tools up to date.' when a tool failed, got:\n%s", output)
 	}
 }
 

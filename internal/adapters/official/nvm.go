@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/selfupdate"
 )
 
 // NVMAdapter manages Node Version Manager on all platforms.
@@ -63,13 +64,40 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 		latest = "unknown"
 	}
 
-	updateAvailable := current != "unknown" && latest != "unknown" && current != latest
+	updateAvailable := current != "unknown" && latest != "unknown" && semverCompare(current, latest)
 
 	return adapters.UpdateInfo{
 		CurrentVersion:  current,
 		LatestVersion:   latest,
 		UpdateAvailable: updateAvailable,
 	}, nil
+}
+
+// semverCompare reports whether an update is available from cur to latest
+// using semantic version comparison (D7). A leading "v" prefix on either
+// version is tolerated; both sides must parse as versions — a "dev" build
+// or any unparseable value (e.g. the "stable" alias) fails closed to false
+// with no error, so a newer current never reports a phantom downgrade and
+// unknown versions never claim an update based on string inequality.
+func semverCompare(cur, latest string) bool {
+	c, err := selfupdate.Parse(normalizeVersion(cur))
+	if err != nil || c.Dev {
+		return false
+	}
+	l, err := selfupdate.Parse(normalizeVersion(latest))
+	if err != nil || l.Dev {
+		return false
+	}
+	return c.Compare(l) < 0
+}
+
+// normalizeVersion adds the "v" prefix selfupdate.Parse requires, tolerating
+// raw semver strings like "20.11.0" (nvm outputs both shapes).
+func normalizeVersion(s string) string {
+	if strings.HasPrefix(s, "v") {
+		return s
+	}
+	return "v" + s
 }
 
 func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
