@@ -78,13 +78,13 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          # Pinned to the version used for the local lint run in the
-          # upp-polish change; keep in sync when bumping.
+          # Pinned to the version used for the local lint run (golangci-lint v2
+          # migration 2026-08-18); keep in sync when bumping.
           # The action already runs `golangci-lint run`; args carry only
           # the package scope (a duplicated `run` word is parsed as a dir).
-          version: v1.60.3
+          version: v2.12.2
           args: ./...
 
       - name: Shellcheck

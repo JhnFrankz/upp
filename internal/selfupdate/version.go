@@ -95,7 +95,7 @@ func parseDescribeSuffix(s string) error {
 		return fmt.Errorf("empty commit hash in %q", s)
 	}
 	for _, r := range hash {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			return fmt.Errorf("commit hash %q is not hexadecimal", hash)
 		}
 	}

@@ -36,7 +36,7 @@ func (a *NpmAdapter) Check() (adapters.UpdateInfo, error) {
 	// registry), and any other non-zero exit is a structured failure.
 	stdout, err := commandOutputErr("npm", "outdated", "-g", "--depth=0")
 	if err != nil {
-		if !(isExitCode(err, 1) && strings.TrimSpace(stdout) != "") {
+		if !isExitCode(err, 1) || strings.TrimSpace(stdout) == "" {
 			return adapters.UpdateInfo{}, err
 		}
 	}

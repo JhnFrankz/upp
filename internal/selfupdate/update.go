@@ -102,7 +102,7 @@ func extract(asset []byte, assetName, destDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("selfupdate: release archive is not gzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	out := filepath.Join(destDir, "upp")
 	found := false
@@ -167,7 +167,7 @@ func writeBinary(out string, r io.Reader) error {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
 	}
 	if err := f.Close(); err != nil {
@@ -221,7 +221,7 @@ func Prepare(c *Client, current Version, p platform.Platform) (Release, string, 
 	}
 	binPath, err := extract(asset, assetName, tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		return Release{}, "", err
 	}
 	return rel, binPath, nil
@@ -255,8 +255,8 @@ func Replace(execPath, newPath string) error {
 	}
 	tmpPath := tmp.Name()
 	removeTmp := func() {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 	}
 
 	if err := stageBinary(tmp, newPath); err != nil {
@@ -268,17 +268,17 @@ func Replace(execPath, newPath string) error {
 		return fmt.Errorf("selfupdate: cannot set mode on staged binary: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("selfupdate: cannot close staged binary: %w", err)
 	}
 
 	backup := fmt.Sprintf("%s.backup.%s", resolved, time.Now().Format("20060102.150405"))
 	if err := rename(resolved, backup); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("selfupdate: cannot back up current binary: %w", err)
 	}
 	if err := rename(tmpPath, resolved); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		if rerr := rename(backup, resolved); rerr != nil {
 			return fmt.Errorf("selfupdate: replacing binary failed (%v) and restore of backup failed: %v", err, rerr)
 		}
@@ -293,7 +293,7 @@ func stageBinary(tmp *os.File, newPath string) error {
 	if err != nil {
 		return fmt.Errorf("selfupdate: cannot open staged binary %s: %w", newPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := io.Copy(tmp, f); err != nil {
 		return fmt.Errorf("selfupdate: cannot stage binary: %w", err)
 	}
