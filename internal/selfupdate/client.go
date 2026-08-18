@@ -126,7 +126,7 @@ func (c *Client) fetchLatest() (Release, error) {
 	if err != nil {
 		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: HTTP %d", resp.StatusCode)
 	}
@@ -224,7 +224,7 @@ func (c *Client) get(url string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("selfupdate: download failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("selfupdate: download %s failed: HTTP %d", url, resp.StatusCode)
 	}

@@ -358,8 +358,8 @@ func TestDownload(t *testing.T) {
 	t.Run("redirect off https fails closed", func(t *testing.T) {
 		var ts *httptest.Server
 		ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case r.URL.Path == latestPath:
+			switch r.URL.Path {
+			case latestPath:
 				_, _ = io.WriteString(w, `{"tag_name":"v0.1.1"}`)
 			default:
 				http.Redirect(w, r, ts.URL+"/elsewhere", http.StatusFound)

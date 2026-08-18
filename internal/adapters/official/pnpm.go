@@ -38,7 +38,7 @@ func (a *PnpmAdapter) Check() (adapters.UpdateInfo, error) {
 	// is a structured failure.
 	stdout, err := commandOutputErr("pnpm", "outdated", "-g")
 	if err != nil {
-		if !(isExitCode(err, 1) && strings.Contains(stdout, "│")) {
+		if !isExitCode(err, 1) || !strings.Contains(stdout, "│") {
 			return adapters.UpdateInfo{}, err
 		}
 	}

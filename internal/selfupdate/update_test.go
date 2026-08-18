@@ -170,7 +170,7 @@ func TestExtract(t *testing.T) {
 			var buf bytes.Buffer
 			gz := gzip.NewWriter(&buf)
 			_, _ = gz.Write([]byte("hello"))
-			gz.Close()
+			_ = gz.Close()
 			return buf.Bytes()
 		}(), true},
 	}
