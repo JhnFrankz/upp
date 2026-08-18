@@ -385,6 +385,29 @@ func TestCheckSummary_CurrentAndFailed(t *testing.T) {
 	}
 }
 
+// TestCheckSummary_UnknownStatusFailsClosed guards the branch comments in
+// CheckSummary: a status outside the known enum must never fall through to
+// the "All tools up to date." tagline (the branches assume the switch counts
+// every status; a future Status value must fail closed, not claim clean).
+func TestCheckSummary_UnknownStatusFailsClosed(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false)
+
+	results := []ToolResult{
+		{Name: "mystery", Status: Status(99)},
+	}
+
+	r.CheckSummary(results)
+
+	output := buf.String()
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("check must never claim 'All tools up to date.' for an unknown status, got:\n%s", output)
+	}
+	if !strings.Contains(output, "1 failed") {
+		t.Errorf("unknown status must fail closed as failed, got:\n%s", output)
+	}
+}
+
 func TestListTools(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, true, false)

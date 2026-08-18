@@ -324,21 +324,28 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 			skipped++
 		case StatusFailed:
 			failed++
+		default:
+			// Fail closed: a status outside the known enum must never fall
+			// through to the "All tools up to date." tagline. Count it as a
+			// failure so the summary reports it explicitly (guarded by
+			// TestCheckSummary_UnknownStatusFailsClosed).
+			failed++
 		}
 	}
 
 	_, _ = fmt.Fprintln(r.w)
 
 	if available == 0 && skipped == 0 && failed == 0 {
-		// current>0 (everything up to date) or empty enabled-tool list:
-		// keep the tagline (spec + test-enforced).
+		// current > 0 (everything checked and current) or empty enabled-tool
+		// list: keep the tagline (spec + test-enforced). Unknown statuses
+		// cannot reach here — the counting switch fails them closed as failed.
 		_, _ = fmt.Fprintf(r.w, "%s All tools up to date.\n", r.statusIcon(StatusCurrent))
 		return
 	}
 
 	if available == 0 && failed == 0 {
-		// Nothing pending or failed — only skipped tools: "Nothing to do."
-		// unless some tools are actually current.
+		// Nothing pending or failed — only skipped tools (and current ones):
+		// "Nothing to do." unless some tools are actually current.
 		if current > 0 {
 			_, _ = fmt.Fprintf(r.w, "%s %d up to date, %d skipped\n",
 				r.statusIcon(StatusCurrent), current, skipped)
