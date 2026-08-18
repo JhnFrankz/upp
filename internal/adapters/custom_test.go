@@ -3,11 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
-	"os/exec"
-	"path/filepath"
-	"runtime"
 	"testing"
-	"time"
 )
 
 func TestNewCustomAdapter_RequiresCommand(t *testing.T) {
@@ -28,7 +24,10 @@ func TestNewCustomAdapter_Success(t *testing.T) {
 }
 
 func TestCustomAdapter_Detect_Found(t *testing.T) {
-	// echo is always on PATH.
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"echo": true},
+	})
+
 	ca, err := NewCustomAdapter("echo", "echo hello", "", false)
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +38,10 @@ func TestCustomAdapter_Detect_Found(t *testing.T) {
 }
 
 func TestCustomAdapter_Detect_NotFound(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"nonexistent-tool-xyz": false},
+	})
+
 	ca, err := NewCustomAdapter("nonexistent", "nonexistent-tool-xyz --update", "", false)
 	if err != nil {
 		t.Fatal(err)
@@ -131,9 +134,12 @@ func TestCustomAdapter_Check_NoCheckCmd(t *testing.T) {
 }
 
 func TestCustomAdapter_Check_WithCheckCmd(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
-	}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"echo": true},
+		shell: map[string]fakeResult{
+			"echo 1.2.3": {stdout: "1.2.3", err: nil},
+		},
+	})
 
 	ca, err := NewCustomAdapter("echo", "echo hello", "echo 1.2.3", false)
 	if err != nil {
@@ -148,7 +154,44 @@ func TestCustomAdapter_Check_WithCheckCmd(t *testing.T) {
 	}
 }
 
+func TestCustomAdapter_Check_MissingBinary(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"missing-tool": false},
+	})
+
+	ca, err := NewCustomAdapter("missing-tool", "missing-tool --update", "missing-tool --version", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ca.Check()
+	if err == nil {
+		t.Fatal("Check() expected error when binary missing, got nil")
+	}
+}
+
+func TestCustomAdapter_Check_CheckTimeoutKills(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"mytool": true},
+		shell: map[string]fakeResult{
+			"sleep 2": {err: context.DeadlineExceeded},
+		},
+	})
+
+	ca, err := NewCustomAdapter("mytool", "mytool --update", "sleep 2", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ca.Check()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Check() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+	}
+}
+
 func TestCustomAdapter_Update_DryRun(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"mytool": true},
+	})
+
 	ca, err := NewCustomAdapter("mytool", "mytool --update", "", false)
 	if err != nil {
 		t.Fatal(err)
@@ -162,10 +205,69 @@ func TestCustomAdapter_Update_DryRun(t *testing.T) {
 	}
 }
 
-func TestCustomAdapter_Update_Execute(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
+func TestCustomAdapter_Update_DryRun_Privileges(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"sudo": true, "mytool": true},
+	})
+
+	ca, err := NewCustomAdapter("mytool", "sudo mytool --update", "", false)
+	if err != nil {
+		t.Fatal(err)
 	}
+	result, err := ca.Update(true)
+	if err != nil {
+		t.Fatalf("Update(dryRun=true) unexpected error = %v", err)
+	}
+	if !result.Success {
+		t.Error("Update(dryRun=true) Success = false, want true")
+	}
+	if len(result.Privileges) != 1 || result.Privileges[0] != "sudo" {
+		t.Errorf("Update(dryRun=true) Privileges = %v, want [sudo]", result.Privileges)
+	}
+	if result.Before != "sudo mytool --update" || result.After != "sudo mytool --update" {
+		t.Errorf("Update(dryRun=true) Before/After mismatch: got (%q, %q)", result.Before, result.After)
+	}
+}
+
+func TestCustomAdapter_Update_MissingBinary(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"missing-tool": false},
+	})
+
+	ca, err := NewCustomAdapter("missing-tool", "missing-tool --update", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ca.Update(false)
+	if err != nil {
+		t.Fatalf("Update() returned error %v, expected error inside Result", err)
+	}
+	if result.Success {
+		t.Error("Update(dryRun=false) Success = true, want false when binary missing")
+	}
+	if result.Error == nil {
+		t.Error("Update(dryRun=false) Result.Error = nil, want structured error when binary missing")
+	}
+
+	dryResult, err := ca.Update(true)
+	if err != nil {
+		t.Fatalf("Update(dryRun=true) returned error %v", err)
+	}
+	if dryResult.Success {
+		t.Error("Update(dryRun=true) Success = true, want false when binary missing")
+	}
+	if dryResult.Error == nil {
+		t.Error("Update(dryRun=true) Result.Error = nil, want structured error when binary missing")
+	}
+}
+
+func TestCustomAdapter_Update_Execute(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"echo": true},
+		shell: map[string]fakeResult{
+			"echo updated": {stdout: "updated", err: nil},
+		},
+	})
 
 	ca, err := NewCustomAdapter("echo", "echo updated", "", false)
 	if err != nil {
@@ -181,7 +283,14 @@ func TestCustomAdapter_Update_Execute(t *testing.T) {
 }
 
 func TestCustomAdapter_Update_Failure(t *testing.T) {
-	ca, err := NewCustomAdapter("fail", "exit 1", "", false)
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"fail-cmd": true},
+		shell: map[string]fakeResult{
+			"fail-cmd": {stdout: "", err: errors.New("exit status 1")},
+		},
+	})
+
+	ca, err := NewCustomAdapter("fail", "fail-cmd", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,11 +299,18 @@ func TestCustomAdapter_Update_Failure(t *testing.T) {
 		t.Fatalf("Update() returned unexpected error: %v", err)
 	}
 	if result.Success {
-		t.Error("Update() with 'exit 1' should return Success=false")
+		t.Error("Update() with failing command should return Success=false")
 	}
 }
 
 func TestCustomAdapter_Privileges(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"sudo": true, "mytool": true},
+		shell: map[string]fakeResult{
+			"sudo mytool --update": {stdout: "updated", err: nil},
+		},
+	})
+
 	ca, err := NewCustomAdapter("mytool", "sudo mytool --update", "", false)
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +318,9 @@ func TestCustomAdapter_Privileges(t *testing.T) {
 	result, err := ca.Update(false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !result.Success {
+		t.Error("Update() Success = false, want true")
 	}
 	if len(result.Privileges) == 0 || result.Privileges[0] != "sudo" {
 		t.Errorf("Update() Privileges = %v, want [sudo]", result.Privileges)
@@ -254,9 +373,11 @@ func TestIsVersionLike(t *testing.T) {
 }
 
 func TestShellExec(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
-	}
+	setExecFakes(t, execFakes{
+		shell: map[string]fakeResult{
+			"echo hello": {stdout: "hello", err: nil},
+		},
+	})
 
 	stdout, err := shellExec("echo hello")
 	if err != nil {
@@ -268,61 +389,30 @@ func TestShellExec(t *testing.T) {
 }
 
 func TestCustomAdapter_Detect_WithRealCommand(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping on windows")
-	}
-
-	// Create a temporary script in PATH.
-	dir := t.TempDir()
-	script := filepath.Join(dir, "test-tool")
-	cmd := exec.Command("sh", "-c", "echo '#!/bin/sh\necho 1.0.0' > "+script+" && chmod +x "+script)
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Prepend temp dir to PATH so the test tool is discoverable.
-	// exec.Command inherits env; we set PATH explicitly.
-	t.Setenv("PATH", dir)
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{
+			"test-tool": true,
+		},
+	})
 
 	ca, err := NewCustomAdapter("test-tool", "test-tool --update", "test-tool --version", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ca.Detect() {
-		t.Error("Detect() should find test-tool in temp PATH")
+		t.Error("Detect() should find test-tool via lookPath")
 	}
 }
 
 func TestShellExec_UpdateTimeoutKills(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
-	}
-
-	orig := UpdateTimeout
-	UpdateTimeout = 100 * time.Millisecond
-	t.Cleanup(func() { UpdateTimeout = orig })
+	setExecFakes(t, execFakes{
+		shell: map[string]fakeResult{
+			"sleep 2": {err: context.DeadlineExceeded},
+		},
+	})
 
 	_, err := shellExec("sleep 2")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("shellExec() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
-	}
-}
-
-func TestCustomAdapter_Check_CheckTimeoutKills(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping shell test on windows")
-	}
-
-	orig := CheckTimeout
-	CheckTimeout = 100 * time.Millisecond
-	t.Cleanup(func() { CheckTimeout = orig })
-
-	ca, err := NewCustomAdapter("mytool", "mytool --update", "sleep 2", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = ca.Check()
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("Check() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
 }

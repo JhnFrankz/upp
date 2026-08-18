@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -13,6 +15,38 @@ import (
 // close after the command itself has exited. A descendant holding the pipes
 // (e.g. an npm/pnpm worker) must not be able to block the caller forever.
 const execReapDelay = 5 * time.Second
+
+// Test seams (D1): package-level function variables swapped by tests via
+// setExecFakes so CustomAdapter can be exercised hermetically without
+// executing real subprocesses. Production behavior is preserved — the vars
+// initialize to real implementations and are only replaced inside tests.
+var (
+	shellExecWithTimeoutFn = defaultShellExecWithTimeout
+	lookPathFn             = exec.LookPath
+)
+
+// defaultShellExecWithTimeout runs a command via the platform shell and kills it —
+// including its whole process group on Unix — once timeout expires, so
+// pipeline/grandchild work (curl|tar, sudo apt, brew...) cannot outlive the
+// deadline. The returned error is errors.Is-detectable as
+// context.DeadlineExceeded. On Windows only the direct child is terminated.
+// Delegates to the shared RunCommandWithTimeout implementation.
+func defaultShellExecWithTimeout(command string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		// Own process group so the timeout can kill shell grandchildren too.
+		setpgid(cmd)
+	}
+
+	stdout, _, err := RunCommandWithTimeout(ctx, cmd)
+	return strings.TrimSpace(stdout), err
+}
 
 // RunCommandWithTimeout runs a started command under ctx, killing the whole
 // process group (Unix) when the context expires, and returns its stdout,
