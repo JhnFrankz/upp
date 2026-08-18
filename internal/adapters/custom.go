@@ -2,10 +2,7 @@
 package adapters
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -38,7 +35,10 @@ func (c *CustomAdapter) Name() string { return c.id }
 // Detect returns true if the base command exists on PATH.
 func (c *CustomAdapter) Detect() bool {
 	base := extractBaseCommand(c.command)
-	_, err := exec.LookPath(base)
+	if base == "" {
+		return false
+	}
+	_, err := lookPathFn(base)
 	return err == nil
 }
 
@@ -46,6 +46,10 @@ func (c *CustomAdapter) Detect() bool {
 func (c *CustomAdapter) Check() (UpdateInfo, error) {
 	if c.checkCmd == "" {
 		return UpdateInfo{}, nil
+	}
+
+	if !c.Detect() {
+		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command))
 	}
 
 	stdout, err := shellExecWithTimeout(c.checkCmd, CheckTimeout)
@@ -64,15 +68,24 @@ func (c *CustomAdapter) Check() (UpdateInfo, error) {
 
 // Update executes the tool's update command.
 func (c *CustomAdapter) Update(dryRun bool) (Result, error) {
-	if dryRun {
+	privileges := detectPrivileges(c.command)
+
+	if !c.Detect() {
 		return Result{
-			Success: true,
-			Before:  c.command,
-			After:   c.command,
+			Success:    false,
+			Error:      fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command)),
+			Privileges: privileges,
 		}, nil
 	}
 
-	privileges := detectPrivileges(c.command)
+	if dryRun {
+		return Result{
+			Success:    true,
+			Before:     c.command,
+			After:      c.command,
+			Privileges: privileges,
+		}, nil
+	}
 
 	_, err := shellExec(c.command)
 	if err != nil {
@@ -125,27 +138,9 @@ func shellExec(command string) (string, error) {
 	return shellExecWithTimeout(command, UpdateTimeout)
 }
 
-// shellExecWithTimeout runs a command via the platform shell and kills it —
-// including its whole process group on Unix — once timeout expires, so
-// pipeline/grandchild work (curl|tar, sudo apt, brew...) cannot outlive the
-// deadline. The returned error is errors.Is-detectable as
-// context.DeadlineExceeded. On Windows only the direct child is terminated.
-// Delegates to the shared RunCommandWithTimeout implementation.
+// shellExecWithTimeout delegates to the shellExecWithTimeoutFn seam variable.
 func shellExecWithTimeout(command string, timeout time.Duration) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
-		// Own process group so the timeout can kill shell grandchildren too.
-		setpgid(cmd)
-	}
-
-	stdout, _, err := RunCommandWithTimeout(ctx, cmd)
-	return strings.TrimSpace(stdout), err
+	return shellExecWithTimeoutFn(command, timeout)
 }
 
 // extractVersionFromOutput extracts a version-like string from command output.
