@@ -9,13 +9,13 @@ context: |
   Architecture: compiled binary, package-per-layer layout under internal/:
   cli (cobra subcommands init/list/check/update/export/import), adapters (official
   per-tool adapters + registry + custom), config, output, platform detection,
-  security/trust model.
+  security/trust model, selfupdate.
   Build/release: Makefile (build, build-all cross-compile for linux/darwin/windows amd64+arm64,
   test, test-race, test-cover, vet, lint, fmt, tidy, smoke).
   Conventions: gofmt, table-driven tests, cobra subcommands.
   Legacy Bash script (upp-legacy.sh) has been REMOVED — Go is the only stack.
-  Git repo on main. SDD cycle: upp-evolution archived 2026-08-09.
-  Docs: README.md (CONTRIBUTING planned).
+  Git repo on main. 14 changes archived in openspec/changes/archive/.
+  Docs: README.md.
   Specs: 9 domains (command-interface, config-system, ci-workflow, platform-detection, security-model,
   tool-adapter, ux-patterns, self-update, release-process).
 

@@ -63,7 +63,7 @@ func defaultShellExecWithTimeout(command string, timeout time.Duration) (string,
 //     in the ctx.Done branch (Wait has not returned) and on ErrWaitDelay
 //     (the child closed its pipes but descendants may still run). A completed
 //     Wait is never followed by a group kill, so a reaped PID cannot be
-//     signalled (no PID-reuse window).
+//     signaled (no PID-reuse window).
 //   - cmd.WaitDelay is set here so a descendant holding the output pipes
 //     cannot hang Wait past execReapDelay.
 //

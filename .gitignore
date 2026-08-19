@@ -1,6 +1,49 @@
-dist/
+# Binaries and build outputs
 upp
+upp.exe
+dist/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test, coverage, and profiling artifacts
+*.test
+*.out
+*.prof
+*.pprof
 coverage.out
-# Local AI runtime state
+coverage.html
+coverage.txt
+cpu.out
+mem.out
+trace.out
+
+# IDE and editor files
+.idea/
+*.iml
+*.iws
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+*~
+#*#
+.#*
+
+# Operating system metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Traces
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Local AI and tool runtime state
 .atl/
 .codegraph/
+.gemini/
