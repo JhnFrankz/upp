@@ -28,7 +28,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&uf.DryRun, "dry-run", false, "show planned actions without executing")
+	cmd.Flags().BoolVarP(&uf.DryRun, "dry-run", "n", false, "show planned actions without executing")
 
 	return cmd
 }
