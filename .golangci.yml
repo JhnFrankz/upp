@@ -1,0 +1,33 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - gofmt
+    - unconvert
+    - misspell
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+  govet:
+    disable:
+      - fieldalignment
+  misspell:
+    locale: US
+  gofmt:
+    simplify: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

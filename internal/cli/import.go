@@ -34,7 +34,7 @@ func runImport(gf *GlobalFlags, filePath string) error {
 		fmt.Print("[y/N] ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "yes") {
-			fmt.Println("Cancelled.")
+			fmt.Println("Canceled.")
 			return nil
 		}
 	}

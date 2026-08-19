@@ -42,7 +42,7 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 	}
 
 	// Get current node version via nvm. nvm is bash-only, so run through
-	// bash explicitly (POSIX sh — dash/ash — lacks `source`); honour
+	// bash explicitly (POSIX sh — dash/ash — lacks `source`); honor
 	// NVM_DIR installs with a fallback to ~/.nvm.
 	stdout, err := shellOutputErr("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
 	if err != nil {

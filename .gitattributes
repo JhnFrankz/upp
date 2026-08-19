@@ -1,0 +1,25 @@
+# Default text handling with LF line endings
+* text=auto eol=lf
+
+# Force LF on shell scripts (critical for Linux/CI execution on Windows checkouts)
+*.sh text eol=lf
+
+# Go source code
+*.go text eol=lf
+
+# Configuration and documentation files
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.tar.gz binary
+*.zip binary
+*.exe binary
