@@ -144,9 +144,14 @@ fi
 echo "Running smoke tests..."
 echo ""
 
-# Test 1: --help
-echo "1. Basic flags"
-run_test_with_output "upp --help" "upp updates your development tools" "$BINARY" --help
+# Test 1: --help and --version
+echo "1. Basic flags & 2-group help"
+run_test_with_output "upp --help (Commands group)" "Commands" "$BINARY" --help
+run_test_with_output "upp --help (Maintenance group)" "Maintenance" "$BINARY" --help
+run_test_without_output "upp --help (no legacy Tool Commands)" "Tool Commands" "$BINARY" --help
+run_test_without_output "upp --help (no legacy Config Commands)" "Config Commands" "$BINARY" --help
+run_test_without_output "upp --help (no export)" "export" "$BINARY" --help
+run_test_without_output "upp --help (no import)" "import" "$BINARY" --help
 run_test_with_output "upp --version" "upp version" "$BINARY" --version
 
 # Test 2: Subcommand help
@@ -156,8 +161,7 @@ run_test_with_output "upp init --help" "Detect installed tools" "$BINARY" init -
 run_test_with_output "upp update --help" "Process each enabled tool" "$BINARY" update --help
 run_test_with_output "upp check --help" "Query each enabled tool" "$BINARY" check --help
 run_test_with_output "upp list --help" "Show all tools available" "$BINARY" list --help
-run_test_with_output "upp export --help" "Output the current configuration" "$BINARY" export --help
-run_test_with_output "upp import --help" "Replace the current configuration" "$BINARY" import --help
+run_test_with_output "upp self-update --help" "Check for a newer upp release" "$BINARY" self-update --help
 
 # Test 3: list command
 echo ""
@@ -187,73 +191,36 @@ else
 fi
 rm -rf "$TMPDIR_INIT"
 
-# Test 6: --quiet flag
+# Test 6: Quiet flag and shorthand (-q)
 echo ""
 echo "6. Quiet mode"
 run_test "upp check --quiet" "$BINARY" check --quiet
+run_test "upp check -q" "$BINARY" check -q
 
-# Test 7: --only filter
+# Test 7: Verbose flag and shorthand (-v)
 echo ""
-echo "7. Filter flags"
+echo "7. Verbose mode"
+run_test "upp check --verbose" "$BINARY" check --verbose
+run_test "upp check -v" "$BINARY" check -v
+
+# Test 8: Filter flags
+echo ""
+echo "8. Filter flags"
 run_test "upp check --only npm" "$BINARY" check --only npm
-
-# Test 8: --skip filter
 run_test "upp check --skip npm" "$BINARY" check --skip npm
-
-# Test 8b: --only wins over --skip
 run_test "upp check --only brew --skip npm (--only wins)" "$BINARY" check --only brew --skip npm
 
-# Test 9: --dry-run
+# Test 9: Dry-run mode and shorthand (-n)
 echo ""
 echo "9. Dry-run mode"
 run_test "upp update --dry-run" "$BINARY" update --dry-run
+run_test "upp update -n" "$BINARY" update -n
 
-# Test 10: import with missing file (should fail)
+# Test 10: Pruned commands error handling
 echo ""
-echo "10. Error handling"
-run_test_exit_code "upp import missing.toml (expected error)" 1 "$BINARY" import "/nonexistent/file.toml"
-
-# Test 11: export
-echo ""
-echo "11. Export"
-TMPDIR_EXPORT=$(mktemp -d)
-HOME_ORIG="${HOME:-}"
-export HOME="$TMPDIR_EXPORT"
-"$BINARY" init --ci >/dev/null 2>&1 || true
-run_test "upp export -o /tmp/test-export.toml" "$BINARY" export -o /tmp/test-export.toml
-rm -f /tmp/test-export.toml
-export HOME="${HOME_ORIG:-$HOME}"
-rm -rf "$TMPDIR_EXPORT"
-
-# Test 12: D6 — empty existing config defaults tools to the catalog (NOT first-run)
-echo ""
-echo "12. Config load states (D6: catalog defaults for existing files)"
-TMPDIR_LOAD=$(mktemp -d)
-HOME_ORIG="${HOME:-}"
-export HOME="$TMPDIR_LOAD"
-mkdir -p "$HOME/.config/upp"
-: > "$HOME/.config/upp/config.toml"
-run_test_with_output "upp export (empty config → catalog defaults)" "tools.apt" "$BINARY" export
-export HOME="${HOME_ORIG:-$HOME}"
-rm -rf "$TMPDIR_LOAD"
-
-# Test 13: partial config ([settings] only) → tool sections default to catalog;
-# a stray `interactive` key loads silently but is NEVER re-emitted (D8).
-TMPDIR_LOAD=$(mktemp -d)
-export HOME="$TMPDIR_LOAD"
-mkdir -p "$HOME/.config/upp"
-printf 'version = 1\n\n[settings]\ninteractive = false\n' > "$HOME/.config/upp/config.toml"
-run_test_with_output "upp export (partial config → catalog defaults)" "tools.apt" "$BINARY" export
-run_test_without_output "upp export (stray interactive key never re-emitted)" "interactive" "$BINARY" export
-export HOME="${HOME_ORIG:-$HOME}"
-rm -rf "$TMPDIR_LOAD"
-
-# Test 14: no config file → first-run path stays (missing file gets NO catalog defaults)
-TMPDIR_LOAD=$(mktemp -d)
-export HOME="$TMPDIR_LOAD"
-run_test_without_output "upp export (no config → no catalog defaults)" "tools.apt" "$BINARY" export
-export HOME="${HOME_ORIG:-$HOME}"
-rm -rf "$TMPDIR_LOAD"
+echo "10. Pruned commands error handling"
+run_test_exit_code "upp export (pruned, exit 1)" 1 "$BINARY" export
+run_test_exit_code "upp import (pruned, exit 1)" 1 "$BINARY" import
 
 # --- Summary ---
 
