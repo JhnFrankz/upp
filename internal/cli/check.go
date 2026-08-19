@@ -66,19 +66,31 @@ func defaultConcurrency() int {
 	return calculateWorkerCount(runtime.NumCPU())
 }
 
+// checkOutcome pairs the rendered ToolResult with the raw adapters.UpdateInfo
+// returned by Check(). Callers (interactive update pre-check) need the
+// versions to render the selector without a second Check() call (design D3).
+// updateInfo is the zero value whenever Detect or Check failed — never act
+// on stale version data.
+type checkOutcome struct {
+	result     output.ToolResult
+	updateInfo adapters.UpdateInfo
+}
+
 // safeCheck runs Detect and Check on an adapter with panic containment.
-func safeCheck(a adapters.Adapter) (res output.ToolResult) {
+func safeCheck(a adapters.Adapter) (oc checkOutcome) {
 	var name string
 	defer func() {
 		if rec := recover(); rec != nil {
 			if name == "" {
 				name = a.Name()
 			}
-			res = output.ToolResult{
+			oc.result = output.ToolResult{
 				Name:   name,
 				Status: output.StatusFailed,
 				Error:  fmt.Errorf("panic during check: %v", rec),
 			}
+			// updateInfo stays the zero value: a panicking check must never
+			// carry version data forward.
 		}
 	}()
 
@@ -86,37 +98,90 @@ func safeCheck(a adapters.Adapter) (res output.ToolResult) {
 	name = info.Name
 
 	if !a.Detect() {
-		return output.ToolResult{
+		oc.result = output.ToolResult{
 			Name:   info.Name,
 			Status: output.StatusSkipped,
 		}
+		return oc
 	}
 
 	updateInfo, err := a.Check()
 	if err != nil {
-		return output.ToolResult{
+		oc.result = output.ToolResult{
 			Name:   info.Name,
 			Status: output.StatusFailed,
 			Error:  timeoutErr(info.Name, "check", err),
 			Stderr: err.Error(),
 		}
+		// updateInfo stays the zero value on check failure.
+		return oc
 	}
 
+	oc.updateInfo = updateInfo
 	if updateInfo.UpdateAvailable {
-		return output.ToolResult{
+		oc.result = output.ToolResult{
 			Name:    info.Name,
 			Status:  output.StatusAvailable,
 			Version: fmt.Sprintf("%s → %s", updateInfo.CurrentVersion, updateInfo.LatestVersion),
 		}
+		return oc
 	}
 
-	return output.ToolResult{
+	oc.result = output.ToolResult{
 		Name:    info.Name,
 		Status:  output.StatusCurrent,
 		Version: updateInfo.CurrentVersion,
 	}
+	return oc
 }
 
+// runChecks runs Detect + Check concurrently over the given adapters with a
+// worker pool clamped to [4, 8] workers and deterministic index slotting, so
+// the returned []checkOutcome is always in input order (design D3). It is
+// shared by `upp check` and the interactive update pre-check (Phase 3).
+// showProgress renders "Checking X/Y" progress lines (when not quiet and
+// total > 1); quiet and non-TTY callers pass false. safeCheck guarantees the
+// returned outcomes never panic.
+func runChecks(adapters []adapters.Adapter, r *output.Renderer, quiet, showProgress bool) []checkOutcome {
+	total := len(adapters)
+	outcomes := make([]checkOutcome, total)
+
+	workerCount := defaultConcurrency()
+	if workerCount > total {
+		workerCount = total
+	}
+
+	jobs := make(chan checkJob, total)
+	for i, a := range adapters {
+		jobs <- checkJob{index: i, adapter: a}
+	}
+	close(jobs)
+
+	var completed atomic.Int32
+	var wg sync.WaitGroup
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				oc := safeCheck(job.adapter)
+				outcomes[job.index] = oc
+				cur := completed.Add(1)
+				if showProgress && !quiet && total > 1 {
+					r.ProgressInPlace("Checking", int(cur), total, oc.result.Name)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	return outcomes
+}
+
+// runCheck implements the `upp check` command: load config, filter the
+// adapter list, run the shared concurrent check, render the summary, and
+// append the opt-in self-update hint.
 func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -153,37 +218,15 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 		return nil
 	}
 
-	results := make([]output.ToolResult, total)
-	workerCount := defaultConcurrency()
-	if workerCount > total {
-		workerCount = total
+	// runChecks preserves input order via deterministic index slotting; the
+	// summary below consumes the rendered results in that same order — the
+	// `check` command output is byte-identical to the pre-extraction pool.
+	outcomes := runChecks(filteredAdapters, r, gf.Quiet, true)
+
+	results := make([]output.ToolResult, len(outcomes))
+	for i, oc := range outcomes {
+		results[i] = oc.result
 	}
-
-	jobs := make(chan checkJob, total)
-	for i, a := range filteredAdapters {
-		jobs <- checkJob{index: i, adapter: a}
-	}
-	close(jobs)
-
-	var completed atomic.Int32
-	var wg sync.WaitGroup
-
-	for w := 0; w < workerCount; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for job := range jobs {
-				res := safeCheck(job.adapter)
-				results[job.index] = res
-				cur := completed.Add(1)
-				if !gf.Quiet && total > 1 {
-					r.ProgressInPlace("Checking", int(cur), total, res.Name)
-				}
-			}
-		}()
-	}
-
-	wg.Wait()
 
 	r.CheckSummary(results)
 	maybeShowSelfUpdateHint(gf, r, cfg, version, deps)

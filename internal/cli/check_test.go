@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -106,7 +107,7 @@ func TestCalculateWorkerCount_Clamping(t *testing.T) {
 func TestSafeCheck_PanicRecovery(t *testing.T) {
 	// Panic in Detect
 	panicDetect := &fakePanickingAdapter{name: "panic-detect", panicDetect: true}
-	resDetect := safeCheck(panicDetect)
+	resDetect := safeCheck(panicDetect).result
 	if resDetect.Status != output.StatusFailed {
 		t.Errorf("safeCheck(panicDetect) status = %v, want StatusFailed", resDetect.Status)
 	}
@@ -116,7 +117,7 @@ func TestSafeCheck_PanicRecovery(t *testing.T) {
 
 	// Panic in Check
 	panicCheck := &fakePanickingAdapter{name: "panic-check", panicCheck: true}
-	resCheck := safeCheck(panicCheck)
+	resCheck := safeCheck(panicCheck).result
 	if resCheck.Status != output.StatusFailed {
 		t.Errorf("safeCheck(panicCheck) status = %v, want StatusFailed", resCheck.Status)
 	}
@@ -130,12 +131,85 @@ func TestSafeCheck_TimeoutIsolation(t *testing.T) {
 		name:     "slow-tool",
 		checkErr: context.DeadlineExceeded,
 	}
-	res := safeCheck(timeoutAdapt)
+	res := safeCheck(timeoutAdapt).result
 	if res.Status != output.StatusFailed {
 		t.Errorf("safeCheck(timeout) status = %v, want StatusFailed", res.Status)
 	}
 	if res.Error == nil || !strings.Contains(res.Error.Error(), "timed out") {
 		t.Errorf("safeCheck(timeout) error = %v, want timeout description", res.Error)
+	}
+}
+
+// TestRunChecks_CarriesUpdateInfo proves the design D3 contract: runChecks
+// returns checkOutcome values that carry the raw adapters.UpdateInfo from
+// Check() alongside the rendered ToolResult — the interactive update loop
+// (Phase 3) needs the versions to render the selector without a second
+// Check() call. The info MUST be zero when Detect or Check failed, so callers
+// never act on stale version data.
+func TestRunChecks_CarriesUpdateInfo(t *testing.T) {
+	available := &fakeDelayedAdapter{
+		name: "tool-available",
+		info: adapters.UpdateInfo{
+			UpdateAvailable: true,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+		},
+	}
+	current := &fakeDelayedAdapter{
+		name: "tool-current",
+		info: adapters.UpdateInfo{
+			CurrentVersion: "3.1.4",
+		},
+	}
+	failed := &fakeDelayedAdapter{
+		name:     "tool-failed",
+		checkErr: context.DeadlineExceeded,
+	}
+
+	r := output.NewRenderer(io.Discard, false)
+	outcomes := runChecks([]adapters.Adapter{available, current, failed}, r, false, false)
+
+	if len(outcomes) != 3 {
+		t.Fatalf("runChecks returned %d outcomes, want 3", len(outcomes))
+	}
+
+	// Outcome order must match adapter order (deterministic index slotting).
+	byName := map[string]checkOutcome{}
+	for _, oc := range outcomes {
+		byName[oc.result.Name] = oc
+	}
+
+	// Available: full UpdateInfo carried → "current → latest" inline string.
+	avail := byName["tool-available"]
+	if avail.result.Status != output.StatusAvailable {
+		t.Errorf("tool-available status = %v, want StatusAvailable", avail.result.Status)
+	}
+	if !avail.updateInfo.UpdateAvailable {
+		t.Error("tool-available updateInfo.UpdateAvailable = false, want true")
+	}
+	if avail.updateInfo.CurrentVersion != "1.0.0" || avail.updateInfo.LatestVersion != "2.0.0" {
+		t.Errorf("tool-available updateInfo = %+v, want Current 1.0.0 / Latest 2.0.0", avail.updateInfo)
+	}
+	if want := "1.0.0 → 2.0.0"; avail.result.Version != want {
+		t.Errorf("tool-available result.Version = %q, want %q", avail.result.Version, want)
+	}
+
+	// Current: UpdateInfo carried with the current version.
+	cur := byName["tool-current"]
+	if cur.result.Status != output.StatusCurrent {
+		t.Errorf("tool-current status = %v, want StatusCurrent", cur.result.Status)
+	}
+	if cur.updateInfo.CurrentVersion != "3.1.4" {
+		t.Errorf("tool-current updateInfo = %+v, want CurrentVersion 3.1.4", cur.updateInfo)
+	}
+
+	// Failed: updateInfo MUST be zero — never act on stale version data.
+	fail := byName["tool-failed"]
+	if fail.result.Status != output.StatusFailed {
+		t.Errorf("tool-failed status = %v, want StatusFailed", fail.result.Status)
+	}
+	if fail.updateInfo != (adapters.UpdateInfo{}) {
+		t.Errorf("tool-failed updateInfo = %+v, want zero value", fail.updateInfo)
 	}
 }
 
