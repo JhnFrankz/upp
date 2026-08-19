@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Manage persistent configuration: file format, location, import/export, and first-run wizard state.
+Manage persistent configuration: file format, location, and first-run wizard state.
 
 ## Requirements
 
@@ -39,13 +39,7 @@ Minimum config structure:
   trusted = false
 ```
 
-The `[settings]` section MUST NOT contain an output-language key: upp output is
-English-only. The `settings.interactive` field MUST NOT exist in the config schema:
-prompt behavior is driven by the security-model risk matrix and TTY detection, not
-by config, and no CLI flag is added or removed. A `language` or `interactive` key in
-an existing config file is ignored (unknown settings are tolerated for forward
-compatibility) and MUST NOT be written by `upp init`, `upp export`, or `upp import`.
-(Previously: the minimum structure listed `[settings] interactive = true`; the field was written but never read by production code — dead config removed as simplification, no behavior change.)
+The `[settings]` section MUST NOT contain an output-language key: upp output is English-only. The `settings.interactive` field MUST NOT exist in the config schema: prompt behavior is driven by the security-model risk matrix and TTY detection, not by config, and no CLI flag is added or removed. A `language` or `interactive` key in an existing config file is ignored (unknown settings are tolerated for forward compatibility) and MUST NOT be written by `upp init`.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -53,7 +47,9 @@ compatibility) and MUST NOT be written by `upp init`, `upp export`, or `upp impo
 | Invalid TOML | Malformed config file | Config loaded | Error message with line number, exit non-zero |
 | Missing fields | Config has partial content | Config loaded | Missing fields use defaults |
 | Stray interactive | Existing config has `interactive = false` | Config loaded | Key ignored; prompt behavior unchanged (risk matrix + TTY) |
-| Init/export hygiene | Config loaded | `upp init`, `upp export`, `upp import` | `interactive` key never written to output |
+| Init hygiene | Config loaded | `upp init` | `interactive` key never written to output |
+
+(Previously: the requirement referenced `upp export` and `upp import` writing output configs.)
 
 ### Requirement: Config Defaults
 
@@ -67,19 +63,6 @@ The system MUST provide sensible defaults for all settings. Defaults MUST be app
 | Full config | All fields present | Config loaded | Loaded as-is; defaults not applied |
 
 (Previously: missing-file state was inferred from defaults, so first run appeared to have an existing config and the init wizard never ran; partial configs did not default tools to the catalog.)
-
-### Requirement: Export/Import
-
-`upp export` MUST serialize the current config to stdout or a file. `upp import` MUST load a config file and merge/replace the current config.
-
-Export format MUST be identical to the config file format (round-trippable).
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| Export to stdout | Config exists | `upp export` | TOML output to stdout |
-| Export to file | Config exists | `upp export -o backup.toml` | File written |
-| Import replaces | `backup.toml` has tools section | `upp import backup.toml` | Current config replaced |
-| Import validates | `bad.toml` has syntax error | `upp import bad.toml` | Error reported, no changes |
 
 ### Requirement: Config Validation
 
