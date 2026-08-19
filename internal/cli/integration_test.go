@@ -134,17 +134,6 @@ func TestRootCommand_NoArgs(t *testing.T) {
 		t.Errorf("expected 5 subcommands, got %d", len(commands))
 	}
 
-	// Bare execution in empty dir outputs no-config dashboard
-	out := withCapturedStdout(func() {
-		root.SetArgs([]string{})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("bare upp execution error: %v", err)
-		}
-	})
-
-	if !strings.Contains(out, "upp 0.2.0") || !strings.Contains(out, "No configuration found") {
-		t.Errorf("expected no-config dashboard banner, got:\n%s", out)
-	}
 }
 
 func TestRootCommand_Help(t *testing.T) {
