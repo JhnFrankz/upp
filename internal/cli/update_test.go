@@ -283,3 +283,64 @@ func TestTimeoutErr(t *testing.T) {
 		}
 	})
 }
+
+func TestUpdateCommand_DryRunShorthand(t *testing.T) {
+	gf := &GlobalFlags{}
+	cmd := NewUpdateCommand(gf)
+
+	dryRunFlag := cmd.Flags().Lookup("dry-run")
+	if dryRunFlag == nil || dryRunFlag.Shorthand != "n" {
+		t.Fatalf("expected --dry-run to have shorthand -n, got %v", dryRunFlag)
+	}
+
+	err := cmd.ParseFlags([]string{"-n"})
+	if err != nil {
+		t.Fatalf("ParseFlags error: %v", err)
+	}
+	val, err := cmd.Flags().GetBool("dry-run")
+	if err != nil || !val {
+		t.Errorf("expected -n to set dry-run=true, got val=%v, err=%v", val, err)
+	}
+}
+
+func TestRunUpdate_VerboseFailureDiagnostics(t *testing.T) {
+	probeHome(t)
+	failing := &fakeUpdateAdapter{
+		name:      "broken-tool",
+		policy:    adapters.PolicyAlwaysUpdate,
+		trust:     adapters.TrustOfficial,
+		updateErr: fmt.Errorf("permission denied reading /var/cache/apt"),
+	}
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return []adapters.Adapter{failing}
+		},
+	}
+
+	// With -v
+	outVerbose := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: true}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+	if !strings.Contains(outVerbose, "permission denied reading /var/cache/apt") {
+		t.Errorf("expected verbose update to contain stderr diagnostic, got:\n%s", outVerbose)
+	}
+
+	// Without -v
+	outDefault := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: false}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+	if strings.Contains(outDefault, "permission denied reading /var/cache/apt") {
+		t.Errorf("expected default update to suppress stderr diagnostic, got:\n%s", outDefault)
+	}
+
+	// With -q and -v
+	outQuiet := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: true, Quiet: true}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+	if strings.Contains(outQuiet, "permission denied reading /var/cache/apt") {
+		t.Errorf("expected quiet mode to suppress stderr diagnostic, got:\n%s", outQuiet)
+	}
+}

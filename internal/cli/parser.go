@@ -13,20 +13,16 @@ import (
 
 // GlobalFlags holds the flags shared by all commands.
 type GlobalFlags struct {
-	Quiet bool
-	CI    bool
-	Only  string
-	Skip  string
+	Quiet   bool
+	Verbose bool
+	CI      bool
+	Only    string
+	Skip    string
 }
 
 // UpdateFlags holds flags specific to the update command.
 type UpdateFlags struct {
 	DryRun bool
-}
-
-// ExportFlags holds flags specific to the export command.
-type ExportFlags struct {
-	Output string
 }
 
 // BuildRoot creates the root cobra.Command with global flags.
@@ -45,13 +41,14 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 		CompletionOptions: cobra.CompletionOptions{
 			HiddenDefaultCmd: true,
 		},
-		// No args → show status (read-only, same as check)
+		// No args → show dashboard welcome screen (read-only)
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheck(gf, cmd.Root().Version, checkDeps{})
+			return runDashboard(gf, cmd.Root().Version, os.Stdout, cliDeps.dashboard)
 		},
 	}
 
-	root.PersistentFlags().BoolVar(&gf.Quiet, "quiet", false, "reduce output to essential status only")
+	root.PersistentFlags().BoolVarP(&gf.Quiet, "quiet", "q", false, "reduce output to essential status only")
+	root.PersistentFlags().BoolVarP(&gf.Verbose, "verbose", "v", false, "enable verbose diagnostic output on failure")
 	root.PersistentFlags().BoolVar(&gf.CI, "ci", false, "non-interactive mode (exit non-zero on failure)")
 	root.PersistentFlags().StringVar(&gf.Only, "only", "", "process only these tools (comma-separated)")
 	root.PersistentFlags().StringVar(&gf.Skip, "skip", "", "skip these tools (comma-separated)")
@@ -60,28 +57,22 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 }
 
 // AddCommands registers all subcommands on the root command.
-// Commands are grouped for help output (D6, spec command-interface):
-// Tool Commands (check/list/update), Config Commands (init/export/import),
-// Maintenance (self-update).
+// Commands are grouped for help output (spec command-interface):
+// Commands (check/list/update), Maintenance (init/self-update).
 func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 	root.AddGroup(
-		&cobra.Group{ID: "tool", Title: "Tool Commands"},
-		&cobra.Group{ID: "config", Title: "Config Commands"},
+		&cobra.Group{ID: "commands", Title: "Commands"},
 		&cobra.Group{ID: "maintenance", Title: "Maintenance"},
 	)
 
 	check := NewCheckCommand(gf)
-	check.GroupID = "tool"
+	check.GroupID = "commands"
 	update := NewUpdateCommand(gf)
-	update.GroupID = "tool"
+	update.GroupID = "commands"
 	list := NewListCommand(gf)
-	list.GroupID = "tool"
+	list.GroupID = "commands"
 	init := NewInitCommand(gf)
-	init.GroupID = "config"
-	export := NewExportCommand(gf)
-	export.GroupID = "config"
-	importCmd := NewImportCommand(gf)
-	importCmd.GroupID = "config"
+	init.GroupID = "maintenance"
 	selfUpdate := NewSelfUpdateCommand(gf)
 	selfUpdate.GroupID = "maintenance"
 
@@ -91,8 +82,6 @@ func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 		selfUpdate,
 		check,
 		list,
-		export,
-		importCmd,
 	)
 }
 
