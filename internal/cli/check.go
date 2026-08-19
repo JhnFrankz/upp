@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
+	"sync/atomic"
 
 	"github.com/spf13/cobra"
 
@@ -42,6 +45,77 @@ type checkDeps struct {
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
 }
 
+type checkJob struct {
+	index   int
+	adapter adapters.Adapter
+}
+
+// calculateWorkerCount clamps concurrency to [4, 8] based on CPU cores.
+func calculateWorkerCount(numCPU int) int {
+	if numCPU < 4 {
+		return 4
+	}
+	if numCPU > 8 {
+		return 8
+	}
+	return numCPU
+}
+
+// defaultConcurrency returns the clamped worker count for the current machine.
+func defaultConcurrency() int {
+	return calculateWorkerCount(runtime.NumCPU())
+}
+
+// safeCheck runs Detect and Check on an adapter with panic containment.
+func safeCheck(a adapters.Adapter) (res output.ToolResult) {
+	var name string
+	defer func() {
+		if rec := recover(); rec != nil {
+			if name == "" {
+				name = a.Name()
+			}
+			res = output.ToolResult{
+				Name:   name,
+				Status: output.StatusFailed,
+				Error:  fmt.Errorf("panic during check: %v", rec),
+			}
+		}
+	}()
+
+	info := a.Info()
+	name = info.Name
+
+	if !a.Detect() {
+		return output.ToolResult{
+			Name:   info.Name,
+			Status: output.StatusSkipped,
+		}
+	}
+
+	updateInfo, err := a.Check()
+	if err != nil {
+		return output.ToolResult{
+			Name:   info.Name,
+			Status: output.StatusFailed,
+			Error:  timeoutErr(info.Name, "check", err),
+		}
+	}
+
+	if updateInfo.UpdateAvailable {
+		return output.ToolResult{
+			Name:    info.Name,
+			Status:  output.StatusAvailable,
+			Version: fmt.Sprintf("%s → %s", updateInfo.CurrentVersion, updateInfo.LatestVersion),
+		}
+	}
+
+	return output.ToolResult{
+		Name:    info.Name,
+		Status:  output.StatusCurrent,
+		Version: updateInfo.CurrentVersion,
+	}
+}
+
 func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -71,47 +145,44 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 
-	var results []output.ToolResult
 	total := len(filteredAdapters)
-
-	for i, a := range filteredAdapters {
-		info := a.Info()
-		if !a.Detect() {
-			results = append(results, output.ToolResult{
-				Name:   info.Name,
-				Status: output.StatusSkipped,
-			})
-			continue
-		}
-
-		if !gf.Quiet && total > 1 {
-			r.Progress("Checking", i+1, total, info.Name)
-		}
-
-		updateInfo, err := a.Check()
-		if err != nil {
-			results = append(results, output.ToolResult{
-				Name:   info.Name,
-				Status: output.StatusFailed,
-				Error:  timeoutErr(info.Name, "check", err),
-			})
-			continue
-		}
-
-		if updateInfo.UpdateAvailable {
-			results = append(results, output.ToolResult{
-				Name:    info.Name,
-				Status:  output.StatusAvailable,
-				Version: fmt.Sprintf("%s → %s", updateInfo.CurrentVersion, updateInfo.LatestVersion),
-			})
-		} else {
-			results = append(results, output.ToolResult{
-				Name:    info.Name,
-				Status:  output.StatusCurrent,
-				Version: updateInfo.CurrentVersion,
-			})
-		}
+	if total == 0 {
+		r.CheckSummary(nil)
+		maybeShowSelfUpdateHint(gf, r, cfg, version, deps)
+		return nil
 	}
+
+	results := make([]output.ToolResult, total)
+	workerCount := defaultConcurrency()
+	if workerCount > total {
+		workerCount = total
+	}
+
+	jobs := make(chan checkJob, total)
+	for i, a := range filteredAdapters {
+		jobs <- checkJob{index: i, adapter: a}
+	}
+	close(jobs)
+
+	var completed atomic.Int32
+	var wg sync.WaitGroup
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				res := safeCheck(job.adapter)
+				results[job.index] = res
+				cur := completed.Add(1)
+				if !gf.Quiet && total > 1 {
+					r.ProgressInPlace("Checking", int(cur), total, res.Name)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
 
 	r.CheckSummary(results)
 	maybeShowSelfUpdateHint(gf, r, cfg, version, deps)

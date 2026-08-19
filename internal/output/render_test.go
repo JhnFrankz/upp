@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -651,5 +652,93 @@ func TestNewRenderer_NonTTY(t *testing.T) {
 	}
 	if r.emoji {
 		t.Error("renderer for non-TTY should not use emoji")
+	}
+}
+
+func TestRenderer_ConcurrentProgress_ThreadSafe(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, false)
+
+	const goroutines = 20
+	const iterations = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines * 2)
+
+	for g := 0; g < goroutines; g++ {
+		go func(id int) {
+			defer wg.Done()
+			for i := 1; i <= iterations; i++ {
+				r.Progress("Checking", i, iterations, fmt.Sprintf("tool-%d", id))
+			}
+		}(g)
+		go func(id int) {
+			defer wg.Done()
+			for i := 1; i <= iterations; i++ {
+				r.ProgressInPlace("Checking", i, iterations, fmt.Sprintf("tool-%d", id))
+			}
+		}(g)
+	}
+
+	wg.Wait()
+	if buf.Len() == 0 {
+		t.Errorf("expected non-empty output from concurrent progress writes")
+	}
+}
+
+func TestProgressInPlace_TTY(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, false)
+
+	r.ProgressInPlace("Checking", 2, 5, "brew")
+
+	output := buf.String()
+	if !strings.HasPrefix(output, "\r") {
+		t.Errorf("TTY ProgressInPlace must start with carriage return \\r, got: %q", output)
+	}
+	if strings.HasSuffix(output, "\n") {
+		t.Errorf("TTY ProgressInPlace must not end with newline \\n, got: %q", output)
+	}
+	if !strings.Contains(output, "Checking 2/5") || !strings.Contains(output, "brew") {
+		t.Errorf("TTY ProgressInPlace must contain operation and tool, got: %q", output)
+	}
+}
+
+func TestProgressInPlace_NonTTY(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false)
+
+	r.ProgressInPlace("Checking", 2, 5, "brew")
+
+	output := buf.String()
+	if strings.Contains(output, "\r") {
+		t.Errorf("Non-TTY ProgressInPlace must not contain carriage return \\r, got: %q", output)
+	}
+	if !strings.HasSuffix(output, "\n") {
+		t.Errorf("Non-TTY ProgressInPlace must end with newline \\n, got: %q", output)
+	}
+	if !strings.Contains(output, "Checking 2/5") || !strings.Contains(output, "brew") {
+		t.Errorf("Non-TTY ProgressInPlace must contain operation and tool, got: %q", output)
+	}
+}
+
+func TestProgressInPlace_SingleTool(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, false)
+
+	r.ProgressInPlace("Checking", 1, 1, "brew")
+
+	if buf.Len() > 0 {
+		t.Errorf("ProgressInPlace should not show for single tool, got: %q", buf.String())
+	}
+}
+
+func TestProgressInPlace_Quiet(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, true)
+
+	r.ProgressInPlace("Checking", 2, 5, "brew")
+
+	if buf.Len() > 0 {
+		t.Errorf("ProgressInPlace should be suppressed in quiet mode, got: %q", buf.String())
 	}
 }

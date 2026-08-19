@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"text/tabwriter"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -43,6 +44,7 @@ type Renderer struct {
 	color bool
 	emoji bool
 	quiet bool
+	mu    sync.Mutex
 }
 
 // NewRenderer creates a Renderer that detects color/emoji support.
@@ -219,11 +221,32 @@ func (r *Renderer) quietToolLine(result ToolResult) {
 // operation label comes from the caller ("Checking" for read-only check,
 // "Updating" for update) so read-only runs never claim to update (D2).
 func (r *Renderer) Progress(op string, current, total int, name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet || total <= 1 {
 		return
 	}
 	_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
 		r.dim("⟳"), op, current, total, r.cyan(name))
+}
+
+// ProgressInPlace shows a single-line progress indicator. In interactive
+// (color/TTY) mode, it updates in-place using carriage return \r without a
+// trailing newline. In non-TTY/CI mode, it falls back to line-buffered output
+// with newlines and without carriage returns.
+func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.quiet || total <= 1 {
+		return
+	}
+	if r.color {
+		_, _ = fmt.Fprintf(r.w, "\r  %s %s %d/%d: %s",
+			r.dim("⟳"), op, current, total, r.cyan(name))
+	} else {
+		_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
+			r.dim("⟳"), op, current, total, r.cyan(name))
+	}
 }
 
 // --- Summary ---
