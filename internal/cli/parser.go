@@ -41,9 +41,9 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 		CompletionOptions: cobra.CompletionOptions{
 			HiddenDefaultCmd: true,
 		},
-		// No args → same as check (read-only, zero exit code)
+		// No args → show dashboard welcome screen (read-only)
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheck(gf, cmd.Root().Version, checkDeps{})
+			return runDashboard(gf, cmd.Root().Version, os.Stdout, cliDeps.dashboard)
 		},
 	}
 

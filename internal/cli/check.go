@@ -98,6 +98,7 @@ func safeCheck(a adapters.Adapter) (res output.ToolResult) {
 			Name:   info.Name,
 			Status: output.StatusFailed,
 			Error:  timeoutErr(info.Name, "check", err),
+			Stderr: err.Error(),
 		}
 	}
 
@@ -143,7 +144,7 @@ func runCheck(gf *GlobalFlags, version string, deps checkDeps) error {
 		}
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	r := output.NewRendererVerbose(os.Stdout, gf.Quiet, gf.Verbose)
 
 	total := len(filteredAdapters)
 	if total == 0 {

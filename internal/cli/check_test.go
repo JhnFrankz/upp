@@ -179,3 +179,46 @@ func TestRunCheck_Concurrent_OrderingAndIsolation(t *testing.T) {
 		t.Errorf("expected '2 failed' in summary, got:\n%s", out)
 	}
 }
+
+func TestRunCheck_VerboseFailureDiagnostics(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	failingAdapter := &fakeDelayedAdapter{
+		name:     "fail-tool",
+		checkErr: fmt.Errorf("lock frontend held by another process"),
+	}
+
+	deps := checkDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return []adapters.Adapter{failingAdapter}
+		},
+	}
+
+	// With -v, diagnostics should be emitted
+	outVerbose := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: true}
+		_ = runCheck(gf, "v0.1.0", deps)
+	})
+	if !strings.Contains(outVerbose, "lock frontend held by another process") {
+		t.Errorf("expected verbose output to contain stderr diagnostic, got:\n%s", outVerbose)
+	}
+
+	// Without -v, stderr is suppressed
+	outDefault := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: false}
+		_ = runCheck(gf, "v0.1.0", deps)
+	})
+	if strings.Contains(outDefault, "lock frontend held by another process") {
+		t.Errorf("expected default output to suppress stderr diagnostic, got:\n%s", outDefault)
+	}
+
+	// With -q and -v, quiet takes precedence and suppresses
+	outQuiet := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: true, Quiet: true}
+		_ = runCheck(gf, "v0.1.0", deps)
+	})
+	if strings.Contains(outQuiet, "lock frontend held by another process") {
+		t.Errorf("expected quiet mode to suppress stderr diagnostic, got:\n%s", outQuiet)
+	}
+}

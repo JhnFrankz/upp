@@ -9,7 +9,7 @@ import (
 )
 
 func TestStatusIcons_ColorMode(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, true, true, false)
+	r := NewRendererForced(&bytes.Buffer{}, true, true, false, false)
 
 	tests := []struct {
 		status   Status
@@ -31,7 +31,7 @@ func TestStatusIcons_ColorMode(t *testing.T) {
 }
 
 func TestStatusIcons_PlainMode(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, false, false, false)
+	r := NewRendererForced(&bytes.Buffer{}, false, false, false, false)
 
 	tests := []struct {
 		status   Status
@@ -53,7 +53,7 @@ func TestStatusIcons_PlainMode(t *testing.T) {
 }
 
 func TestColorize_NoColor(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, false, false, false)
+	r := NewRendererForced(&bytes.Buffer{}, false, false, false, false)
 	result := r.colorize("31", "hello")
 	if result != "hello" {
 		t.Errorf("colorize with no color should return plain text, got %q", result)
@@ -61,7 +61,7 @@ func TestColorize_NoColor(t *testing.T) {
 }
 
 func TestColorize_WithColor(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, true, false, false)
+	r := NewRendererForced(&bytes.Buffer{}, true, false, false, false)
 	result := r.colorize("31", "hello")
 	if result != "\033[31mhello\033[0m" {
 		t.Errorf("colorize with color should wrap in ANSI codes, got %q", result)
@@ -70,7 +70,7 @@ func TestColorize_WithColor(t *testing.T) {
 
 func TestToolLine_Verbose(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	r.ToolLine(ToolResult{
 		Name:    "brew",
@@ -92,7 +92,7 @@ func TestToolLine_Verbose(t *testing.T) {
 
 func TestToolLine_Quiet(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, true)
+	r := NewRendererForced(&buf, false, true, true, false)
 
 	r.ToolLine(ToolResult{
 		Name:   "brew",
@@ -111,7 +111,7 @@ func TestToolLine_Quiet(t *testing.T) {
 
 func TestToolLine_FailedWithError(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	r.ToolLine(ToolResult{
 		Name:   "npm",
@@ -130,7 +130,7 @@ func TestToolLine_FailedWithError(t *testing.T) {
 
 func TestUpdateSummary_AllUpdated(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	summary := Summary{
 		Results: []ToolResult{
@@ -150,7 +150,7 @@ func TestUpdateSummary_AllUpdated(t *testing.T) {
 
 func TestUpdateSummary_PartialFailure(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	summary := Summary{
 		Results: []ToolResult{
@@ -173,7 +173,7 @@ func TestUpdateSummary_PartialFailure(t *testing.T) {
 
 func TestUpdateSummary_AllSkipped(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	summary := Summary{
 		Results: []ToolResult{
@@ -193,7 +193,7 @@ func TestUpdateSummary_AllSkipped(t *testing.T) {
 
 func TestUpdateSummary_DryRun(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	summary := Summary{
 		Results: []ToolResult{
@@ -215,7 +215,7 @@ func TestUpdateSummary_DryRun(t *testing.T) {
 
 func TestUpdateSummary_NotCleanWithSkips(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	summary := Summary{
 		Results: []ToolResult{
@@ -238,7 +238,7 @@ func TestUpdateSummary_NotCleanWithSkips(t *testing.T) {
 
 func TestCheckSummary_UpdatesAvailable(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "brew", Status: StatusAvailable, Version: "4.0.0 → 4.1.0"},
@@ -262,7 +262,7 @@ func TestCheckSummary_UpdatesAvailable(t *testing.T) {
 
 func TestCheckSummary_AllCurrent(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "brew", Status: StatusCurrent, Version: "4.1.0"},
@@ -282,7 +282,7 @@ func TestCheckSummary_AllCurrent(t *testing.T) {
 // explicitly and MUST NOT print the "All tools up to date." tagline.
 func TestCheckSummary_CurrentAndSkipped(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "apt", Status: StatusCurrent, Version: "2.4.0"},
@@ -309,7 +309,7 @@ func TestCheckSummary_CurrentAndSkipped(t *testing.T) {
 // up-to-date tagline.
 func TestCheckSummary_AllSkipped(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "brew", Status: StatusSkipped},
@@ -332,7 +332,7 @@ func TestCheckSummary_AllSkipped(t *testing.T) {
 // all-tools-disabled integration test depend on it).
 func TestCheckSummary_EmptyResults(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	r.CheckSummary(nil)
 
@@ -346,7 +346,7 @@ func TestCheckSummary_EmptyResults(t *testing.T) {
 // updates plus skipped tools are both counted, never the tagline.
 func TestCheckSummary_AvailableAndSkipped(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "apt", Status: StatusAvailable, Version: "2.4.0 → 2.4.5"},
@@ -368,7 +368,7 @@ func TestCheckSummary_AvailableAndSkipped(t *testing.T) {
 // failure: current tools are still counted as up to date alongside failed.
 func TestCheckSummary_CurrentAndFailed(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "apt", Status: StatusCurrent, Version: "2.4.0"},
@@ -392,7 +392,7 @@ func TestCheckSummary_CurrentAndFailed(t *testing.T) {
 // every status; a future Status value must fail closed, not claim clean).
 func TestCheckSummary_UnknownStatusFailsClosed(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	results := []ToolResult{
 		{Name: "mystery", Status: Status(99)},
@@ -411,7 +411,7 @@ func TestCheckSummary_UnknownStatusFailsClosed(t *testing.T) {
 
 func TestListTools(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	entries := []ListEntry{
 		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
@@ -431,7 +431,7 @@ func TestListTools(t *testing.T) {
 
 func TestListTools_IDColumn(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	entries := []ListEntry{
 		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
@@ -458,7 +458,7 @@ func TestListTools_IDColumn(t *testing.T) {
 
 func TestDryRunHeader(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	r.DryRunHeader()
 
@@ -470,7 +470,7 @@ func TestDryRunHeader(t *testing.T) {
 
 func TestProgress_SingleTool(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	// Single tool should not show progress
 	r.Progress("Checking", 1, 1, "brew")
@@ -482,7 +482,7 @@ func TestProgress_SingleTool(t *testing.T) {
 
 func TestProgress_CheckVerb(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	r.Progress("Checking", 2, 5, "brew")
 
@@ -500,7 +500,7 @@ func TestProgress_CheckVerb(t *testing.T) {
 
 func TestProgress_UpdateVerb(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false)
+	r := NewRendererForced(&buf, false, true, false, false)
 
 	r.Progress("Updating", 3, 10, "npm")
 
@@ -657,7 +657,7 @@ func TestNewRenderer_NonTTY(t *testing.T) {
 
 func TestRenderer_ConcurrentProgress_ThreadSafe(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, false)
+	r := NewRendererForced(&buf, true, true, false, false)
 
 	const goroutines = 20
 	const iterations = 50
@@ -687,7 +687,7 @@ func TestRenderer_ConcurrentProgress_ThreadSafe(t *testing.T) {
 
 func TestProgressInPlace_TTY(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, false)
+	r := NewRendererForced(&buf, true, true, false, false)
 
 	r.ProgressInPlace("Checking", 2, 5, "brew")
 
@@ -705,7 +705,7 @@ func TestProgressInPlace_TTY(t *testing.T) {
 
 func TestProgressInPlace_NonTTY(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false)
+	r := NewRendererForced(&buf, false, false, false, false)
 
 	r.ProgressInPlace("Checking", 2, 5, "brew")
 
@@ -723,7 +723,7 @@ func TestProgressInPlace_NonTTY(t *testing.T) {
 
 func TestProgressInPlace_SingleTool(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, false)
+	r := NewRendererForced(&buf, true, true, false, false)
 
 	r.ProgressInPlace("Checking", 1, 1, "brew")
 
@@ -734,11 +734,183 @@ func TestProgressInPlace_SingleTool(t *testing.T) {
 
 func TestProgressInPlace_Quiet(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, true)
+	r := NewRendererForced(&buf, true, true, true, false)
 
 	r.ProgressInPlace("Checking", 2, 5, "brew")
 
 	if buf.Len() > 0 {
 		t.Errorf("ProgressInPlace should be suppressed in quiet mode, got: %q", buf.String())
+	}
+}
+
+func TestDashboard_Formatting(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+
+	data := DashboardData{
+		Version:        "v0.2.0",
+		Platform:       "linux/amd64",
+		EnabledTools:   5,
+		AvailableTools: 10,
+	}
+
+	r.Dashboard(data)
+
+	out := buf.String()
+	for _, want := range []string{
+		"upp v0.2.0 (linux/amd64)",
+		"Tools: 5 enabled (10 configured for platform)",
+		"Commands:",
+		"upp check",
+		"upp update",
+		"upp list",
+		"upp --help",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Dashboard output missing %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestDashboard_QuietSuppresses(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, true, false)
+
+	data := DashboardData{
+		Version:        "v0.2.0",
+		Platform:       "linux/amd64",
+		EnabledTools:   5,
+		AvailableTools: 10,
+	}
+
+	r.Dashboard(data)
+
+	if buf.Len() > 0 {
+		t.Errorf("Dashboard in quiet mode must produce no output, got: %q", buf.String())
+	}
+}
+
+func TestDashboardNoConfig(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+
+	r.DashboardNoConfig("v0.2.0", "linux/amd64")
+
+	out := buf.String()
+	for _, want := range []string{
+		"upp v0.2.0 (linux/amd64)",
+		"No configuration found.",
+		"Run \"upp init\" to detect installed tools and initialize your config.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("DashboardNoConfig output missing %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestDashboardNoConfig_QuietSuppresses(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, true, false)
+
+	r.DashboardNoConfig("v0.2.0", "linux/amd64")
+
+	if buf.Len() > 0 {
+		t.Errorf("DashboardNoConfig in quiet mode must produce no output, got: %q", buf.String())
+	}
+}
+
+func TestDashboard_PlainNonTTY(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+
+	r.Dashboard(DashboardData{
+		Version:        "v0.2.0",
+		Platform:       "linux/amd64",
+		EnabledTools:   3,
+		AvailableTools: 3,
+	})
+
+	out := buf.String()
+	if strings.Contains(out, "\033[") {
+		t.Errorf("Plain non-TTY dashboard must not contain ANSI escape codes, got: %q", out)
+	}
+}
+
+func TestToolLine_VerboseFailureDiagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, true)
+
+	r.ToolLine(ToolResult{
+		Name:   "npm",
+		Status: StatusFailed,
+		Error:  fmt.Errorf("exit 1"),
+		Stderr: "npm ERR! network connection refused\nnpm ERR! retry limit reached",
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "npm ERR! network connection refused") {
+		t.Errorf("expected verbose tool line to contain stderr, got:\n%s", out)
+	}
+	if !strings.Contains(out, "npm ERR! retry limit reached") {
+		t.Errorf("expected verbose tool line to contain stderr line 2, got:\n%s", out)
+	}
+}
+
+func TestToolLine_NonVerboseFailureSuppressed(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+
+	r.ToolLine(ToolResult{
+		Name:   "npm",
+		Status: StatusFailed,
+		Error:  fmt.Errorf("exit 1"),
+		Stderr: "npm ERR! network connection refused",
+	})
+
+	out := buf.String()
+	if strings.Contains(out, "npm ERR! network connection refused") {
+		t.Errorf("expected non-verbose tool line to suppress stderr, got:\n%s", out)
+	}
+}
+
+func TestToolLine_QuietOverridesVerbose(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, true, true)
+
+	r.ToolLine(ToolResult{
+		Name:   "npm",
+		Status: StatusFailed,
+		Error:  fmt.Errorf("exit 1"),
+		Stderr: "npm ERR! network connection refused",
+	})
+
+	out := buf.String()
+	if strings.Contains(out, "npm ERR! network connection refused") {
+		t.Errorf("expected quiet mode to override verbose and suppress stderr, got:\n%s", out)
+	}
+}
+
+func TestUpdateSummary_VerboseFailureDiagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, true)
+
+	summary := Summary{
+		Results: []ToolResult{
+			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
+			{
+				Name:   "npm",
+				Status: StatusFailed,
+				Error:  fmt.Errorf("timeout"),
+				Stderr: "npm ERR! lock frontend held by another process",
+			},
+		},
+		DryRun: false,
+	}
+
+	r.UpdateSummary(summary)
+
+	out := buf.String()
+	if !strings.Contains(out, "lock frontend held by another process") {
+		t.Errorf("expected verbose update summary to contain stderr, got:\n%s", out)
 	}
 }

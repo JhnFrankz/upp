@@ -30,6 +30,7 @@ type ToolResult struct {
 	Status  Status
 	Version string // current version after update, or current version
 	Error   error  // non-nil only for StatusFailed
+	Stderr  string // captured adapter stderr on failure (verbose diagnostics)
 }
 
 // Summary holds the complete results of an update or check run.
@@ -40,31 +41,39 @@ type Summary struct {
 
 // Renderer handles formatted terminal output.
 type Renderer struct {
-	w     io.Writer
-	color bool
-	emoji bool
-	quiet bool
-	mu    sync.Mutex
+	w       io.Writer
+	color   bool
+	emoji   bool
+	quiet   bool
+	verbose bool
+	mu      sync.Mutex
 }
 
 // NewRenderer creates a Renderer that detects color/emoji support.
 func NewRenderer(w io.Writer, quiet bool) *Renderer {
+	return NewRendererVerbose(w, quiet, false)
+}
+
+// NewRendererVerbose creates a Renderer with explicit verbose setting.
+func NewRendererVerbose(w io.Writer, quiet, verbose bool) *Renderer {
 	color := isTerminal(w)
 	return &Renderer{
-		w:     w,
-		color: color,
-		emoji: color, // emoji follows color support
-		quiet: quiet,
+		w:       w,
+		color:   color,
+		emoji:   color, // emoji follows color support
+		quiet:   quiet,
+		verbose: verbose,
 	}
 }
 
-// NewRendererForced creates a Renderer with explicit color/emoji settings.
-func NewRendererForced(w io.Writer, color, emoji, quiet bool) *Renderer {
+// NewRendererForced creates a Renderer with explicit color/emoji/quiet/verbose settings.
+func NewRendererForced(w io.Writer, color, emoji, quiet, verbose bool) *Renderer {
 	return &Renderer{
-		w:     w,
-		color: color,
-		emoji: emoji,
-		quiet: quiet,
+		w:       w,
+		color:   color,
+		emoji:   emoji,
+		quiet:   quiet,
+		verbose: verbose,
 	}
 }
 
@@ -182,6 +191,11 @@ func (r *Renderer) verboseToolLine(result ToolResult) {
 			errMsg = " (" + result.Error.Error() + ")"
 		}
 		_, _ = fmt.Fprintf(r.w, "  %s %s%s\n", icon, r.red(result.Name), errMsg)
+		if r.verbose && !r.quiet && result.Stderr != "" {
+			for _, line := range strings.Split(strings.TrimSpace(result.Stderr), "\n") {
+				_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
+			}
+		}
 	case StatusAvailable:
 		if result.Version != "" {
 			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
@@ -326,6 +340,15 @@ func (r *Renderer) detailSummary(summary Summary) {
 	if len(failed) > 0 {
 		ids := toolNames(failed)
 		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.red("Failed:"), strings.Join(ids, ", "))
+		if r.verbose && !r.quiet {
+			for _, f := range failed {
+				if f.Stderr != "" {
+					for _, line := range strings.Split(strings.TrimSpace(f.Stderr), "\n") {
+						_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -393,7 +416,7 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusAvailable), strings.Join(parts, ", "))
 	}
 
-	// Non-quiet detail lists the pending and skipped tools (D4).
+	// Non-quiet detail lists the pending and skipped tools (D4), and failed diagnostics in verbose mode.
 	if !r.quiet {
 		for _, res := range results {
 			if res.Status == StatusAvailable || res.Status == StatusSkipped {
@@ -401,6 +424,10 @@ func (r *Renderer) CheckSummary(results []ToolResult) {
 					r.statusIcon(res.Status),
 					r.cyan(res.Name),
 					r.dim(res.Version))
+			} else if res.Status == StatusFailed && r.verbose && res.Stderr != "" {
+				for _, line := range strings.Split(strings.TrimSpace(res.Stderr), "\n") {
+					_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
+				}
 			}
 		}
 	}
@@ -432,6 +459,40 @@ type ListEntry struct {
 	Name    string
 	Status  Status
 	Version string
+}
+
+// --- Dashboard output ---
+
+// DashboardData holds info for rendering the bare upp welcome dashboard.
+type DashboardData struct {
+	Version        string
+	Platform       string
+	EnabledTools   int
+	AvailableTools int
+}
+
+// Dashboard renders the bare upp welcome dashboard.
+func (r *Renderer) Dashboard(data DashboardData) {
+	if r.quiet {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "%s upp %s (%s)\n\n", r.cyan("●"), data.Version, data.Platform)
+	_, _ = fmt.Fprintf(r.w, "  Tools: %d enabled (%d configured for platform)\n\n", data.EnabledTools, data.AvailableTools)
+	_, _ = fmt.Fprintln(r.w, "  Commands:")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp check", "Check for tool updates (read-only)")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update", "Update all enabled tools (-n for dry-run)")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp list", "List configured tools and versions")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp --help", "Show help and options")
+}
+
+// DashboardNoConfig renders the bare upp guidance when no config exists.
+func (r *Renderer) DashboardNoConfig(version, platform string) {
+	if r.quiet {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "%s upp %s (%s)\n\n", r.cyan("●"), version, platform)
+	_, _ = fmt.Fprintln(r.w, "  No configuration found.")
+	_, _ = fmt.Fprintln(r.w, "  Run \"upp init\" to detect installed tools and initialize your config.")
 }
 
 // --- Dry run ---
