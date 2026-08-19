@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
 )
@@ -120,17 +118,22 @@ func TestFilterTools_Integration(t *testing.T) {
 // --- Root Command Integration Tests ---
 
 func TestRootCommand_NoArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
+	root.Version = "0.2.0"
 
 	if root.Use != "upp" {
 		t.Errorf("expected Use='upp', got %q", root.Use)
 	}
 
 	commands := root.Commands()
-	if len(commands) != 7 {
-		t.Errorf("expected 7 subcommands, got %d", len(commands))
+	if len(commands) != 5 {
+		t.Errorf("expected 5 subcommands, got %d", len(commands))
 	}
+
 }
 
 func TestRootCommand_Help(t *testing.T) {
@@ -151,11 +154,21 @@ func TestRootCommand_Help(t *testing.T) {
 	if !strings.Contains(output, "upp updates your development tools") {
 		t.Errorf("help output should contain description, got: %q", output)
 	}
-	if !strings.Contains(output, "init") {
-		t.Error("help output should list init command")
+	if !strings.Contains(output, "Commands") || !strings.Contains(output, "Maintenance") {
+		t.Errorf("help output should contain 2 groups Commands and Maintenance, got:\n%s", output)
 	}
-	if !strings.Contains(output, "update") {
-		t.Error("help output should list update command")
+	if strings.Contains(output, "Tool Commands") || strings.Contains(output, "Config Commands") {
+		t.Errorf("help output must not contain legacy groups, got:\n%s", output)
+	}
+	for _, cmd := range []string{"init", "update", "check", "list", "self-update"} {
+		if !strings.Contains(output, cmd) {
+			t.Errorf("help output should list %s command", cmd)
+		}
+	}
+	for _, pruned := range []string{"export", "import"} {
+		if strings.Contains(output, pruned) {
+			t.Errorf("help output must not list pruned command %s", pruned)
+		}
 	}
 }
 
@@ -219,62 +232,20 @@ func TestInitCommand_DetectsTools(t *testing.T) {
 	}
 }
 
-// --- Export/Import Round-Trip Integration Test ---
+// --- Pruned Commands Integration Test ---
 
-func TestExportImport_RoundTrip(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+func TestPrunedCommands_ExportImportRejected(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
 
-	// Create initial config
-	cfg := config.DefaultConfigWithDefaults()
-	cfg.Custom["test-tool"] = config.CustomTool{
-		Command:  "test-tool --update",
-		CheckCmd: "test-tool --version",
-		Trusted:  true,
-	}
-	if err := config.Save(cfg); err != nil {
-		t.Fatalf("Save initial config: %v", err)
+	root.SetArgs([]string{"export"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("upp export must fail as unknown command")
 	}
 
-	// Export to file
-	exportPath := filepath.Join(tmpDir, "exported.toml")
-	withCapturedStdout(func() {
-		root, gf := BuildRoot()
-		AddCommands(root, gf)
-		root.SetArgs([]string{"export", "-o", exportPath})
-		_ = root.Execute()
-	})
-
-	// Verify export file exists and has content
-	data, err := os.ReadFile(exportPath)
-	if err != nil {
-		t.Fatalf("cannot read export file: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("exported file is empty")
-	}
-
-	// Reset HOME and load from import
-	t.Setenv("HOME", t.TempDir())
-
-	withCapturedStdout(func() {
-		root, gf := BuildRoot()
-		AddCommands(root, gf)
-		root.SetArgs([]string{"import", exportPath, "--ci"})
-		_ = root.Execute()
-	})
-
-	// Verify imported config
-	loaded, err := config.Load()
-	if err != nil {
-		t.Fatalf("Load imported config: %v", err)
-	}
-
-	if loaded.Custom["test-tool"].Command != "test-tool --update" {
-		t.Errorf("imported custom tool command = %q", loaded.Custom["test-tool"].Command)
-	}
-	if !loaded.Custom["test-tool"].Trusted {
-		t.Error("imported custom tool should be trusted")
+	root.SetArgs([]string{"import", "config.toml"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("upp import must fail as unknown command")
 	}
 }
 
@@ -528,36 +499,6 @@ func TestCheckProgress_LabelsChecking(t *testing.T) {
 	}
 	if strings.Contains(output, "Updating") {
 		t.Errorf("read-only check must never print 'Updating', got:\n%s", output)
-	}
-}
-
-// --- Error Handling Integration Tests ---
-
-func TestImport_MissingFile(t *testing.T) {
-	root, gf := BuildRoot()
-	AddCommands(root, gf)
-	root.SetArgs([]string{"import", "/nonexistent/path.toml"})
-
-	err := root.Execute()
-	if err == nil {
-		t.Error("import with missing file should fail")
-	}
-}
-
-func TestImport_InvalidTOML(t *testing.T) {
-	tmpDir := t.TempDir()
-	badFile := filepath.Join(tmpDir, "bad.toml")
-	if err := os.WriteFile(badFile, []byte("this is not toml {{{"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	root, gf := BuildRoot()
-	AddCommands(root, gf)
-	root.SetArgs([]string{"import", badFile})
-
-	err := root.Execute()
-	if err == nil {
-		t.Error("import with invalid TOML should fail")
 	}
 }
 
@@ -881,8 +822,6 @@ func TestSubcommandRegistration(t *testing.T) {
 		"self-update": false,
 		"check":       false,
 		"list":        false,
-		"export":      false,
-		"import":      false,
 	}
 
 	for _, cmd := range root.Commands() {
@@ -896,43 +835,6 @@ func TestSubcommandRegistration(t *testing.T) {
 		if !found {
 			t.Errorf("missing subcommand: %s", name)
 		}
-	}
-}
-
-// --- Export Flags ---
-
-func TestExportCommand_Flags(t *testing.T) {
-	root, gf := BuildRoot()
-	AddCommands(root, gf)
-
-	var exportCmd *cobra.Command
-	for _, cmd := range root.Commands() {
-		if strings.Fields(cmd.Use)[0] == "export" {
-			exportCmd = cmd
-			break
-		}
-	}
-
-	if exportCmd == nil {
-		t.Fatal("export command not found")
-	}
-
-	outputFlag := exportCmd.Flags().Lookup("output")
-	if outputFlag == nil {
-		t.Error("export should have --output/-o flag")
-	}
-}
-
-// --- Import Args Validation ---
-
-func TestImportCommand_RequiresArgs(t *testing.T) {
-	root, gf := BuildRoot()
-	AddCommands(root, gf)
-	root.SetArgs([]string{"import"})
-
-	err := root.Execute()
-	if err == nil {
-		t.Error("import without args should fail")
 	}
 }
 

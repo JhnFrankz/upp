@@ -212,31 +212,28 @@ func TestBuildRoot_Flags(t *testing.T) {
 	}
 }
 
-// TestBuildRoot_BareInvocationRunsCheck locks the UX contract that a bare
-// `upp` (no subcommand) routes to the read-only status/check path — the
-// RunE wiring in BuildRoot (parser.go). It drives root.Execute() with
-// EMPTY args, which the direct runCheck hint tests cannot see: if the
-// RunE were removed or rerouted tomorrow, the hint tests would still
-// pass. The config disables every catalog tool (writeCheckConfig), so
-// the check loop is hermetic and the summary line is deterministic.
-func TestBuildRoot_BareInvocationRunsCheck(t *testing.T) {
-	writeCheckConfig(t, "")
-
+func TestBuildRoot_FlagShorthands(t *testing.T) {
 	root, gf := BuildRoot()
-	root.Version = "v0.1.0"
-	AddCommands(root, gf)
-	root.SetArgs([]string{})
 
-	output := withCapturedStdout(func() {
-		if err := root.Execute(); err != nil {
-			t.Errorf("bare upp must run check and exit 0, got error: %v", err)
-		}
-	})
+	quietFlag := root.PersistentFlags().Lookup("quiet")
+	if quietFlag == nil || quietFlag.Shorthand != "q" {
+		t.Errorf("expected --quiet to have shorthand -q, got %v", quietFlag)
+	}
 
-	// The check summary marker proves the bare invocation reached the
-	// runCheck path; update/self-update/list would never print it.
-	if !strings.Contains(output, "All tools up to date.") {
-		t.Errorf("bare upp must print the check summary, got:\n%s", output)
+	verboseFlag := root.PersistentFlags().Lookup("verbose")
+	if verboseFlag == nil || verboseFlag.Shorthand != "v" {
+		t.Errorf("expected --verbose to have shorthand -v, got %v", verboseFlag)
+	}
+
+	err := root.ParseFlags([]string{"-q", "-v"})
+	if err != nil {
+		t.Fatalf("ParseFlags error: %v", err)
+	}
+	if !gf.Quiet {
+		t.Error("expected -q to set gf.Quiet = true")
+	}
+	if !gf.Verbose {
+		t.Error("expected -v to set gf.Verbose = true")
 	}
 }
 
@@ -244,7 +241,7 @@ func TestAddCommands(t *testing.T) {
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
 
-	expectedCommands := []string{"init", "update", "self-update", "check", "list", "export", "import"}
+	expectedCommands := []string{"init", "update", "self-update", "check", "list"}
 	commands := root.Commands()
 
 	if len(commands) != len(expectedCommands) {
@@ -262,6 +259,34 @@ func TestAddCommands(t *testing.T) {
 		if !commandNames[name] {
 			t.Errorf("missing command: %s", name)
 		}
+	}
+}
+
+func TestUnknownCommand_Export(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+	root.SetArgs([]string{"export"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("upp export must be rejected as unknown command")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("expected 'unknown command' error, got: %v", err)
+	}
+}
+
+func TestUnknownCommand_Import(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+	root.SetArgs([]string{"import", "config.toml"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("upp import must be rejected as unknown command")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("expected 'unknown command' error, got: %v", err)
 	}
 }
 

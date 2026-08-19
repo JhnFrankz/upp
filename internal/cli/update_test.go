@@ -283,3 +283,22 @@ func TestTimeoutErr(t *testing.T) {
 		}
 	})
 }
+
+func TestUpdateCommand_DryRunShorthand(t *testing.T) {
+	gf := &GlobalFlags{}
+	cmd := NewUpdateCommand(gf)
+
+	dryRunFlag := cmd.Flags().Lookup("dry-run")
+	if dryRunFlag == nil || dryRunFlag.Shorthand != "n" {
+		t.Fatalf("expected --dry-run to have shorthand -n, got %v", dryRunFlag)
+	}
+
+	err := cmd.ParseFlags([]string{"-n"})
+	if err != nil {
+		t.Fatalf("ParseFlags error: %v", err)
+	}
+	val, err := cmd.Flags().GetBool("dry-run")
+	if err != nil || !val {
+		t.Errorf("expected -n to set dry-run=true, got val=%v, err=%v", val, err)
+	}
+}
