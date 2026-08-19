@@ -6,29 +6,24 @@ run:
   tests: true
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - govet
     - errcheck
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - gofmt
     - unconvert
     - misspell
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: false
-  govet:
-    disable:
-      - fieldalignment
-  misspell:
-    locale: US
-  gofmt:
-    simplify: true
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    govet:
+      disable:
+        - fieldalignment
+    misspell:
+      locale: US
 
 issues:
   max-issues-per-linter: 0
