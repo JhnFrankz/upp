@@ -67,7 +67,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 		}
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	r := output.NewRendererVerbose(os.Stdout, gf.Quiet, gf.Verbose)
 
 	if uf.DryRun {
 		r.DryRunHeader()
@@ -101,6 +101,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 				Name:   info.Name,
 				Status: output.StatusFailed,
 				Error:  timeoutErr(info.Name, "check", err),
+				Stderr: err.Error(),
 			})
 			hasFailure = true
 			continue
@@ -180,6 +181,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 				Name:   info.Name,
 				Status: output.StatusFailed,
 				Error:  timeoutErr(info.Name, "update", err),
+				Stderr: err.Error(),
 			})
 			hasFailure = true
 			continue
@@ -200,6 +202,7 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 				Name:   info.Name,
 				Status: output.StatusFailed,
 				Error:  timeoutErr(info.Name, "update", errMsg),
+				Stderr: errMsg.Error(),
 			})
 			hasFailure = true
 		}

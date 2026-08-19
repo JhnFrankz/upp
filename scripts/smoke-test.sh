@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # smoke-test.sh — Quick smoke test for the upp binary.
-# Verifies basic functionality: --help, --version, list, check, init --ci.
+# Verifies basic functionality: bare dashboard, --help, --version, list, check, init --ci, flag shorthands.
 # Exit codes: 0 = all tests passed, 1 = at least one test failed.
 #
 # Usage:
@@ -163,19 +163,33 @@ run_test_with_output "upp check --help" "Query each enabled tool" "$BINARY" chec
 run_test_with_output "upp list --help" "Show all tools available" "$BINARY" list --help
 run_test_with_output "upp self-update --help" "Check for a newer upp release" "$BINARY" self-update --help
 
-# Test 3: list command
+# Test 3: Bare dashboard
 echo ""
-echo "3. List command"
+echo "3. Bare invocation dashboard"
+TMPDIR_BARE=$(mktemp -d)
+HOME_ORIG="${HOME:-}"
+export HOME="$TMPDIR_BARE"
+run_test_with_output "bare upp (no config -> guidance)" "No configuration found" "$BINARY"
+run_test_with_output "bare upp (no config -> prompt init)" "upp init" "$BINARY"
+"$BINARY" init --ci >/dev/null 2>&1 || true
+run_test_with_output "bare upp (with config -> dashboard banner)" "upp" "$BINARY"
+run_test_with_output "bare upp (with config -> commands guide)" "Commands:" "$BINARY"
+export HOME="${HOME_ORIG:-$HOME}"
+rm -rf "$TMPDIR_BARE"
+
+# Test 4: list command
+echo ""
+echo "4. List command"
 run_test "upp list" "$BINARY" list
 
-# Test 4: check command
+# Test 5: check command
 echo ""
-echo "4. Check command"
+echo "5. Check command"
 run_test "upp check" "$BINARY" check
 
-# Test 5: init --ci (creates config)
+# Test 6: init --ci (creates config)
 echo ""
-echo "5. Init --ci"
+echo "6. Init --ci"
 TMPDIR_INIT=$(mktemp -d)
 HOME_ORIG="${HOME:-}"
 export HOME="$TMPDIR_INIT"
@@ -191,36 +205,36 @@ else
 fi
 rm -rf "$TMPDIR_INIT"
 
-# Test 6: Quiet flag and shorthand (-q)
+# Test 7: Quiet flag and shorthand (-q)
 echo ""
-echo "6. Quiet mode"
+echo "7. Quiet mode"
 run_test "upp check --quiet" "$BINARY" check --quiet
 run_test "upp check -q" "$BINARY" check -q
 
-# Test 7: Verbose flag and shorthand (-v)
+# Test 8: Verbose flag and shorthand (-v)
 echo ""
-echo "7. Verbose mode"
+echo "8. Verbose mode"
 run_test "upp check --verbose" "$BINARY" check --verbose
 run_test "upp check -v" "$BINARY" check -v
 
-# Test 8: Filter flags
+# Test 9: Filter flags
 echo ""
-echo "8. Filter flags"
+echo "9. Filter flags"
 run_test "upp check --only npm" "$BINARY" check --only npm
 run_test "upp check --skip npm" "$BINARY" check --skip npm
 run_test "upp check --only brew --skip npm (--only wins)" "$BINARY" check --only brew --skip npm
 
-# Test 9: Dry-run mode and shorthand (-n)
+# Test 10: Dry-run flag and shorthand (-n)
 echo ""
-echo "9. Dry-run mode"
+echo "10. Dry-run mode"
 run_test "upp update --dry-run" "$BINARY" update --dry-run
 run_test "upp update -n" "$BINARY" update -n
 
-# Test 10: Pruned commands error handling
+# Test 11: Pruned commands rejected with exit 1
 echo ""
-echo "10. Pruned commands error handling"
+echo "11. Pruned commands error handling"
 run_test_exit_code "upp export (pruned, exit 1)" 1 "$BINARY" export
-run_test_exit_code "upp import (pruned, exit 1)" 1 "$BINARY" import
+run_test_exit_code "upp import (pruned, exit 1)" 1 "$BINARY" import "/tmp/nonexistent.toml"
 
 # --- Summary ---
 

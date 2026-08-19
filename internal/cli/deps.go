@@ -10,6 +10,7 @@ package cli
 // tests (setCLIDeps) needs no synchronization. Adding t.Parallel tests
 // requires a mutex or per-command dep construction.
 var cliDeps struct {
+	dashboard  dashboardDeps
 	check      checkDeps
 	update     updateDeps
 	list       listDeps

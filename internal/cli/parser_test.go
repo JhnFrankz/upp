@@ -237,6 +237,27 @@ func TestBuildRoot_FlagShorthands(t *testing.T) {
 	}
 }
 
+// TestBuildRoot_BareInvocationRunsDashboard locks the UX contract that a bare
+// `upp` (no subcommand) routes to the read-only dashboard welcome screen.
+func TestBuildRoot_BareInvocationRunsDashboard(t *testing.T) {
+	writeCheckConfig(t, "")
+
+	root, gf := BuildRoot()
+	root.Version = "v0.1.0"
+	AddCommands(root, gf)
+	root.SetArgs([]string{})
+
+	output := withCapturedStdout(func() {
+		if err := root.Execute(); err != nil {
+			t.Errorf("bare upp must run dashboard and exit 0, got error: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, "upp v0.1.0") || !strings.Contains(output, "Commands:") {
+		t.Errorf("bare upp must print the dashboard banner and commands, got:\n%s", output)
+	}
+}
+
 func TestAddCommands(t *testing.T) {
 	root, gf := BuildRoot()
 	AddCommands(root, gf)

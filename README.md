@@ -11,9 +11,10 @@ upp detects installed tools, checks for updates, and applies them safely with in
 - **Custom tools**: define your own update commands in `config.toml`
 - **Security**: trust levels, risk classification, and confirmation prompts for custom tools
 - **CI mode**: non-interactive, exits non-zero on failure (`--ci`)
-- **Dry run**: preview updates without applying (`--dry-run`)
+- **Dry run**: preview updates without applying (`-n`, `--dry-run`)
+- **Verbose diagnostics**: subprocess failure details on demand (`-v`, `--verbose`)
 - **Filtering**: `--only` and `--skip` to target specific tools
-- **Export/import**: share your tool configuration as TOML
+- **Dotfiles-friendly**: standard TOML configuration at `~/.config/upp/config.toml`
 
 ## Installation
 
@@ -54,21 +55,23 @@ make build
 
 ## Quick start
 
-upp works with **zero configuration**: no `config.toml` is required to
-check or update your tools, so `upp init` is optional.
+Running bare `upp` displays a welcome dashboard and quick reference:
 
 ```bash
-# List detected tools and their status
-upp list
+# Welcome dashboard & command reference
+upp
 
 # Check for available updates (read-only)
 upp check
 
-# Apply updates
+# Apply updates to all enabled tools
 upp update
 
 # Preview updates without applying
-upp update --dry-run
+upp update -n
+
+# List detected tools and their status
+upp list
 ```
 
 If you want to pin or customize the detected setup (enable/disable tools,
@@ -79,22 +82,23 @@ interactive wizard:
 upp init
 ```
 
-Without a config file, upp detects installed tools on first run and
-applies safe defaults.
-
 ## Commands
+
+### Commands
 
 | Command | Description | Interactive | Modifies system |
 |---------|-------------|-------------|-----------------|
-| `upp` | Show status and available updates (read-only, like `check`) | No | No |
-| `upp init` | First-run wizard: detect tools, generate `~/.config/upp/config.toml` | Yes | Yes (creates config) |
+| `upp check` | Check for available updates (read-only) | No | No |
 | `upp update` | Apply updates for all enabled tools | Yes | Yes |
-| `upp update --dry-run` | Preview updates without executing | No | No |
-| `upp check` | Check for available updates | No | No |
-| `upp self-update` | Update the upp binary itself (checks, verifies, asks for confirmation) | Yes (confirm) | Yes (replaces binary) |
+| `upp update -n` | Preview updates without executing | No | No |
 | `upp list` | List detected tools and their status | No | No |
-| `upp export` | Export config to TOML (stdout or `-o file.toml`) | No | No |
-| `upp import <file>` | Import config from a TOML file (confirms replace) | Yes | Yes (replaces config) |
+
+### Maintenance
+
+| Command | Description | Interactive | Modifies system |
+|---------|-------------|-------------|-----------------|
+| `upp init` | First-run wizard: detect tools, generate `~/.config/upp/config.toml` | Yes | Yes (creates config) |
+| `upp self-update` | Update the upp binary itself (checks, verifies, asks for confirmation) | Yes (confirm) | Yes (replaces binary) |
 
 ## Self-update
 
@@ -111,24 +115,24 @@ applies safe defaults.
 
 Available on every command:
 
-| Flag | Description |
-|------|-------------|
-| `--quiet` | Reduce output to essential status only (summary still shown) |
-| `--ci` | Non-interactive mode: no prompts, exit non-zero on failure |
-| `--only <tools>` | Process only these tools (comma-separated, takes precedence over `--skip`) |
-| `--skip <tools>` | Process all enabled tools except these (comma-separated) |
-| `--version` | Print the upp version and exit |
+| Flag | Shorthand | Description |
+|------|-----------|-------------|
+| `--quiet` | `-q` | Reduce output to essential status only (summary still shown) |
+| `--verbose` | `-v` | Enable verbose diagnostic output (subprocess stderr) on failure |
+| `--ci` | | Non-interactive mode: no prompts, exit non-zero on failure |
+| `--only <tools>` | | Process only these tools (comma-separated, takes precedence over `--skip`) |
+| `--skip <tools>` | | Process all enabled tools except these (comma-separated) |
+| `--version` | | Print the upp version and exit |
 
 ### Command-specific flags
 
-| Command | Flag | Description |
-|---------|------|-------------|
-| `update` | `--dry-run` | Preview updates without applying |
-| `export` | `-o <file>` | Write output to file (default: stdout) |
+| Command | Flag | Shorthand | Description |
+|---------|------|-----------|-------------|
+| `update` | `--dry-run` | `-n` | Preview updates without applying |
 
 ## Configuration
 
-Config file: `~/.config/upp/config.toml` on Linux/macOS, `%APPDATA%/upp/config.toml` on Windows. The directory is created on first run; if the file does not exist, upp runs with defaults.
+Config file: `~/.config/upp/config.toml` on Linux/macOS, `%APPDATA%/upp/config.toml` on Windows. Configuration is standard TOML designed to be checked directly into your dotfiles repository (e.g. via Git, chezmoi, stow).
 
 ```toml
 version = 1
