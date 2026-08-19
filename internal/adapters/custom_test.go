@@ -13,6 +13,29 @@ func TestNewCustomAdapter_RequiresCommand(t *testing.T) {
 	}
 }
 
+// TestCustomAdapter_IsTrusted covers IsTrusted directly (security
+// classification): trusted must be exactly what config declared.
+func TestCustomAdapter_IsTrusted(t *testing.T) {
+	tests := []struct {
+		name    string
+		trusted bool
+	}{
+		{"untrusted default", false},
+		{"trusted via config", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ca, err := NewCustomAdapter("mytool", "mytool --update", "", tt.trusted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ca.IsTrusted(); got != tt.trusted {
+				t.Errorf("IsTrusted() = %v, want %v", got, tt.trusted)
+			}
+		})
+	}
+}
+
 func TestNewCustomAdapter_Success(t *testing.T) {
 	ca, err := NewCustomAdapter("mytool", "mytool --update", "mytool --version", false)
 	if err != nil {
