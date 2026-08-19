@@ -495,6 +495,14 @@ func (r *Renderer) DashboardNoConfig(version, platform string) {
 	_, _ = fmt.Fprintln(r.w, "  Run \"upp init\" to detect installed tools and initialize your config.")
 }
 
+// UpdateCancelled prints the fixed message when the user cancels an
+// interactive update run (design D8): nothing was updated, exit 0.
+// US spelling is intentional: the repo lint (golangci-lint misspell,
+// locale US) rejects the British double-L spelling.
+func (r *Renderer) UpdateCancelled() {
+	_, _ = fmt.Fprintln(r.w, "Update canceled — no changes made.")
+}
+
 // --- Dry run ---
 
 // DryRunHeader prints the dry-run header.

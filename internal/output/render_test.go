@@ -576,6 +576,21 @@ func TestSelfUpdateHint_QuietSuppresses(t *testing.T) {
 	}
 }
 
+// TestUpdateCancelled locks the fixed cancel message for interactive update
+// runs (design D8, spec ux-patterns "Esc cancels run" / "q cancels run"):
+// "Update canceled — no changes made." (US spelling per repo misspell locale)
+func TestUpdateCancelled(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+
+	r.UpdateCancelled()
+
+	want := "Update canceled — no changes made.\n"
+	if got := buf.String(); got != want {
+		t.Errorf("UpdateCancelled() = %q, want %q", got, want)
+	}
+}
+
 func TestStatusFromResult(t *testing.T) {
 	// We test the mapping logic by checking the constants.
 	if StatusUpdated != 0 {
