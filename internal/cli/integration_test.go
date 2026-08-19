@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -1062,5 +1063,61 @@ func TestFilterPerformance(t *testing.T) {
 	result := FilterTools(tools, onlyList, skipList, &stderr)
 	if len(result) != 3 {
 		t.Errorf("expected 3 filtered tools, got %d", len(result))
+	}
+}
+
+// TestCheck_DeterministicOrderUnderConcurrency ensures that even when adapters complete
+// in reverse/arbitrary order due to concurrency and varying execution times, the final
+// check summary and detail output strictly preserve canonical tool discovery order.
+func TestCheck_DeterministicOrderUnderConcurrency(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	fakes := []adapters.Adapter{
+		&fakeDelayedAdapter{name: "alpha", delay: 50 * time.Millisecond, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "1.1.0"}},
+		&fakeDelayedAdapter{name: "beta", delay: 10 * time.Millisecond, info: adapters.UpdateInfo{CurrentVersion: "2.0.0"}},
+		&fakeDelayedAdapter{name: "gamma", delay: 40 * time.Millisecond, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "3.0.0", LatestVersion: "3.1.0"}},
+		&fakeDelayedAdapter{name: "delta", delay: 20 * time.Millisecond, info: adapters.UpdateInfo{CurrentVersion: "4.0.0"}},
+		&fakeDelayedAdapter{name: "epsilon", delay: 30 * time.Millisecond, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "5.0.0", LatestVersion: "5.1.0"}},
+	}
+
+	setCLIDeps(t, checkDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return fakes
+		},
+	}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+
+	output := withCapturedStdout(func() {
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs([]string{"check"})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("check execution failed: %v", err)
+		}
+	})
+
+	// Check summary counts
+	if !strings.Contains(output, "3 available") || !strings.Contains(output, "2 up to date") {
+		t.Errorf("summary counts mismatch, got:\n%s", output)
+	}
+
+	// Verify available detail order strictly preserves canonical discovery sequence: alpha, gamma, epsilon
+	summaryIdx := strings.Index(output, "3 available")
+	if summaryIdx == -1 {
+		t.Fatalf("expected summary header in output, got:\n%s", output)
+	}
+	summarySection := output[summaryIdx:]
+
+	idxAlpha := strings.Index(summarySection, "alpha")
+	idxGamma := strings.Index(summarySection, "gamma")
+	idxEpsilon := strings.Index(summarySection, "epsilon")
+
+	if idxAlpha == -1 || idxGamma == -1 || idxEpsilon == -1 {
+		t.Fatalf("expected all available tools in summary section, got:\n%s", summarySection)
+	}
+
+	if !(idxAlpha < idxGamma && idxGamma < idxEpsilon) {
+		t.Errorf("tool order violation: expected alpha < gamma < epsilon, got alpha=%d, gamma=%d, epsilon=%d in summary:\n%s",
+			idxAlpha, idxGamma, idxEpsilon, summarySection)
 	}
 }
