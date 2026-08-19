@@ -1116,7 +1116,7 @@ func TestCheck_DeterministicOrderUnderConcurrency(t *testing.T) {
 		t.Fatalf("expected all available tools in summary section, got:\n%s", summarySection)
 	}
 
-	if !(idxAlpha < idxGamma && idxGamma < idxEpsilon) {
+	if idxAlpha >= idxGamma || idxGamma >= idxEpsilon {
 		t.Errorf("tool order violation: expected alpha < gamma < epsilon, got alpha=%d, gamma=%d, epsilon=%d in summary:\n%s",
 			idxAlpha, idxGamma, idxEpsilon, summarySection)
 	}
