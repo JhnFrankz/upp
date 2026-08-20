@@ -14,7 +14,7 @@ context: |
   test, test-race, test-cover, vet, lint, fmt, tidy, smoke).
   Conventions: gofmt, table-driven tests, cobra subcommands.
   Legacy Bash script (upp-legacy.sh) has been REMOVED — Go is the only stack.
-  Git repo on main. 16 changes archived in openspec/changes/archive/.
+  Git repo on main. 17 changes archived in openspec/changes/archive/.
   Docs: README.md.
   Specs: 9 domains (command-interface, config-system, ci-workflow, platform-detection, security-model,
   tool-adapter, ux-patterns, self-update, release-process).
