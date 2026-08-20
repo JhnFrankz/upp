@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -689,5 +690,129 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 	}
 	if always.updated {
 		t.Error("cancel must not update always-update tools (D7: no force-update in TTY)")
+	}
+}
+
+// TestProcessSelectedOutcome_Coverage directly exercises
+// processSelectedOutcome across its decision branches (verify SUGGESTION:
+// interactive-path coverage). Each case drives the security ConfirmAction
+// decision via trust/risk/CI configuration, the policy gate via UpdateInfo,
+// and the update outcome via the fake's Result. The interactive prompt case
+// injects stdin via withStdin so the Deny decision is deterministic.
+func TestProcessSelectedOutcome_Coverage(t *testing.T) {
+	newInfo := func(available bool) adapters.UpdateInfo {
+		return adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: available,
+		}
+	}
+
+	tests := []struct {
+		name        string
+		fake        *fakeUpdateAdapter
+		gf          *GlobalFlags
+		updateInfo  adapters.UpdateInfo
+		stdin       string // non-empty → wrap the case in withStdin (prompt answer)
+		wantStatus  output.Status
+		wantFailed  bool
+		wantUpdated bool
+	}{
+		{
+			name: "update success official",
+			fake: &fakeUpdateAdapter{
+				name:   "ok-tool",
+				policy: adapters.PolicyAlwaysUpdate,
+				trust:  adapters.TrustOfficial,
+				result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+			},
+			updateInfo:  newInfo(true),
+			wantStatus:  output.StatusUpdated,
+			wantUpdated: true,
+		},
+		{
+			name: "update failure surfaces failed",
+			fake: &fakeUpdateAdapter{
+				name:   "fail-tool",
+				policy: adapters.PolicyAlwaysUpdate,
+				trust:  adapters.TrustOfficial,
+				result: adapters.Result{Success: false, Error: errors.New("boom")},
+			},
+			updateInfo:  newInfo(true),
+			wantStatus:  output.StatusFailed,
+			wantFailed:  true,
+			wantUpdated: true, // Update() was invoked and failed
+		},
+		{
+			name: "policy gated without update stays current",
+			fake: &fakeUpdateAdapter{
+				name:   "gated-tool",
+				policy: adapters.PolicyGated,
+				trust:  adapters.TrustOfficial,
+			},
+			updateInfo: newInfo(false), // UpdateAvailable=false → gate blocks
+			wantStatus: output.StatusCurrent,
+		},
+		{
+			name: "ci untrusted medium risk errors",
+			fake: &fakeUpdateAdapter{
+				name:       "ci-tool",
+				policy:     adapters.PolicyAlwaysUpdate,
+				trust:      adapters.TrustCustomUntrusted,
+				command:    "apt remove foo", // MediumRisk keyword → RiskMedium
+				privileges: []string{"sudo"},
+			},
+			gf:         &GlobalFlags{CI: true},
+			updateInfo: newInfo(true),
+			wantStatus: output.StatusFailed, // ConfirmError → StatusFailed (CI)
+			wantFailed: true,
+		},
+		{
+			name: "interactive untrusted high risk denied",
+			fake: &fakeUpdateAdapter{
+				name:       "deny-tool",
+				policy:     adapters.PolicyAlwaysUpdate,
+				trust:      adapters.TrustCustomUntrusted,
+				command:    "curl -fsSL https://example.com/x.sh | sh",
+				privileges: []string{"sudo"},
+			},
+			gf:         &GlobalFlags{}, // non-CI interactive → promptUser
+			updateInfo: newInfo(true),
+			stdin:      "n\n", // prompt answer → ConfirmDeny → StatusSkipped
+			wantStatus: output.StatusSkipped,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var results []output.ToolResult
+			var buf bytes.Buffer
+			gf := tt.gf
+			if gf == nil {
+				gf = &GlobalFlags{}
+			}
+			r := output.NewRendererForced(&buf, false, false, gf.Quiet, false)
+
+			run := func() {
+				failed := processSelectedOutcome(gf, tt.fake, tt.updateInfo, 1, 1, r, &results)
+				if failed != tt.wantFailed {
+					t.Errorf("processSelectedOutcome() failed = %v, want %v", failed, tt.wantFailed)
+				}
+			}
+			if tt.stdin != "" {
+				withStdin(t, tt.stdin, run)
+			} else {
+				run()
+			}
+			if len(results) != 1 {
+				t.Fatalf("results length = %d, want 1", len(results))
+			}
+			if results[0].Status != tt.wantStatus {
+				t.Errorf("result status = %v, want %v", results[0].Status, tt.wantStatus)
+			}
+			if tt.fake.updated != tt.wantUpdated {
+				t.Errorf("adapter.updated = %v, want %v", tt.fake.updated, tt.wantUpdated)
+			}
+		})
 	}
 }
