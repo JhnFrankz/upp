@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -29,13 +30,16 @@ type fakeUpdateAdapter struct {
 	updateErr  error
 	result     adapters.Result
 	updated    bool
+	checkCount int  // Check() invocations — proves the no-double-check contract
+	noDetect   bool // Detect() reports false (not installed)
 }
 
 func (f *fakeUpdateAdapter) Name() string { return f.name }
 
-func (f *fakeUpdateAdapter) Detect() bool { return true }
+func (f *fakeUpdateAdapter) Detect() bool { return !f.noDetect }
 
 func (f *fakeUpdateAdapter) Check() (adapters.UpdateInfo, error) {
+	f.checkCount++
 	return f.info, f.checkErr
 }
 
@@ -69,11 +73,16 @@ func fakeAdapterList(fakes ...*fakeUpdateAdapter) func(*config.Config, string) [
 
 // runUpdateWithFlags runs runUpdate with the given global/update flags
 // against a single fake adapter in a hermetic HOME, returning the captured
-// stdout and the runUpdate error.
+// stdout and the runUpdate error. stdinIsTTY is pinned false: these legacy
+// tests exercise the sequential (non-interactive) path, and the gate must
+// not depend on the ambient test-runner stdin (design D2).
 func runUpdateWithFlags(t *testing.T, fake *fakeUpdateAdapter, gf *GlobalFlags, uf *UpdateFlags) (string, error) {
 	t.Helper()
 	probeHome(t)
-	deps := updateDeps{buildAdapterList: fakeAdapterList(fake)}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(fake),
+		stdinIsTTY:       func() bool { return false },
+	}
 	var runErr error
 	out := withCapturedStdout(func() {
 		runErr = runUpdate(gf, uf, deps)
@@ -238,6 +247,7 @@ func TestRunUpdate_CheckTimeoutStructuredError(t *testing.T) {
 		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
 			return []adapters.Adapter{hanging, ok}
 		},
+		stdinIsTTY: func() bool { return false },
 	}
 	out := withCapturedStdout(func() {
 		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
@@ -315,6 +325,7 @@ func TestRunUpdate_VerboseFailureDiagnostics(t *testing.T) {
 		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
 			return []adapters.Adapter{failing}
 		},
+		stdinIsTTY: func() bool { return false },
 	}
 
 	// With -v
@@ -342,5 +353,341 @@ func TestRunUpdate_VerboseFailureDiagnostics(t *testing.T) {
 	})
 	if strings.Contains(outQuiet, "permission denied reading /var/cache/apt") {
 		t.Errorf("expected quiet mode to suppress stderr diagnostic, got:\n%s", outQuiet)
+	}
+}
+
+// --- Phase 3: interactive selection (design D2/D4/D5/D7/D8) ---
+
+// interactiveUpdateDeps builds an updateDeps with the Phase 3 seams set:
+// TTY stdin, the injected selector (recording its options), and the given
+// fake adapters. Zero selector return values exercise the production gate
+// logic paths (design D2: the seam's return is authoritative).
+func interactiveUpdateDeps(fakes []*fakeUpdateAdapter, selector func(opts []output.SelectOption) ([]string, bool)) updateDeps {
+	return updateDeps{
+		buildAdapterList: fakeAdapterList(fakes...),
+		stdinIsTTY:       func() bool { return true },
+		selector:         selector,
+	}
+}
+
+// fakeSelector returns a selector seam that records the options it received
+// and returns the given selection. The recorded options prove the pending
+// set is rendered with ID/Label/Version from the pre-check outcomes (design
+// D9: safeCheck's "Current → Latest" string is the per-row version).
+func fakeSelector(selected []string, canceled bool) (func(opts []output.SelectOption) ([]string, bool), *[]output.SelectOption) {
+	var got []output.SelectOption
+	return func(opts []output.SelectOption) ([]string, bool) {
+		got = opts
+		return selected, canceled
+	}, &got
+}
+
+// withStdin swaps os.Stdin for the duration of fn so security.ConfirmAction
+// prompts (which default to os.Stdin) can be answered deterministically.
+// Sequential-only, like withCapturedStdout: no t.Parallel exists in this
+// package.
+func withStdin(t *testing.T, input string, fn func()) {
+	t.Helper()
+	origStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	_, _ = w.WriteString(input)
+	_ = w.Close()
+	os.Stdin = r
+	defer func() { os.Stdin = origStdin }()
+	fn()
+}
+
+// TestRunUpdate_SelectorGateMatrix proves the interactive gate (design D2,
+// spec command-interface + ux-patterns): the selector runs ONLY when stdin
+// is a TTY AND --ci, --quiet, and --dry-run are all unset. Every other
+// combination keeps today's sequential non-interactive behavior — the
+// selector seam must never be called.
+func TestRunUpdate_SelectorGateMatrix(t *testing.T) {
+	available := func() adapters.UpdateInfo {
+		return adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		}
+	}
+	pending := func() *fakeUpdateAdapter {
+		return &fakeUpdateAdapter{
+			name:   "npm",
+			policy: adapters.PolicyGated,
+			trust:  adapters.TrustOfficial,
+			info:   available(),
+			result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		gf         *GlobalFlags
+		uf         *UpdateFlags
+		stdinIsTTY func() bool
+		wantSelect bool // selector seam called?
+	}{
+		{"TTY plain update shows selector", &GlobalFlags{}, &UpdateFlags{}, func() bool { return true }, true},
+		{"non-TTY skips selector", &GlobalFlags{}, &UpdateFlags{}, func() bool { return false }, false},
+		{"--ci skips selector", &GlobalFlags{CI: true}, &UpdateFlags{}, func() bool { return true }, false},
+		{"--quiet skips selector", &GlobalFlags{Quiet: true}, &UpdateFlags{}, func() bool { return true }, false},
+		{"--dry-run skips selector", &GlobalFlags{}, &UpdateFlags{DryRun: true}, func() bool { return true }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			probeHome(t)
+			fake := pending()
+			called := false
+			deps := updateDeps{
+				buildAdapterList: fakeAdapterList(fake),
+				stdinIsTTY:       tt.stdinIsTTY,
+				selector: func(opts []output.SelectOption) ([]string, bool) {
+					called = true
+					return nil, false
+				},
+			}
+			withCapturedStdout(func() {
+				if err := runUpdate(tt.gf, tt.uf, deps); err != nil {
+					t.Errorf("runUpdate returned error: %v", err)
+				}
+			})
+			if called != tt.wantSelect {
+				t.Errorf("selector called = %v, want %v", called, tt.wantSelect)
+			}
+		})
+	}
+}
+
+// TestRunUpdate_NoPendingSkipsSelector proves the no-pending-updates
+// scenario (spec ux-patterns "No pending updates"): with only current or
+// skipped tools, the selector is skipped and the normal summary is shown —
+// the selector must not render an empty list.
+func TestRunUpdate_NoPendingSkipsSelector(t *testing.T) {
+	probeHome(t)
+	current := &fakeUpdateAdapter{
+		name:   "npm",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.0.0",
+			UpdateAvailable: false,
+		},
+	}
+	skipped := &fakeUpdateAdapter{
+		name:     "brew",
+		policy:   adapters.PolicyAlwaysUpdate,
+		trust:    adapters.TrustOfficial,
+		noDetect: true,
+	}
+
+	called := false
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(current, skipped),
+		stdinIsTTY:       func() bool { return true },
+		selector: func(opts []output.SelectOption) ([]string, bool) {
+			called = true
+			return nil, false
+		},
+	}
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+	if called {
+		t.Error("selector must be skipped when no pending updates exist")
+	}
+	if !strings.Contains(out, "All tools not installed. Nothing to do.") {
+		t.Errorf("expected the all-skipped summary; got: %q", out)
+	}
+}
+
+// TestRunUpdate_InteractiveSelection proves the carried-outcome loop (design
+// D4, spec command-interface "Selection narrows further"): the selected tool
+// is updated exactly once with a single Check() (the pre-check result is
+// carried — no second Check()), the deselected pending tool is dropped from
+// the summary, and ConfirmAction still runs for the selected custom tool
+// (spec ux-patterns "Not a security confirmation").
+func TestRunUpdate_InteractiveSelection(t *testing.T) {
+	probeHome(t)
+	selected := &fakeUpdateAdapter{
+		name:   "selected-tool",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	deselected := &fakeUpdateAdapter{
+		name:   "deselected-tool",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	custom := &fakeUpdateAdapter{
+		name:       "custom-tool",
+		policy:     adapters.PolicyAlwaysUpdate,
+		trust:      adapters.TrustCustomUntrusted,
+		command:    "curl -fsSL https://example.com/install.sh | sh",
+		privileges: []string{"sudo"},
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	current := &fakeUpdateAdapter{
+		name:   "current-tool",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.0.0",
+			UpdateAvailable: false,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
+	}
+
+	sel, got := fakeSelector([]string{"selected-tool", "custom-tool"}, false)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{selected, deselected, custom, current}, sel)
+
+	out := withCapturedStdout(func() {
+		// The custom tool is high-risk untrusted → ConfirmAction prompts on
+		// stdin; answer yes so the update proceeds.
+		withStdin(t, "y\n", func() {
+			if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+				t.Errorf("runUpdate returned error: %v", err)
+			}
+		})
+	})
+
+	// The pre-check ran over ALL four filtered tools (progress lines included
+	// per design D5).
+	if !strings.Contains(out, "Checking 1/4:") {
+		t.Errorf("expected pre-check progress lines; got: %q", out)
+	}
+
+	// Deselected tool: Update never called.
+	if deselected.updated {
+		t.Error("deselected tool must never be updated")
+	}
+	// Selected tools: updated exactly once.
+	if !selected.updated {
+		t.Error("selected tool must be updated")
+	}
+	if !custom.updated {
+		t.Error("selected custom tool must be updated")
+	}
+	// D7: current always-update tools are NOT force-updated in interactive
+	// TTY runs — only the pending selection is processed.
+	if current.updated {
+		t.Error("current always-update tool must not be force-updated in TTY mode (D7)")
+	}
+	// No-double-check contract: exactly one Check() per tool, carried forward.
+	for _, f := range []*fakeUpdateAdapter{selected, deselected, custom, current} {
+		if f.checkCount != 1 {
+			t.Errorf("%s Check() count = %d, want 1 (carried outcome, no second check)", f.name, f.checkCount)
+		}
+	}
+	// ConfirmAction still ran for the selected custom tool (selector is NOT
+	// a security confirmation — the high-risk untrusted prompt appeared).
+	if !strings.Contains(out, "Proceed? [y/N]") {
+		t.Errorf("expected ConfirmAction prompt for selected custom tool; got: %q", out)
+	}
+
+	// Selector options carry ID/Label/Version from the pending pre-check
+	// outcomes, in input order — only the pending (available) tools are
+	// selectable (design D9: the "Current → Latest" string; D7: no
+	// always-update tools in the list).
+	wantOpts := []output.SelectOption{
+		{ID: "selected-tool", Label: "selected-tool", Version: "1.0.0 → 2.0.0"},
+		{ID: "deselected-tool", Label: "deselected-tool", Version: "1.0.0 → 2.0.0"},
+		{ID: "custom-tool", Label: "custom-tool", Version: "1.0.0 → 2.0.0"},
+	}
+	if len(*got) != len(wantOpts) {
+		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
+	}
+	for i, want := range wantOpts {
+		if (*got)[i] != want {
+			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
+		}
+	}
+
+	// Summary reflects executed selection: deselected pending tool dropped,
+	// both selected tools updated — counts reflect executed selection, not
+	// the pending set.
+	if !strings.Contains(out, "2 updated") {
+		t.Errorf("expected summary '2 updated'; got: %q", out)
+	}
+	if !strings.Contains(out, "Updated: selected-tool, custom-tool") {
+		t.Errorf("expected detail line listing only the selected tools; got: %q", out)
+	}
+	if strings.Contains(out, "Updated: current-tool") {
+		t.Errorf("current always-update tool must not appear as updated; got: %q", out)
+	}
+}
+
+// TestRunUpdate_SelectorCancel proves the cancel path (spec ux-patterns "Esc
+// cancels run"/"q cancels run", design D8): nothing is updated, the fixed
+// cancel message is shown, and the run exits 0.
+func TestRunUpdate_SelectorCancel(t *testing.T) {
+	probeHome(t)
+	pending := &fakeUpdateAdapter{
+		name:   "npm",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	always := &fakeUpdateAdapter{
+		name:   "brew",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.0.0",
+			UpdateAvailable: false,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
+	}
+
+	sel, _ := fakeSelector(nil, true)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{pending, always}, sel)
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("cancel must exit 0; runUpdate returned error: %v", err)
+		}
+	})
+
+	// Pre-check progress lines appear before the cancel (design D5: include
+	// them deliberately, do not strip them).
+	if !strings.Contains(out, "Checking 1/2:") {
+		t.Errorf("expected pre-check progress lines; got: %q", out)
+	}
+	if !strings.Contains(out, "Update canceled — no changes made.") {
+		t.Errorf("expected the fixed cancel message; got: %q", out)
+	}
+	// Nothing updated — not even always-update tools (design D7: the
+	// interactive run acts on the pending selection only).
+	if pending.updated {
+		t.Error("cancel must not update pending tools")
+	}
+	if always.updated {
+		t.Error("cancel must not update always-update tools (D7: no force-update in TTY)")
 	}
 }
