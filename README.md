@@ -93,6 +93,8 @@ upp init
 | `upp update -n` | Preview updates without executing | No | No |
 | `upp list` | List detected tools and their status | No | No |
 
+In a terminal, `upp update` shows an interactive selection of pending updates before executing: ↑/↓ to move, Space to toggle a tool, `a`/`n` to select all/none, Enter to update the selected set, Esc or `q` to cancel (nothing updated, exit 0). The selector is skipped in `--ci`, `--quiet`, `--dry-run`, and non-TTY runs — those behave exactly as before.
+
 ### Maintenance
 
 | Command | Description | Interactive | Modifies system |
