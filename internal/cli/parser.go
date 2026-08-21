@@ -26,7 +26,7 @@ type UpdateFlags struct {
 }
 
 // BuildRoot creates the root cobra.Command with global flags.
-// Running `upp` with no args shows status (like check), read-only.
+// Running `upp` with no args shows the dashboard welcome screen, read-only.
 func BuildRoot() (*cobra.Command, *GlobalFlags) {
 	gf := &GlobalFlags{}
 
