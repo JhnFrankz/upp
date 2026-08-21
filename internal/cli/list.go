@@ -46,6 +46,15 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 	}
 	adapterList := deps.buildAdapterList(cfg, p.OS)
 
+	// Apply --only/--skip so table rows round-trip with the filter names.
+	only, skip := ParseFilter(gf.Only, gf.Skip)
+	adapterMap := adapterByID(adapterList)
+	filtered := make([]adapters.Adapter, 0, len(adapterList))
+	for _, id := range FilterTools(adapterIDs(adapterList), only, skip, os.Stderr) {
+		filtered = append(filtered, adapterMap[id])
+	}
+	adapterList = filtered
+
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 
 	var entries []output.ListEntry

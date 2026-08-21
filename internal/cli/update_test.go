@@ -965,3 +965,41 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 		})
 	}
 }
+
+// TestVerifyPins_StrictTTDScenarios pins the five CRITICAL scenarios from the
+// verify report: bare --ci dashboard, update --ci failure exit, list --only
+// round-trip, -v shorthand diagnostics, and clean all-success verbose output.
+func TestVerifyPins_StrictTTDScenarios(t *testing.T) {
+	writeCheckConfig(t, "")
+	fail := &fakeUpdateAdapter{name: "broken", policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, updateErr: fmt.Errorf("lock held")}
+	okAd := &fakeUpdateAdapter{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"}}
+	run := func(args ...string) (string, error) {
+		setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fail, okAd), stdinIsTTY: func() bool { return false }}, listDeps{buildAdapterList: fakeAdapterList(fail, okAd)}, selfUpdateDeps{})
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs(args)
+		var err error
+		out := withCapturedStdout(func() { err = root.Execute() })
+		return out, err
+	}
+	for _, tt := range []struct {
+		name, args, want, not string
+		wantErr               bool
+	}{
+		{"bare --ci dashboard", "--ci", "upp update -n", "", false},
+		{"update --ci non-zero on failure", "update --ci --only broken", "Failed: broken", "", true},
+		{"list --only round-trip", "list --only apt", "apt", "brew", false},
+		{"-v shorthand diagnostics", "update -v --only broken", "lock held", "", false},
+		{"all-success verbose clean", "update -v --only apt", "1 updated", "│", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := run(strings.Fields(tt.args)...)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("pin %q: err=%v, wantErr=%v, output:\n%s", tt.name, err, tt.wantErr, out)
+			}
+			if !strings.Contains(out, tt.want) || (tt.not != "" && strings.Contains(out, tt.not)) {
+				t.Errorf("pin %q assertions failed, output:\n%s", tt.name, out)
+			}
+		})
+	}
+}
