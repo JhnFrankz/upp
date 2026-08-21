@@ -323,7 +323,9 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	if failed > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
 	} else if allClean {
-		_, _ = fmt.Fprintf(r.w, "%s %s. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
+		// Spec ux-patterns Summary Report "All succeed": the clean line
+		// counts failures explicitly even when zero ("N updated, 0 failed").
+		_, _ = fmt.Fprintf(r.w, "%s %s, 0 failed. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else if updated > 0 || available > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else {
@@ -363,87 +365,6 @@ func (r *Renderer) detailSummary(summary Summary) {
 					for _, line := range strings.Split(strings.TrimSpace(f.Stderr), "\n") {
 						_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
 					}
-				}
-			}
-		}
-	}
-}
-
-// CheckSummary renders the summary for a check (read-only) operation.
-// The "All tools up to date." tagline appears ONLY when every enabled tool
-// was checked and current (current>0, nothing available/skipped/failed) or
-// when the enabled-tool list is empty (parser_test bare-upp / integration
-// all-disabled contract). Any skipped or failed tool suppresses the tagline
-// and is counted explicitly (D4).
-func (r *Renderer) CheckSummary(results []ToolResult) {
-	var available, current, skipped, failed int
-	for _, res := range results {
-		switch res.Status {
-		case StatusAvailable:
-			available++
-		case StatusCurrent:
-			current++
-		case StatusSkipped:
-			skipped++
-		case StatusFailed:
-			failed++
-		default:
-			// Fail closed: a status outside the known enum must never fall
-			// through to the "All tools up to date." tagline. Count it as a
-			// failure so the summary reports it explicitly (guarded by
-			// TestCheckSummary_UnknownStatusFailsClosed).
-			failed++
-		}
-	}
-
-	_, _ = fmt.Fprintln(r.w)
-
-	if available == 0 && skipped == 0 && failed == 0 {
-		// current > 0 (everything checked and current) or empty enabled-tool
-		// list: keep the tagline (spec + test-enforced). Unknown statuses
-		// cannot reach here — the counting switch fails them closed as failed.
-		_, _ = fmt.Fprintf(r.w, "%s All tools up to date.\n", r.statusIcon(StatusCurrent))
-		return
-	}
-
-	if available == 0 && failed == 0 {
-		// Nothing pending or failed — only skipped tools (and current ones):
-		// "Nothing to do." unless some tools are actually current.
-		if current > 0 {
-			_, _ = fmt.Fprintf(r.w, "%s %d up to date, %d skipped\n",
-				r.statusIcon(StatusCurrent), current, skipped)
-		} else {
-			_, _ = fmt.Fprintf(r.w, "%s Nothing to do.\n", r.statusIcon(StatusSkipped))
-		}
-	} else {
-		var parts []string
-		if available > 0 {
-			parts = append(parts, r.yellow(fmt.Sprintf("%d available", available)))
-		}
-		if current > 0 {
-			parts = append(parts, fmt.Sprintf("%d up to date", current))
-		}
-		if skipped > 0 {
-			parts = append(parts, fmt.Sprintf("%d skipped", skipped))
-		}
-		if failed > 0 {
-			parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
-		}
-
-		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusAvailable), strings.Join(parts, ", "))
-	}
-
-	// Non-quiet detail lists the pending and skipped tools (D4), and failed diagnostics in verbose mode.
-	if !r.quiet {
-		for _, res := range results {
-			if res.Status == StatusAvailable || res.Status == StatusSkipped {
-				_, _ = fmt.Fprintf(r.w, "  %s %s %s\n",
-					r.statusIcon(res.Status),
-					r.cyan(res.Name),
-					r.dim(res.Version))
-			} else if res.Status == StatusFailed && r.verbose && res.Stderr != "" {
-				for _, line := range strings.Split(strings.TrimSpace(res.Stderr), "\n") {
-					_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
 				}
 			}
 		}
@@ -496,8 +417,8 @@ func (r *Renderer) Dashboard(data DashboardData) {
 	_, _ = fmt.Fprintf(r.w, "%s upp %s (%s)\n\n", r.cyan("●"), data.Version, data.Platform)
 	_, _ = fmt.Fprintf(r.w, "  Tools: %d enabled (%d configured for platform)\n\n", data.EnabledTools, data.AvailableTools)
 	_, _ = fmt.Fprintln(r.w, "  Commands:")
-	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp check", "Check for tool updates (read-only)")
-	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update", "Update all enabled tools (-n for dry-run)")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update -n", "Preview pending updates (--dry-run)")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update", "Apply updates to all enabled tools")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp list", "List configured tools and versions")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp --help", "Show help and options")
 }

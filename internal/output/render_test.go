@@ -143,8 +143,10 @@ func TestUpdateSummary_AllUpdated(t *testing.T) {
 	r.UpdateSummary(summary)
 
 	output := buf.String()
-	if !strings.Contains(output, "All clean!") {
-		t.Errorf("summary should contain 'All clean!', got:\n%s", output)
+	// Spec ux-patterns Summary Report, "All succeed": the clean line counts
+	// updated AND failed explicitly ("5 updated, 0 failed. All clean!").
+	if !strings.Contains(output, "2 updated, 0 failed. All clean!") {
+		t.Errorf("summary should report '2 updated, 0 failed. All clean!', got:\n%s", output)
 	}
 }
 
@@ -163,11 +165,10 @@ func TestUpdateSummary_PartialFailure(t *testing.T) {
 	r.UpdateSummary(summary)
 
 	output := buf.String()
-	if !strings.Contains(output, "failed") {
-		t.Errorf("summary should contain 'failed', got:\n%s", output)
-	}
-	if !strings.Contains(output, "Review errors above") {
-		t.Errorf("summary should contain 'Review errors above', got:\n%s", output)
+	// Spec ux-patterns Summary Report, "Partial fail": counts compose as
+	// "N updated, M failed" followed by the review tagline.
+	if !strings.Contains(output, "1 updated, 1 failed. Review errors above.") {
+		t.Errorf("summary should report '1 updated, 1 failed. Review errors above.', got:\n%s", output)
 	}
 }
 
@@ -319,179 +320,6 @@ func TestUpdateSummary_UpdatedAndCurrent(t *testing.T) {
 	}
 	if !strings.Contains(output, "Up to date: go") {
 		t.Errorf("detail summary must list current tools (D6), got:\n%s", output)
-	}
-}
-
-func TestCheckSummary_UpdatesAvailable(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "brew", Status: StatusAvailable, Version: "4.0.0 → 4.1.0"},
-		{Name: "npm", Status: StatusCurrent, Version: "10.0.0"},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if !strings.Contains(output, "1 available") {
-		t.Errorf("check summary should show '1 available', got:\n%s", output)
-	}
-	// Current tools are "up to date", never "current" (D4 wording).
-	if !strings.Contains(output, "1 up to date") {
-		t.Errorf("check summary should show '1 up to date', got:\n%s", output)
-	}
-	if strings.Contains(output, "1 current") {
-		t.Errorf("check summary must say 'up to date' not 'current', got:\n%s", output)
-	}
-}
-
-func TestCheckSummary_AllCurrent(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "brew", Status: StatusCurrent, Version: "4.1.0"},
-		{Name: "npm", Status: StatusCurrent, Version: "10.0.0"},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if !strings.Contains(output, "All tools up to date") {
-		t.Errorf("check summary should say 'All tools up to date', got:\n%s", output)
-	}
-}
-
-// TestCheckSummary_CurrentAndSkipped locks the D4 honesty contract: when an
-// enabled tool is skipped (not installed), the check summary must count it
-// explicitly and MUST NOT print the "All tools up to date." tagline.
-func TestCheckSummary_CurrentAndSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "apt", Status: StatusCurrent, Version: "2.4.0"},
-		{Name: "npm", Status: StatusSkipped},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if !strings.Contains(output, "1 up to date, 1 skipped") {
-		t.Errorf("check summary must count skipped tools explicitly, got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("check must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
-	}
-	// Non-quiet detail lists the skipped tools too (D4).
-	if !strings.Contains(output, "npm") {
-		t.Errorf("non-quiet check detail should list skipped tools, got:\n%s", output)
-	}
-}
-
-// TestCheckSummary_AllSkipped locks the all-skipped branch: with nothing
-// current, available, or failed, check must say "Nothing to do." — never the
-// up-to-date tagline.
-func TestCheckSummary_AllSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "brew", Status: StatusSkipped},
-		{Name: "docker", Status: StatusSkipped},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if !strings.Contains(output, "Nothing to do") {
-		t.Errorf("all-skipped check summary should say 'Nothing to do.', got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("all-skipped check must never claim 'All tools up to date.', got:\n%s", output)
-	}
-}
-
-// TestCheckSummary_EmptyResults preserves the empty enabled-tool list case:
-// with zero results the tagline stays (parser_test.go bare-upp and the
-// all-tools-disabled integration test depend on it).
-func TestCheckSummary_EmptyResults(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.CheckSummary(nil)
-
-	output := buf.String()
-	if !strings.Contains(output, "All tools up to date.") {
-		t.Errorf("empty check must keep the 'All tools up to date.' tagline, got:\n%s", output)
-	}
-}
-
-// TestCheckSummary_AvailableAndSkipped triangulates the parts path: pending
-// updates plus skipped tools are both counted, never the tagline.
-func TestCheckSummary_AvailableAndSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "apt", Status: StatusAvailable, Version: "2.4.0 → 2.4.5"},
-		{Name: "npm", Status: StatusSkipped},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if !strings.Contains(output, "1 available, 1 skipped") {
-		t.Errorf("check summary must count available and skipped tools, got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("check must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
-	}
-}
-
-// TestCheckSummary_CurrentAndFailed triangulates the parts path with a
-// failure: current tools are still counted as up to date alongside failed.
-func TestCheckSummary_CurrentAndFailed(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "apt", Status: StatusCurrent, Version: "2.4.0"},
-		{Name: "npm", Status: StatusFailed, Error: fmt.Errorf("timeout")},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if !strings.Contains(output, "1 up to date, 1 failed") {
-		t.Errorf("check summary must count current and failed tools, got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("check must never claim 'All tools up to date.' when a tool failed, got:\n%s", output)
-	}
-}
-
-// TestCheckSummary_UnknownStatusFailsClosed guards the branch comments in
-// CheckSummary: a status outside the known enum must never fall through to
-// the "All tools up to date." tagline (the branches assume the switch counts
-// every status; a future Status value must fail closed, not claim clean).
-func TestCheckSummary_UnknownStatusFailsClosed(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := []ToolResult{
-		{Name: "mystery", Status: Status(99)},
-	}
-
-	r.CheckSummary(results)
-
-	output := buf.String()
-	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("check must never claim 'All tools up to date.' for an unknown status, got:\n%s", output)
-	}
-	if !strings.Contains(output, "1 failed") {
-		t.Errorf("unknown status must fail closed as failed, got:\n%s", output)
 	}
 }
 
@@ -838,7 +666,7 @@ func TestDashboard_Formatting(t *testing.T) {
 		"upp v0.2.0 (linux/amd64)",
 		"Tools: 5 enabled (10 configured for platform)",
 		"Commands:",
-		"upp check",
+		"upp update -n",
 		"upp update",
 		"upp list",
 		"upp --help",
@@ -846,6 +674,10 @@ func TestDashboard_Formatting(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Dashboard output missing %q, got:\n%s", want, out)
 		}
+	}
+	// The check command is removed; the query surface is `upp update -n`.
+	if strings.Contains(out, "upp check") {
+		t.Errorf("Dashboard must not reference the removed 'upp check', got:\n%s", out)
 	}
 }
 
@@ -930,6 +762,13 @@ func TestToolLine_VerboseFailureDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(out, "npm ERR! retry limit reached") {
 		t.Errorf("expected verbose tool line to contain stderr line 2, got:\n%s", out)
+	}
+	// Spec ux-patterns Verbose Error Diagnostics: each stderr line renders
+	// INDENTED beneath the failed tool entry ("    │ <line>").
+	for _, line := range []string{"npm ERR! network connection refused", "npm ERR! retry limit reached"} {
+		if !strings.Contains(out, "    │ "+line) {
+			t.Errorf("stderr line must render indented beneath the failed tool, got:\n%s", out)
+		}
 	}
 }
 

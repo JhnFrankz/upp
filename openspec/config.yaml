@@ -7,7 +7,7 @@ context: |
   Stack: Go 1.22, cobra CLI (github.com/spf13/cobra), TOML config
   (github.com/BurntSushi/toml). Entry point: cmd/upp/main.go.
   Architecture: compiled binary, package-per-layer layout under internal/:
-  cli (cobra subcommands check/list/update/init/self-update), adapters (official
+  cli (cobra subcommands list/update/init/self-update), adapters (official
   per-tool adapters + registry + custom), config, output, platform detection,
   security/trust model, selfupdate.
   Build/release: Makefile (build, build-all cross-compile for linux/darwin/windows amd64+arm64,
@@ -49,7 +49,7 @@ rules:
   apply:
     guidelines:
       - Follow existing Go package layout and adapter pattern
-      - Keep upp check/list/update/init/self-update and --ci/--dry-run (-n)/--quiet (-q)/--verbose (-v)/--only/--skip working
+      - Keep upp list/update/init/self-update and --ci/--dry-run (-n)/--quiet (-q)/--verbose (-v)/--only/--skip working
       - Add table-driven tests for any new behavior
     tdd: true
     test_command: "go test ./... -count=1"

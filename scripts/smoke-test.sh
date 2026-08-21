@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # smoke-test.sh — Quick smoke test for the upp binary.
-# Verifies basic functionality: bare dashboard, --help, --version, list, check, init --ci, flag shorthands.
+# Verifies basic functionality: bare dashboard, --help, --version, list, update --dry-run, init --ci, flag shorthands.
 # Exit codes: 0 = all tests passed, 1 = at least one test failed.
 #
 # Usage:
@@ -159,7 +159,6 @@ echo ""
 echo "2. Subcommand help"
 run_test_with_output "upp init --help" "Detect installed tools" "$BINARY" init --help
 run_test_with_output "upp update --help" "Process each enabled tool" "$BINARY" update --help
-run_test_with_output "upp check --help" "Query each enabled tool" "$BINARY" check --help
 run_test_with_output "upp list --help" "Show all tools available" "$BINARY" list --help
 run_test_with_output "upp self-update --help" "Check for a newer upp release" "$BINARY" self-update --help
 
@@ -182,10 +181,11 @@ echo ""
 echo "4. List command"
 run_test "upp list" "$BINARY" list
 
-# Test 5: check command
+# Test 5: read-only query surface (update --dry-run); check is pruned
 echo ""
-echo "5. Check command"
-run_test "upp check" "$BINARY" check
+echo "5. Read-only query surface"
+run_test_with_output "upp update --dry-run (query header)" "Dry run" "$BINARY" update --dry-run
+run_test_exit_code "upp check (pruned, exit 1)" 1 "$BINARY" check
 
 # Test 6: init --ci (creates config)
 echo ""
@@ -205,24 +205,24 @@ else
 fi
 rm -rf "$TMPDIR_INIT"
 
-# Test 7: Quiet flag and shorthand (-q)
+# Test 7: Quiet flag and shorthand (-q) on the dry-run query surface
 echo ""
 echo "7. Quiet mode"
-run_test "upp check --quiet" "$BINARY" check --quiet
-run_test "upp check -q" "$BINARY" check -q
+run_test "upp update -n --quiet" "$BINARY" update -n --quiet
+run_test "upp update --dry-run -q" "$BINARY" update --dry-run -q
 
-# Test 8: Verbose flag and shorthand (-v)
+# Test 8: Verbose flag and shorthand (-v) on the dry-run query surface
 echo ""
 echo "8. Verbose mode"
-run_test "upp check --verbose" "$BINARY" check --verbose
-run_test "upp check -v" "$BINARY" check -v
+run_test "upp update -n --verbose" "$BINARY" update -n --verbose
+run_test "upp update --dry-run -v" "$BINARY" update --dry-run -v
 
-# Test 9: Filter flags
+# Test 9: Filter flags on the dry-run query surface
 echo ""
 echo "9. Filter flags"
-run_test "upp check --only npm" "$BINARY" check --only npm
-run_test "upp check --skip npm" "$BINARY" check --skip npm
-run_test "upp check --only brew --skip npm (--only wins)" "$BINARY" check --only brew --skip npm
+run_test "upp update -n --only npm" "$BINARY" update -n --only npm
+run_test "upp update -n --skip npm" "$BINARY" update -n --skip npm
+run_test "upp update -n --only brew --skip npm (--only wins)" "$BINARY" update -n --only brew --skip npm
 
 # Test 10: Dry-run flag and shorthand (-n)
 echo ""

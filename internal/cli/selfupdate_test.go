@@ -411,6 +411,26 @@ func TestSelfUpdate_OnlySkipIgnored(t *testing.T) {
 	}
 }
 
+// TestSelfUpdate_UnknownFlagRejected pins the command-interface
+// Self-Update Flag Semantics scenario: self-update accepts no flags in v1,
+// so any unknown flag gets cobra's default rejection (error + usage,
+// non-zero exit) instead of being silently ignored.
+func TestSelfUpdate_UnknownFlagRejected(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+	root.Version = "v0.1.0"
+	root.SetArgs([]string{"self-update", "--yes"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("self-update --yes must be rejected with an error (non-zero exit)")
+	}
+	if !strings.Contains(err.Error(), "unknown flag") {
+		t.Errorf("error should be cobra's unknown-flag rejection, got: %v", err)
+	}
+}
+
 func TestSelfUpdate_WindowsUnsupported(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var reqs atomic.Int32
