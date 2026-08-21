@@ -275,6 +275,7 @@ func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
 // UpdateSummary renders the final summary of an update or check run.
 func (r *Renderer) UpdateSummary(summary Summary) {
 	updated, skipped, failed := countByStatus(summary.Results)
+	current := countByStatusType(summary.Results, StatusCurrent)
 
 	// In dry-run mode, StatusAvailable counts as "would update"
 	available := 0
@@ -292,6 +293,9 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		count := updated + available
 		parts = append(parts, r.green(fmt.Sprintf("%d %s", count, label)))
 	}
+	if current > 0 {
+		parts = append(parts, fmt.Sprintf("%d up to date", current))
+	}
 	if skipped > 0 {
 		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
 	}
@@ -301,8 +305,9 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 
 	_, _ = fmt.Fprintln(r.w)
 
-	// All skipped (or empty) → special message
-	if updated == 0 && available == 0 && failed == 0 {
+	// All skipped (or empty) → special message. Current tools ARE installed,
+	// so they keep this branch from firing (D6).
+	if updated == 0 && available == 0 && failed == 0 && current == 0 {
 		_, _ = fmt.Fprintf(r.w, "%s All tools not installed. Nothing to do.\n", r.statusIcon(StatusSkipped))
 		return
 	}
@@ -333,12 +338,17 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 
 func (r *Renderer) detailSummary(summary Summary) {
 	updated := filterByStatus(summary.Results, StatusUpdated)
+	current := filterByStatus(summary.Results, StatusCurrent)
 	skipped := filterByStatus(summary.Results, StatusSkipped)
 	failed := filterByStatus(summary.Results, StatusFailed)
 
 	if len(updated) > 0 {
 		ids := toolNames(updated)
 		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.green("Updated:"), strings.Join(ids, ", "))
+	}
+	if len(current) > 0 {
+		ids := toolNames(current)
+		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.green("Up to date:"), strings.Join(ids, ", "))
 	}
 	if len(skipped) > 0 {
 		ids := toolNames(skipped)
@@ -569,19 +579,6 @@ func (r *Renderer) SelfUpdateUpToDate(tag string) {
 // Always shown.
 func (r *Renderer) SelfUpdateDone(current, latest string) {
 	_, _ = fmt.Fprintf(r.w, "upp updated: %s → %s\n", current, latest)
-}
-
-// SelfUpdateHint appends the opt-in update-detection hint (design D9):
-// exactly one line, after the check summary. It is the one piece of
-// self-update output that quiet mode DOES suppress — the hint is
-// informational output, unlike the confirm prompt.
-func (r *Renderer) SelfUpdateHint(current, latest string) {
-	if r.quiet {
-		return
-	}
-	// The template leads with the latest version: "⬆️ upp v{latest}
-	// available (current {current})" (spec ux-patterns).
-	_, _ = fmt.Fprintf(r.w, "⬆️ upp %s available (current %s) — run \"upp self-update\"\n", latest, current)
 }
 
 // --- Error output ---

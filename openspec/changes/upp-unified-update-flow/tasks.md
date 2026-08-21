@@ -35,16 +35,16 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Update-flow wiring
 
-- [ ] 2.1 `update.go` `runUpdateInteractive`: build board (canonical filtered order); `Start()` before pool, `board.Complete` as `onResult`, `Finish()` before pending-only (`StatusAvailable`) CheckboxSelector.
-- [ ] 2.2 `render.go`: `UpdateSummary`/`detailSummary` gain "N up to date" count + Current listing (D6).
-- [ ] 2.3 `update_test.go`: replace "Checking X/Y" (:577/:680) with board assertions; dry-run 8 current+2 skipped → "8 up to date, 2 skipped", never "All tools up to date."; pending never "All clean!".
+- [x] 2.1 `update.go` `runUpdateInteractive`: build board (canonical filtered order); `Start()` before pool, `board.Complete` as `onResult`, `Finish()` before pending-only (`StatusAvailable`) CheckboxSelector.
+- [x] 2.2 `render.go`: `UpdateSummary`/`detailSummary` gain "N up to date" count + Current listing (D6).
+- [x] 2.3 `update_test.go`: replace "Checking X/Y" (:577/:680) with board assertions; dry-run 8 current+2 skipped → "8 up to date, 2 skipped", never "All tools up to date."; pending never "All clean!".
 
 ## Phase 3: Removals
 
-- [ ] 3.1 Delete rest of `internal/cli/check.go` (command, `runCheck`, `checkDeps`, `maybeShowSelfUpdateHint`); drop registration in `parser.go` and `check` slot in `deps.go`.
-- [ ] 3.2 Delete `SelfUpdateHint` (`render.go` :571); delete `Settings.CheckSelfUpdate` + default (`internal/config/config.go` :29).
-- [ ] 3.3 Delete `check_hint_test.go`, `TestCheckProgress_LabelsChecking`; fix `help_test.go` :50, `parser_test.go` :265; port 8 `SetArgs({"check"})` integrations onto `upp update --dry-run`.
-- [ ] 3.4 Extend config unknown-key tables (`config_test.go` :266/:347): `check_self_update = true` loads silently ignored, `Save` never rewrites.
+- [x] 3.1 Delete rest of `internal/cli/check.go` (command, `runCheck`, `checkDeps`, `maybeShowSelfUpdateHint`); drop registration in `parser.go` and `check` slot in `deps.go`.
+- [x] 3.2 Delete `SelfUpdateHint` (`render.go` :571); delete `Settings.CheckSelfUpdate` + default (`internal/config/config.go` :29).
+- [x] 3.3 Delete `check_hint_test.go`, `TestCheckProgress_LabelsChecking`; fix `help_test.go` :50, `parser_test.go` :265; port 8 `SetArgs({"check"})` integrations onto `upp update --dry-run`.
+- [x] 3.4 Extend config unknown-key tables (`config_test.go` :266/:347): `check_self_update = true` loads silently ignored, `Save` never rewrites.
 
 ## Phase 4: Spec verification
 

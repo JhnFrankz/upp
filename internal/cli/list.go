@@ -25,7 +25,7 @@ func NewListCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 // listDeps carries the injectable seam for runList, mirroring
-// updateDeps/checkDeps. The zero value uses the production adapter list
+// updateDeps. The zero value uses the production adapter list
 // builder.
 type listDeps struct {
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
