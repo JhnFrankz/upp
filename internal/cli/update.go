@@ -266,17 +266,18 @@ func timeoutErr(name, op string, err error) error {
 }
 
 // runUpdateInteractive implements the TTY update flow (design D2/D4/D5/D7):
-// a concurrent pre-check via runChecks (which renders "Checking X/Y"
-// progress), a checkbox selector over the pending (StatusAvailable) tools,
+// a concurrent pre-check via runChecks (completion callback seam; the live
+// CheckBoard lands in Unit 3), a checkbox selector over the pending
+// (StatusAvailable) tools,
 // and the carried-outcome loop that updates only the user's selection. A
 // cancel shows the fixed message and exits 0; the selector is skipped
 // entirely when nothing is pending (spec ux-patterns "No pending updates").
 func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer) error {
 	// Pre-check: concurrent Detect + Check over the filtered set. The
 	// outcomes carry updateInfo so the loop below never re-calls Check()
-	// (design D4). "Checking X/Y" progress lines render here, before the
-	// selector — interactive-path tests include them deliberately (D5).
-	outcomes := runChecks(filteredAdapters, r, gf.Quiet, true)
+	// (design D4). Interim (WU1): the onResult seam is nil, so no progress
+	// renders; Unit 3 wires the live CheckBoard here as the callback.
+	outcomes := runChecks(filteredAdapters, nil)
 
 	// Pending = tools with an update available, in input order (D9).
 	var pending []output.SelectOption
