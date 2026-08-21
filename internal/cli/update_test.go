@@ -809,6 +809,39 @@ func TestRunUpdate_DryRunPendingNeverClean(t *testing.T) {
 	}
 }
 
+// TestRunUpdate_AllSucceedSummary pins the ux-patterns Summary Report
+// "All succeed" scenario end to end: a sequential (non-TTY) update run that
+// updates every tool ends with the explicit-counts clean line
+// ("N updated, 0 failed. All clean!").
+func TestRunUpdate_AllSucceedSummary(t *testing.T) {
+	probeHome(t)
+	updated := &fakeUpdateAdapter{
+		name:   "brew",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(updated),
+		stdinIsTTY:       func() bool { return false },
+	}
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "1 updated, 0 failed. All clean!") {
+		t.Errorf("all-succeed run must report '1 updated, 0 failed. All clean!', got:\n%s", out)
+	}
+}
+
 // TestProcessSelectedOutcome_Coverage directly exercises
 // processSelectedOutcome across its decision branches (verify SUGGESTION:
 // interactive-path coverage). Each case drives the security ConfirmAction

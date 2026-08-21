@@ -323,7 +323,9 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	if failed > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
 	} else if allClean {
-		_, _ = fmt.Fprintf(r.w, "%s %s. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
+		// Spec ux-patterns Summary Report "All succeed": the clean line
+		// counts failures explicitly even when zero ("N updated, 0 failed").
+		_, _ = fmt.Fprintf(r.w, "%s %s, 0 failed. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else if updated > 0 || available > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else {

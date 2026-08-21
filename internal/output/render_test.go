@@ -143,8 +143,10 @@ func TestUpdateSummary_AllUpdated(t *testing.T) {
 	r.UpdateSummary(summary)
 
 	output := buf.String()
-	if !strings.Contains(output, "All clean!") {
-		t.Errorf("summary should contain 'All clean!', got:\n%s", output)
+	// Spec ux-patterns Summary Report, "All succeed": the clean line counts
+	// updated AND failed explicitly ("5 updated, 0 failed. All clean!").
+	if !strings.Contains(output, "2 updated, 0 failed. All clean!") {
+		t.Errorf("summary should report '2 updated, 0 failed. All clean!', got:\n%s", output)
 	}
 }
 
@@ -163,11 +165,10 @@ func TestUpdateSummary_PartialFailure(t *testing.T) {
 	r.UpdateSummary(summary)
 
 	output := buf.String()
-	if !strings.Contains(output, "failed") {
-		t.Errorf("summary should contain 'failed', got:\n%s", output)
-	}
-	if !strings.Contains(output, "Review errors above") {
-		t.Errorf("summary should contain 'Review errors above', got:\n%s", output)
+	// Spec ux-patterns Summary Report, "Partial fail": counts compose as
+	// "N updated, M failed" followed by the review tagline.
+	if !strings.Contains(output, "1 updated, 1 failed. Review errors above.") {
+		t.Errorf("summary should report '1 updated, 1 failed. Review errors above.', got:\n%s", output)
 	}
 }
 
