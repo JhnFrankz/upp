@@ -45,15 +45,16 @@ Chain strategy: feature-branch-chain
 - [x] 3.2 Delete `SelfUpdateHint` (`render.go` :571); delete `Settings.CheckSelfUpdate` + default (`internal/config/config.go` :29).
 - [x] 3.3 Delete `check_hint_test.go`, `TestCheckProgress_LabelsChecking`; fix `help_test.go` :50, `parser_test.go` :265; port 8 `SetArgs({"check"})` integrations onto `upp update --dry-run`.
 - [x] 3.4 Extend config unknown-key tables (`config_test.go` :266/:347): `check_self_update = true` loads silently ignored, `Save` never rewrites.
+- [x] 3.5 Remove orphaned Renderer.CheckSummary + its render tests
 
 ## Phase 4: Spec verification
 
-- [ ] 4.1 Summary Report scenarios: all-succeed/partial-fail/no-tools counts; deterministic canonical order via `upp update --dry-run`.
-- [ ] 4.2 Verbose diagnostics: `-v` indented stderr beneath failed tool; default concise only; `-q -v` suppressed.
-- [ ] 4.3 Self-update flags: unknown flag rejected non-zero; `--ci` denies; `--only/--skip` ignored; `--quiet` still prompts; Short "Update the upp binary itself".
-- [ ] 4.4 Sweep leftover `upp check` refs (dashboard quick-reference → `upp update -n`); `go build ./... && go vet ./...`.
+- [x] 4.1 Summary Report scenarios: all-succeed/partial-fail/no-tools counts; deterministic canonical order via `upp update --dry-run`.
+- [x] 4.2 Verbose diagnostics: `-v` indented stderr beneath failed tool; default concise only; `-q -v` suppressed.
+- [x] 4.3 Self-update flags: unknown flag rejected non-zero; `--ci` denies; `--only/--skip` ignored; `--quiet` still prompts; Short "Update the upp binary itself".
+- [x] 4.4 Sweep leftover `upp check` refs (dashboard quick-reference → `upp update -n`); `go build ./... && go vet ./...`.
 
 ## Phase 5: Docs & E2E
 
-- [ ] 5.1 Rewrite `scripts/smoke-test.sh` Tests 2/5/7/8/9 onto `list` / `upp update --dry-run` with `-q/-v/--only/--skip`; assert `upp check` exits 1.
-- [ ] 5.2 Update `README.md` :65/:91/:109/:144: drop check + hint, document `-n` query surface, remove false bare-`upp` claim.
+- [x] 5.1 Rewrite `scripts/smoke-test.sh` Tests 2/5/7/8/9 onto `list` / `upp update --dry-run` with `-q/-v/--only/--skip`; assert `upp check` exits 1.
+- [x] 5.2 Update `README.md` :65/:91/:109/:144: drop check + hint, document `-n` query surface, remove false bare-`upp` claim.

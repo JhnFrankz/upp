@@ -2,7 +2,7 @@
 
 **Delivery**: Feature Branch Chain — child PRs target the immediate previous PR branch; only tracker `feature/unified-update-flow` merges to main.
 **Mode**: Strict TDD (test runner: `go test ./... -count=1`)
-**Attempt authority**: WU1 acq-wu1-20260821-000711 (proceed); WU2 acq-wu2-20260821-003247 (proceed, token sha256:f80520cf…8751); WU3 acq-wu3-20260821-004728 (proceed, token sha256:e35af1f…c12), max 3 attempts / 550 raw-line budget each.
+**Attempt authority**: WU1 acq-wu1-20260821-000711 (proceed); WU2 acq-wu2-20260821-003247 (proceed, token sha256:f80520cf…8751); WU3 acq-wu3-20260821-004728 (proceed, token sha256:e35af1f…c12); WU5 acq-wu5-20260821-090458 (token sha256:c83c5206…fd21), max 3 attempts / 550–650 raw-line budget each.
 
 ---
 
@@ -183,10 +183,70 @@ Raw git churn: commit 9aa957a **+271/−847 = 1118 raw lines** — exceeds the 6
 
 ---
 
+## Work Unit 5 — Spec verification + docs/E2E (COMPLETE)
+
+**Branch**: `wu5/spec-docs-e2e` (based off `wu4/removals` @ 95d2641; PR → base `wu4/removals`, NOT tracker/main)
+**Attempt**: acq-wu5-20260821-090458 (token sha256:c83c5206…fd21), 650 raw-line budget — used ≈390 code + ≈100 bookkeeping.
+**Maintainer decision (authorized 2026-08-21)**: task 3.5 added and completed — delete orphaned `Renderer.CheckSummary` + its 8 render tests.
+
+### Completed Tasks
+
+- [x] **3.5** Commit f8422b1: deleted `Renderer.CheckSummary` (render.go, ~80 lines) + `TestCheckSummary_*` (8 tests, render_test.go). Zero production callers confirmed via codegraph blast radius after 9aa957a; the update path renders through `UpdateSummary`. Pure deletion; output+cli packages green immediately after gofmt.
+- [x] **4.1** RED→GREEN commit 0cbe869: spec ux-patterns "All succeed" demands explicit zero counts — strengthened `TestUpdateSummary_AllUpdated` to `"2 updated, 0 failed. All clean!"` (RED: got "2 updated. All clean!"); GREEN: allClean branch now prints `, 0 failed. All clean!`. Added CLI-level `TestRunUpdate_AllSucceedSummary` end-to-end through `runUpdateSequential` (PolicyAlwaysUpdate fake → "1 updated, 0 failed. All clean!"). Strengthened `TestUpdateSummary_PartialFailure` to exact "1 updated, 1 failed. Review errors above." (approval pin, passed immediately). No-tools + deterministic-order scenarios already pinned (WU3/WU4: `TestUpdateSummary_AllSkipped`, `TestEmptyConfig_AllToolsSkipped`, `TestUpdateDryRun_DeterministicOrderUnderConcurrency`, `TestUpdateDryRun_MixedStatusCounts`).
+- [x] **4.2** Commit 9ecd80a: strengthened `TestToolLine_VerboseFailureDiagnostics` with the indented `"    │ <line>"` prefix assertion beneath the failed tool line (approval pin — renderer already indents). Full scenario coverage pre-existing: `-v`/default/`-q -v` via `TestRunUpdate_VerboseFailureDiagnostics` (CLI), `TestToolLine_NonVerboseFailureSuppressed`, `TestToolLine_QuietOverridesVerbose`, `TestUpdateSummary_VerboseFailureDiagnostics`.
+- [x] **4.3** Commit 9ecd80a: new `TestSelfUpdate_UnknownFlagRejected` — root Execute with `self-update --yes` errors with cobra's "unknown flag" rejection (non-zero exit proxy; approval pin on cobra default). Already pinned: Short text (parser_test.go:389), `--ci` deny (`TestSelfUpdate_CIDeny`/`CIDenyThroughRoot`), `--only/--skip` ignored (`TestSelfUpdate_OnlySkipIgnored`), `--quiet` keeps prompt (`TestSelfUpdate_QuietKeepsPrompt`).
+- [x] **4.4** RED→GREEN commit 5379d62: dashboard quick-reference still advertised removed `upp check`; updated `TestDashboard_Formatting` + `TestRunDashboard_WithConfig` to require `upp update -n` and reject `upp check` (both RED against old render.go); GREEN: Dashboard lines now `upp update -n` ("Preview pending updates (--dry-run)") / `upp update` / `upp list` / `upp --help` per ux-patterns Bare Dashboard requirement. Swept stale `upp check` comment in checkrun.go runChecks doc. `go build ./... && go vet ./...` clean.
+- [x] **5.1** Commit 1b2ec3d: smoke-test.sh Tests 2/5/7/8/9 rewritten off the removed command — Test 2 drops `upp check --help`; Test 5 becomes "Read-only query surface" (`upp update --dry-run` header assert + `upp check` pruned-exit-1); Tests 7/8/9 route `-q`/`--quiet`, `-v`/`--verbose`, `--only/--skip/--only+--skip` through `upp update -n`. Harness: `bash scripts/smoke-test.sh --skip-build` → **31 passed, 0 failed, exit 0**.
+- [x] **5.2** Commit 27c21ca: README — quick-start block loses the check entry (`upp update -n` labeled read-only query surface), Commands table row removed, opt-in hint bullet deleted (feature removed with check; kills the false bare-`upp` hint claim), `check_self_update = false` line dropped from the config example. Repo sweep: no non-test `upp check` refs remain outside smoke's intentional exit-1 assertion.
+
+### TDD Cycle Evidence (WU5)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.5 | `internal/output/render_test.go` | Unit | ✅ 9 pkgs ok @ 95d2641 | ➖ N/A — pure deletion; test removal is part of the authorized unit | ✅ output+cli ok post-delete | ➖ deletion, no behavior | ➖ none needed |
+| 4.1 | `render_test.go` + `update_test.go` | Unit + Integration | ✅ same baseline | ✅ both new/strengthened tests fail ("2 updated. All clean!" lacks "0 failed") | ✅ `-run TestUpdateSummary` + `-run TestRunUpdate` ok | ✅ renderer all-succeed + CLI end-to-end + partial-fail composition | ➖ none needed |
+| 4.2 | `render_test.go` | Unit | ✅ same baseline | ➖ N/A — approval pin on existing indenting renderer | ✅ passed first run | ➖ single scenario shape | ➖ none needed |
+| 4.3 | `selfupdate_test.go` | Integration | ✅ same baseline | ➖ N/A — approval pin on cobra unknown-flag default | ✅ passed first run | covered by existing ci/quiet/filter pins | ➖ none needed |
+| 4.4 | `render_test.go` + `root_test.go` | Unit + Integration | ✅ same baseline | ✅ both dashboard tests fail while render.go prints "upp check" | ✅ after quick-reference rewrite | ✅ positive (update -n) + negative (no check) assertions | ➖ none needed |
+| 5.1 | `scripts/smoke-test.sh` | E2E harness | ✅ prior smoke green | ➖ N/A — script harness, not Go TDD | ✅ 31/31 pass, exit 0 | ✅ -q/-v/--only/--skip variants | ➖ none needed |
+| 5.2 | N/A (docs) | Docs | ✅ N/A | ➖ N/A | ✅ grep sweep clean | ➖ N/A | ➖ N/A |
+
+### Work Unit Evidence (WU5)
+
+| Evidence | Value |
+|---|---|
+| Focused command + result | `go test ./internal/output/ ./internal/cli/ -count=1` → both ok; smoke `bash scripts/smoke-test.sh --skip-build` → 31 passed / 0 failed / exit 0 |
+| Runtime harness + result | Built `./upp`: smoke suite incl. rewritten dry-run query tests and `upp check` → exit 1. Plus `go test ./internal/{cli,output} -race -count=1` → ok |
+| Rollback boundary | Revert f8422b1..27c21ca individually: each commit is one deliverable (deletion / summary counts / pins / dashboard / smoke / docs); none depends on another's partial state |
+
+### Full Gate Results (WU5)
+
+- `go build ./...` clean · `go vet ./...` clean · `gofmt -s -l .` clean
+- `go test ./... -count=1` → all 9 packages ok · `-race` cli+output → ok
+- PR opened → base `wu4/removals` (feature-branch-chain)
+
+### Files Changed (WU5)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `internal/output/render.go` | Modified | Deleted CheckSummary; all-clean summary gains ", 0 failed"; dashboard quick-reference → `upp update -n` |
+| `internal/output/render_test.go` | Modified | −8 CheckSummary tests; strengthened AllUpdated/PartialFailure/verbose-indent/Dashboard assertions |
+| `internal/cli/update_test.go` | Modified | `TestRunUpdate_AllSucceedSummary` end-to-end pin |
+| `internal/cli/selfupdate_test.go` | Modified | `TestSelfUpdate_UnknownFlagRejected` pin |
+| `internal/cli/root_test.go` / `checkrun.go` | Modified | Dashboard guidance expectations; stale comment sweep |
+| `scripts/smoke-test.sh` | Modified | Tests 2/5/7/8/9 onto list/dry-run surfaces + pruned-check exit 1 |
+| `README.md` | Modified | Dropped check/hint refs; documented `-n` query surface |
+
+### Changed Lines (WU5)
+
+Raw git churn (code): **+100/−290 = 390 raw lines** across f8422b1…27c21ca; plus SDD bookkeeping ≈100 → within the 650-line attempt budget.
+
+---
+
 ## Remaining Tasks
 
-- [ ] Phase 4 spec verification, Phase 5 docs/E2E
+- [ ] None — all 18 tasks complete (17 planned + maintainer-authorized 3.5).
 
 ## Status
 
-11/17 tasks complete. WU4 done (PR → `wu3/wire-board`). Ready for WU5 (`sdd-apply`) or verify at chain end.
+18/18 tasks complete. WU5 done (PR → `wu4/removals`). Chain ready for verify/archive once child PRs merge.
