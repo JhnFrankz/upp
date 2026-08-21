@@ -581,19 +581,6 @@ func (r *Renderer) SelfUpdateDone(current, latest string) {
 	_, _ = fmt.Fprintf(r.w, "upp updated: %s → %s\n", current, latest)
 }
 
-// SelfUpdateHint appends the opt-in update-detection hint (design D9):
-// exactly one line, after the check summary. It is the one piece of
-// self-update output that quiet mode DOES suppress — the hint is
-// informational output, unlike the confirm prompt.
-func (r *Renderer) SelfUpdateHint(current, latest string) {
-	if r.quiet {
-		return
-	}
-	// The template leads with the latest version: "⬆️ upp v{latest}
-	// available (current {current})" (spec ux-patterns).
-	_, _ = fmt.Fprintf(r.w, "⬆️ upp %s available (current %s) — run \"upp self-update\"\n", latest, current)
-}
-
 // --- Error output ---
 
 // Error prints a prefixed error message.

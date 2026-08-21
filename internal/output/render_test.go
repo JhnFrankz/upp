@@ -638,30 +638,6 @@ func TestSelfUpdateMessages(t *testing.T) {
 	}
 }
 
-func TestSelfUpdateHint(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRenderer(&buf, false)
-	r.SelfUpdateHint("v0.1.0", "v0.1.1")
-
-	want := "⬆️ upp v0.1.1 available (current v0.1.0) — run \"upp self-update\"\n"
-	if got := buf.String(); got != want {
-		t.Errorf("hint = %q, want %q", got, want)
-	}
-}
-
-// TestSelfUpdateHint_QuietSuppresses locks the ONE place quiet mode
-// applies to self-update output: the hint is informational output
-// (unlike the confirm prompt, which quiet never suppresses).
-func TestSelfUpdateHint_QuietSuppresses(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRenderer(&buf, true)
-	r.SelfUpdateHint("v0.1.0", "v0.1.1")
-
-	if got := buf.String(); got != "" {
-		t.Errorf("quiet mode must suppress the hint, got %q", got)
-	}
-}
-
 // TestUpdateCancelled locks the fixed cancel message for interactive update
 // runs (design D8, spec ux-patterns "Esc cancels run" / "q cancels run"):
 // "Update canceled — no changes made." (US spelling per repo misspell locale)

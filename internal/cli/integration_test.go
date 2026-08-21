@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,10 +20,9 @@ import (
 // test, restoring the previous value on cleanup. Unset fields keep the
 // production (zero) behavior. Sequential-only: no t.Parallel exists in this
 // package — adding any requires synchronization (see deps.go).
-func setCLIDeps(t *testing.T, check checkDeps, update updateDeps, list listDeps, selfUpdate selfUpdateDeps) {
+func setCLIDeps(t *testing.T, update updateDeps, list listDeps, selfUpdate selfUpdateDeps) {
 	t.Helper()
 	prev := cliDeps
-	cliDeps.check = check
 	cliDeps.update = update
 	cliDeps.list = list
 	cliDeps.selfUpdate = selfUpdate
@@ -130,8 +130,8 @@ func TestRootCommand_NoArgs(t *testing.T) {
 	}
 
 	commands := root.Commands()
-	if len(commands) != 5 {
-		t.Errorf("expected 5 subcommands, got %d", len(commands))
+	if len(commands) != 4 {
+		t.Errorf("expected 4 subcommands, got %d", len(commands))
 	}
 
 	// Bare execution in empty dir outputs no-config dashboard
@@ -171,7 +171,7 @@ func TestRootCommand_Help(t *testing.T) {
 	if strings.Contains(output, "Tool Commands") || strings.Contains(output, "Config Commands") {
 		t.Errorf("help output must not contain legacy groups, got:\n%s", output)
 	}
-	for _, cmd := range []string{"init", "update", "check", "list", "self-update"} {
+	for _, cmd := range []string{"init", "update", "list", "self-update"} {
 		if !strings.Contains(output, cmd) {
 			t.Errorf("help output should list %s command", cmd)
 		}
@@ -272,7 +272,7 @@ func TestListCommand_NoConfig(t *testing.T) {
 		trust:  adapters.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
-	setCLIDeps(t, checkDeps{}, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(fake)}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(fake)}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -287,9 +287,12 @@ func TestListCommand_NoConfig(t *testing.T) {
 	}
 }
 
-// --- Check Command Integration Test ---
+// --- Update Dry-Run Command Integration Tests (ported from `upp check`) ---
 
-func TestCheckCommand_NoConfig(t *testing.T) {
+// TestUpdateDryRunCommand_NoConfig is the `upp update --dry-run` port of the
+// former TestCheckCommand_NoConfig: the read-only query surface works with
+// no config present (uses defaults) and produces output.
+func TestUpdateDryRunCommand_NoConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -299,18 +302,17 @@ func TestCheckCommand_NoConfig(t *testing.T) {
 		trust:  adapters.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
-	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fake)}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
+		root.SetArgs([]string{"update", "--dry-run"})
 		_ = root.Execute()
 	})
 
-	// check with no config should still work
 	if len(output) == 0 {
-		t.Error("check should produce some output")
+		t.Error("update --dry-run should produce some output")
 	}
 }
 
@@ -371,7 +373,7 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 		trust:   adapters.TrustCustomUntrusted,
 		command: "untrusted-tool --update && echo done",
 	}
-	setCLIDeps(t, checkDeps{}, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	// In CI mode, update should fail because untrusted tool can't be confirmed
 	root, gf := BuildRoot()
@@ -404,7 +406,7 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 			UpdateAvailable: true,
 		},
 	}
-	setCLIDeps(t, checkDeps{}, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -459,6 +461,9 @@ func TestAdapterByID(t *testing.T) {
 
 // --- Quiet Mode Integration Test ---
 
+// TestQuietMode_SuppressesProgress is the `upp update --dry-run --quiet`
+// port of the former check-path quiet test: quiet mode must not contain
+// progress indicators.
 func TestQuietMode_SuppressesProgress(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -468,49 +473,18 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 		{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
 		{name: "npm", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
 	}
-	setCLIDeps(t, checkDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
-		return []adapters.Adapter{fakes[0], fakes[1]}
-	}}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fakes[0], fakes[1])}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
-		root.SetArgs([]string{"check", "--quiet"})
+		root.SetArgs([]string{"update", "--dry-run", "--quiet"})
 		_ = root.Execute()
 	})
 
 	// Quiet mode should not contain progress indicators
 	if strings.Contains(output, "Updating") {
 		t.Error("quiet mode should not contain progress indicators")
-	}
-}
-
-// TestCheckProgress_LabelsChecking locks the WU1 interim contract: with the
-// D2 onResult seam in place and no board wired yet, the check engine is
-// silent — `upp check` renders no "Checking X/Y" progress and never claims
-// "Updating". (This test is deleted along with the command in Phase 3.)
-func TestCheckProgress_LabelsChecking(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	fakes := []*fakeUpdateAdapter{
-		{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
-		{name: "npm", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
-	}
-	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fakes[0], fakes[1])}, updateDeps{}, listDeps{}, selfUpdateDeps{})
-
-	output := withCapturedStdout(func() {
-		root, gf := BuildRoot()
-		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
-		_ = root.Execute()
-	})
-
-	if strings.Contains(output, "Checking") {
-		t.Errorf("check engine must be silent after the D2 seam (WU1 interim), got:\n%s", output)
-	}
-	if strings.Contains(output, "Updating") {
-		t.Errorf("read-only check must never print 'Updating', got:\n%s", output)
 	}
 }
 
@@ -582,7 +556,7 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 			UpdateAvailable: true,
 		},
 	}
-	setCLIDeps(t, checkDeps{}, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -614,13 +588,14 @@ func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
+		root.SetArgs([]string{"update", "--dry-run"})
 		_ = root.Execute()
 	})
 
-	// With all tools disabled, check should show "All tools up to date" or similar
-	if !strings.Contains(output, "All tools up to date") && !strings.Contains(output, "No tools") {
-		t.Errorf("all-disabled config check should show appropriate message, got: %q", output)
+	// With all tools disabled there is nothing to query: the dry-run
+	// summary reports the honest "not installed" outcome.
+	if !strings.Contains(output, "All tools not installed. Nothing to do.") {
+		t.Errorf("all-disabled config dry run should show the nothing-to-do message, got: %q", output)
 	}
 }
 
@@ -730,9 +705,9 @@ func TestMultipleCustomTools(t *testing.T) {
 	}
 }
 
-// --- Init → Check → Update Lifecycle Test ---
+// --- Init → Update Dry-Run Lifecycle Test ---
 
-func TestInitCheckUpdateLifecycle(t *testing.T) {
+func TestInitUpdateDryRunLifecycle(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -747,7 +722,6 @@ func TestInitCheckUpdateLifecycle(t *testing.T) {
 		},
 	}
 	setCLIDeps(t,
-		checkDeps{buildAdapterList: fakeAdapterList(fake)},
 		updateDeps{buildAdapterList: fakeAdapterList(fake)},
 		listDeps{},
 		selfUpdateDeps{})
@@ -766,15 +740,7 @@ func TestInitCheckUpdateLifecycle(t *testing.T) {
 		t.Fatal("config should exist after init")
 	}
 
-	// Step 2: check
-	withCapturedStdout(func() {
-		root, gf := BuildRoot()
-		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
-		_ = root.Execute()
-	})
-
-	// Step 3: update --dry-run
+	// Step 2: update --dry-run (read-only query surface, formerly `check`)
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
@@ -832,7 +798,6 @@ func TestSubcommandRegistration(t *testing.T) {
 		"init":        false,
 		"update":      false,
 		"self-update": false,
-		"check":       false,
 		"list":        false,
 	}
 
@@ -850,11 +815,11 @@ func TestSubcommandRegistration(t *testing.T) {
 	}
 }
 
-// --- Check Summary Output ---
+// --- Update Dry-Run Summary Output (ported from check) ---
 
 // fakeSkipAdapter is a hermetic adapter whose Detect() reports false, so
-// runCheck records it as StatusSkipped (check.go Detect gate) — the S2
-// check-with-skips honesty path.
+// the update dry-run records it as StatusSkipped (update.go Detect gate) —
+// the S2 query-with-skips honesty path.
 type fakeSkipAdapter struct {
 	id string
 }
@@ -875,11 +840,12 @@ func (f *fakeSkipAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{ID: f.id, Name: f.id}
 }
 
-// TestCheckCommand_WithSkips locks the S2 D4 honesty contract end-to-end:
-// when one enabled tool is current and another is skipped (not installed),
-// the summary counts both ("1 up to date, 1 skipped") and never prints
-// "All tools up to date.".
-func TestCheckCommand_WithSkips(t *testing.T) {
+// TestUpdateDryRun_WithSkips is the `upp update --dry-run` port of the
+// former TestCheckCommand_WithSkips. It locks the S2 D4 honesty contract
+// end-to-end: when one enabled tool is current and another is skipped (not
+// installed), the summary counts both ("1 up to date, 1 skipped") and never
+// prints "All tools up to date.".
+func TestUpdateDryRun_WithSkips(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -890,30 +856,33 @@ func TestCheckCommand_WithSkips(t *testing.T) {
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	skipped := &fakeSkipAdapter{id: "nvm"}
-	setCLIDeps(t, checkDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+	setCLIDeps(t, updateDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
 		return []adapters.Adapter{current, skipped}
-	}}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+	}}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
+		root.SetArgs([]string{"update", "--dry-run"})
 		_ = root.Execute()
 	})
 
 	if !strings.Contains(output, "1 up to date, 1 skipped") {
-		t.Errorf("check summary must count skipped tools explicitly, got:\n%s", output)
+		t.Errorf("dry-run summary must count skipped tools explicitly, got:\n%s", output)
 	}
 	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("check must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
+		t.Errorf("dry run must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
 	}
 	// Non-quiet detail lists the skipped tool.
 	if !strings.Contains(output, "nvm") {
-		t.Errorf("non-quiet check detail should list skipped tools, got:\n%s", output)
+		t.Errorf("non-quiet dry-run detail should list skipped tools, got:\n%s", output)
 	}
 }
 
-func TestCheckCommand_SummaryOutput(t *testing.T) {
+// TestUpdateDryRun_SummaryOutput is the `upp update --dry-run` port of the
+// former TestCheckCommand_SummaryOutput: the read-only query produces a
+// summary.
+func TestUpdateDryRun_SummaryOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -923,20 +892,20 @@ func TestCheckCommand_SummaryOutput(t *testing.T) {
 		trust:  adapters.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
-	setCLIDeps(t, checkDeps{buildAdapterList: fakeAdapterList(fake)}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
+		root.SetArgs([]string{"update", "--dry-run"})
 		_ = root.Execute()
 	})
 
-	hasSummary := strings.Contains(output, "All tools up to date") ||
-		strings.Contains(output, "available") ||
-		strings.Contains(output, "current")
+	hasSummary := strings.Contains(output, "All tools not installed") ||
+		strings.Contains(output, "up to date") ||
+		strings.Contains(output, "would update")
 	if !hasSummary {
-		t.Errorf("check should produce summary, got: %q", output)
+		t.Errorf("update --dry-run should produce summary, got: %q", output)
 	}
 }
 
@@ -980,10 +949,12 @@ func TestFilterPerformance(t *testing.T) {
 	}
 }
 
-// TestCheck_DeterministicOrderUnderConcurrency ensures that even when adapters complete
-// in reverse/arbitrary order due to concurrency and varying execution times, the final
-// check summary and detail output strictly preserve canonical tool discovery order.
-func TestCheck_DeterministicOrderUnderConcurrency(t *testing.T) {
+// TestUpdateDryRun_DeterministicOrderUnderConcurrency is the
+// `upp update --dry-run` port of the former check-path ordering test: even
+// when adapters complete in reverse/arbitrary order due to concurrency and
+// varying execution times, the dry-run planned actions and summary strictly
+// preserve canonical tool discovery order.
+func TestUpdateDryRun_DeterministicOrderUnderConcurrency(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -995,43 +966,82 @@ func TestCheck_DeterministicOrderUnderConcurrency(t *testing.T) {
 		&fakeDelayedAdapter{name: "epsilon", delay: 30 * time.Millisecond, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "5.0.0", LatestVersion: "5.1.0"}},
 	}
 
-	setCLIDeps(t, checkDeps{
+	setCLIDeps(t, updateDeps{
 		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
 			return fakes
 		},
-	}, updateDeps{}, listDeps{}, selfUpdateDeps{})
+	}, listDeps{}, selfUpdateDeps{})
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
-		root.SetArgs([]string{"check"})
+		root.SetArgs([]string{"update", "--dry-run"})
 		if err := root.Execute(); err != nil {
-			t.Fatalf("check execution failed: %v", err)
+			t.Fatalf("update --dry-run execution failed: %v", err)
 		}
 	})
 
-	// Check summary counts
-	if !strings.Contains(output, "3 available") || !strings.Contains(output, "2 up to date") {
+	// Summary counts
+	if !strings.Contains(output, "3 would update") || !strings.Contains(output, "2 up to date") {
 		t.Errorf("summary counts mismatch, got:\n%s", output)
 	}
 
-	// Verify available detail order strictly preserves canonical discovery sequence: alpha, gamma, epsilon
-	summaryIdx := strings.Index(output, "3 available")
-	if summaryIdx == -1 {
-		t.Fatalf("expected summary header in output, got:\n%s", output)
-	}
-	summarySection := output[summaryIdx:]
-
-	idxAlpha := strings.Index(summarySection, "alpha")
-	idxGamma := strings.Index(summarySection, "gamma")
-	idxEpsilon := strings.Index(summarySection, "epsilon")
+	// Verify available-tool order strictly preserves canonical discovery
+	// sequence: alpha, gamma, epsilon (each pending tool appears exactly
+	// once, in its planned-action line).
+	idxAlpha := strings.Index(output, "alpha")
+	idxGamma := strings.Index(output, "gamma")
+	idxEpsilon := strings.Index(output, "epsilon")
 
 	if idxAlpha == -1 || idxGamma == -1 || idxEpsilon == -1 {
-		t.Fatalf("expected all available tools in summary section, got:\n%s", summarySection)
+		t.Fatalf("expected all available tools in dry-run output, got:\n%s", output)
 	}
 
 	if idxAlpha >= idxGamma || idxGamma >= idxEpsilon {
-		t.Errorf("tool order violation: expected alpha < gamma < epsilon, got alpha=%d, gamma=%d, epsilon=%d in summary:\n%s",
-			idxAlpha, idxGamma, idxEpsilon, summarySection)
+		t.Errorf("tool order violation: expected alpha < gamma < epsilon, got alpha=%d, gamma=%d, epsilon=%d in output:\n%s",
+			idxAlpha, idxGamma, idxEpsilon, output)
+	}
+}
+
+// TestUpdateDryRun_MixedStatusCounts ports the former runCheck command-level
+// mixed-status coverage onto the read-only query surface: one pending,
+// two current, two failing tools (one generic check error, one timeout)
+// produce exact dry-run summary counts with no update executed.
+func TestUpdateDryRun_MixedStatusCounts(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	a0 := &fakeUpdateAdapter{name: "tool-0", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
+	a1 := &fakeDelayedAdapter{name: "tool-1", checkErr: fmt.Errorf("lock frontend held by another process")}
+	a2 := &fakeUpdateAdapter{name: "tool-2", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "1.2.0"}}
+	a3 := &fakeDelayedAdapter{name: "tool-3", checkErr: context.DeadlineExceeded}
+	a4 := &fakeUpdateAdapter{name: "tool-4", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
+
+	setCLIDeps(t, updateDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+		return []adapters.Adapter{a0, a1, a2, a3, a4}
+	}}, listDeps{}, selfUpdateDeps{})
+
+	out := withCapturedStdout(func() {
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs([]string{"update", "--dry-run"})
+		if err := root.Execute(); err != nil {
+			t.Errorf("update --dry-run returned error: %v", err)
+		}
+	})
+
+	for _, a := range []*fakeUpdateAdapter{a0, a2, a4} {
+		if a.updated {
+			t.Errorf("dry run must not execute updates, but %s was updated", a.name)
+		}
+	}
+	if !strings.Contains(out, "1 would update") {
+		t.Errorf("expected '1 would update' in summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "2 up to date") {
+		t.Errorf("expected '2 up to date' in summary, got:\n%s", out)
+	}
+	if !strings.Contains(out, "2 failed") {
+		t.Errorf("expected '2 failed' in summary, got:\n%s", out)
 	}
 }

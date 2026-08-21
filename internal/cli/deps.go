@@ -11,7 +11,6 @@ package cli
 // requires a mutex or per-command dep construction.
 var cliDeps struct {
 	dashboard  dashboardDeps
-	check      checkDeps
 	update     updateDeps
 	list       listDeps
 	selfUpdate selfUpdateDeps

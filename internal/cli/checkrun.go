@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
 )
 
@@ -142,4 +144,46 @@ func runChecks(adapters []adapters.Adapter, onResult func(index int, oc checkOut
 
 	wg.Wait()
 	return outcomes
+}
+
+// buildAdapterList creates adapters for enabled tools from the config.
+func buildAdapterList(cfg *config.Config, osName string) []adapters.Adapter {
+	platformAdapters := official.AdaptersForPlatform(osName)
+	var result []adapters.Adapter
+
+	for _, a := range platformAdapters {
+		info := a.Info()
+		toolCfg, exists := cfg.Tools[info.ID]
+		if exists && !toolCfg.Enabled {
+			continue
+		}
+		result = append(result, a)
+	}
+
+	// Add custom adapters
+	for id, custom := range cfg.Custom {
+		a, err := adapters.NewCustomAdapter(id, custom.Command, custom.CheckCmd, custom.Trusted)
+		if err != nil {
+			continue
+		}
+		result = append(result, a)
+	}
+
+	return result
+}
+
+func adapterIDs(adapterList []adapters.Adapter) []string {
+	var ids []string
+	for _, a := range adapterList {
+		ids = append(ids, a.Name())
+	}
+	return ids
+}
+
+func adapterByID(adapterList []adapters.Adapter) map[string]adapters.Adapter {
+	m := make(map[string]adapters.Adapter, len(adapterList))
+	for _, a := range adapterList {
+		m[a.Name()] = a
+	}
+	return m
 }
