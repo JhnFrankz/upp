@@ -62,8 +62,11 @@ func TestRunDashboard_WithConfig(t *testing.T) {
 	if !strings.Contains(out, "Tools:") {
 		t.Errorf("expected tools count line, got:\n%s", out)
 	}
-	if !strings.Contains(out, "upp check") || !strings.Contains(out, "upp update") {
+	if !strings.Contains(out, "upp update -n") || !strings.Contains(out, "upp update") {
 		t.Errorf("expected command guidance, got:\n%s", out)
+	}
+	if strings.Contains(out, "upp check") {
+		t.Errorf("dashboard must not reference the removed 'upp check', got:\n%s", out)
 	}
 }
 

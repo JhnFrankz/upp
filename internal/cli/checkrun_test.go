@@ -3,13 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
 )
 
@@ -140,8 +140,77 @@ func TestSafeCheck_TimeoutIsolation(t *testing.T) {
 	}
 }
 
+// TestRunChecks_ReportsViaCallback proves the design D2 seam: runChecks
+// invokes onResult exactly once per adapter with its deterministic slot
+// index, and the reported outcome is identical to the one stored in the
+// returned slice — callers (the future CheckBoard) can render completions
+// live without re-deriving positions.
+func TestRunChecks_ReportsViaCallback(t *testing.T) {
+	tools := []*fakeDelayedAdapter{
+		{name: "tool-current", info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
+		{name: "tool-available", info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "2.0.0"}},
+		{name: "tool-failed", checkErr: context.DeadlineExceeded},
+	}
+	adaptersIn := []adapters.Adapter{tools[0], tools[1], tools[2]}
+
+	var mu sync.Mutex
+	reported := map[int]checkOutcome{}
+	outcomes := runChecks(adaptersIn, func(index int, oc checkOutcome) {
+		mu.Lock()
+		defer mu.Unlock()
+		if _, dup := reported[index]; dup {
+			t.Errorf("onResult called twice for index %d", index)
+		}
+		reported[index] = oc
+	})
+
+	if len(reported) != len(adaptersIn) {
+		t.Fatalf("onResult fired for %d indexes, want %d", len(reported), len(adaptersIn))
+	}
+
+	indexes := make([]int, 0, len(reported))
+	for idx := range reported {
+		indexes = append(indexes, idx)
+	}
+	sort.Ints(indexes)
+	for i, idx := range indexes {
+		if idx != i {
+			t.Fatalf("reported indexes = %v, want each index 0..%d exactly once", indexes, len(adaptersIn)-1)
+		}
+		if reported[idx] != outcomes[idx] {
+			t.Errorf("onResult index %d reported %+v, want the slot outcome %+v", idx, reported[idx], outcomes[idx])
+		}
+	}
+
+	if reported[0].result.Status != output.StatusCurrent {
+		t.Errorf("index 0 status = %v, want StatusCurrent", reported[0].result.Status)
+	}
+	if reported[1].result.Status != output.StatusAvailable || reported[1].result.Version != "1.0.0 → 2.0.0" {
+		t.Errorf("index 1 = %+v, want StatusAvailable with '1.0.0 → 2.0.0'", reported[1].result)
+	}
+	if reported[2].result.Status != output.StatusFailed {
+		t.Errorf("index 2 status = %v, want StatusFailed", reported[2].result.Status)
+	}
+}
+
+// TestRunChecks_NilCallbackSilent proves the nil-callback contract (design
+// D2): passing no onResult is silent — no panic — while the returned
+// outcomes stay complete and slot-aligned.
+func TestRunChecks_NilCallbackSilent(t *testing.T) {
+	solo := &fakeDelayedAdapter{name: "solo-tool", info: adapters.UpdateInfo{CurrentVersion: "9.9.9"}}
+
+	outcomes := runChecks([]adapters.Adapter{solo}, nil)
+
+	if len(outcomes) != 1 {
+		t.Fatalf("runChecks returned %d outcomes, want 1", len(outcomes))
+	}
+	if outcomes[0].result.Status != output.StatusCurrent || outcomes[0].result.Name != "solo-tool" {
+		t.Errorf("outcomes[0] = %+v, want current solo-tool result", outcomes[0].result)
+	}
+}
+
 // TestRunChecks_CarriesUpdateInfo proves the design D3 contract: runChecks
-// returns checkOutcome values that carry the raw adapters.UpdateInfo from
+// reports checkOutcome values that carry the raw adapters.UpdateInfo from
 // Check() alongside the rendered ToolResult — the interactive update loop
 // (Phase 3) needs the versions to render the selector without a second
 // Check() call. The info MUST be zero when Detect or Check failed, so callers
@@ -166,21 +235,20 @@ func TestRunChecks_CarriesUpdateInfo(t *testing.T) {
 		checkErr: context.DeadlineExceeded,
 	}
 
-	r := output.NewRenderer(io.Discard, false)
-	outcomes := runChecks([]adapters.Adapter{available, current, failed}, r, false, false)
+	captured := map[string]checkOutcome{}
+	var mu sync.Mutex
+	runChecks([]adapters.Adapter{available, current, failed}, func(_ int, oc checkOutcome) {
+		mu.Lock()
+		defer mu.Unlock()
+		captured[oc.result.Name] = oc
+	})
 
-	if len(outcomes) != 3 {
-		t.Fatalf("runChecks returned %d outcomes, want 3", len(outcomes))
-	}
-
-	// Outcome order must match adapter order (deterministic index slotting).
-	byName := map[string]checkOutcome{}
-	for _, oc := range outcomes {
-		byName[oc.result.Name] = oc
+	if len(captured) != 3 {
+		t.Fatalf("onResult captured %d outcomes, want 3", len(captured))
 	}
 
 	// Available: full UpdateInfo carried → "current → latest" inline string.
-	avail := byName["tool-available"]
+	avail := captured["tool-available"]
 	if avail.result.Status != output.StatusAvailable {
 		t.Errorf("tool-available status = %v, want StatusAvailable", avail.result.Status)
 	}
@@ -195,7 +263,7 @@ func TestRunChecks_CarriesUpdateInfo(t *testing.T) {
 	}
 
 	// Current: UpdateInfo carried with the current version.
-	cur := byName["tool-current"]
+	cur := captured["tool-current"]
 	if cur.result.Status != output.StatusCurrent {
 		t.Errorf("tool-current status = %v, want StatusCurrent", cur.result.Status)
 	}
@@ -204,95 +272,11 @@ func TestRunChecks_CarriesUpdateInfo(t *testing.T) {
 	}
 
 	// Failed: updateInfo MUST be zero — never act on stale version data.
-	fail := byName["tool-failed"]
+	fail := captured["tool-failed"]
 	if fail.result.Status != output.StatusFailed {
 		t.Errorf("tool-failed status = %v, want StatusFailed", fail.result.Status)
 	}
 	if fail.updateInfo != (adapters.UpdateInfo{}) {
 		t.Errorf("tool-failed updateInfo = %+v, want zero value", fail.updateInfo)
-	}
-}
-
-func TestRunCheck_Concurrent_OrderingAndIsolation(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	// Adapter 0: fast, up to date
-	// Adapter 1: panics in Check
-	// Adapter 2: slow with delay, available update
-	// Adapter 3: timeout error
-	// Adapter 4: up to date
-	a0 := &fakeUpdateAdapter{name: "tool-0", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
-	a1 := &fakePanickingAdapter{name: "tool-1", panicCheck: true}
-	a2 := &fakeDelayedAdapter{name: "tool-2", delay: 20 * time.Millisecond, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "1.2.0"}}
-	a3 := &fakeDelayedAdapter{name: "tool-3", checkErr: context.DeadlineExceeded}
-	a4 := &fakeUpdateAdapter{name: "tool-4", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
-
-	adapterListFunc := func(*config.Config, string) []adapters.Adapter {
-		return []adapters.Adapter{a0, a1, a2, a3, a4}
-	}
-
-	setCLIDeps(t, checkDeps{buildAdapterList: adapterListFunc}, updateDeps{}, listDeps{}, selfUpdateDeps{})
-
-	out := withCapturedStdout(func() {
-		gf := &GlobalFlags{}
-		err := runCheck(gf, "v0.1.0", cliDeps.check)
-		if err != nil {
-			t.Errorf("runCheck returned error: %v", err)
-		}
-	})
-
-	// Verify all tools are represented in the output summary / details
-	if !strings.Contains(out, "1 available") {
-		t.Errorf("expected '1 available' in summary, got:\n%s", out)
-	}
-	if !strings.Contains(out, "2 up to date") {
-		t.Errorf("expected '2 up to date' in summary, got:\n%s", out)
-	}
-	if !strings.Contains(out, "2 failed") {
-		t.Errorf("expected '2 failed' in summary, got:\n%s", out)
-	}
-}
-
-func TestRunCheck_VerboseFailureDiagnostics(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	failingAdapter := &fakeDelayedAdapter{
-		name:     "fail-tool",
-		checkErr: fmt.Errorf("lock frontend held by another process"),
-	}
-
-	deps := checkDeps{
-		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
-			return []adapters.Adapter{failingAdapter}
-		},
-	}
-
-	// With -v, diagnostics should be emitted
-	outVerbose := withCapturedStdout(func() {
-		gf := &GlobalFlags{Verbose: true}
-		_ = runCheck(gf, "v0.1.0", deps)
-	})
-	if !strings.Contains(outVerbose, "lock frontend held by another process") {
-		t.Errorf("expected verbose output to contain stderr diagnostic, got:\n%s", outVerbose)
-	}
-
-	// Without -v, stderr is suppressed
-	outDefault := withCapturedStdout(func() {
-		gf := &GlobalFlags{Verbose: false}
-		_ = runCheck(gf, "v0.1.0", deps)
-	})
-	if strings.Contains(outDefault, "lock frontend held by another process") {
-		t.Errorf("expected default output to suppress stderr diagnostic, got:\n%s", outDefault)
-	}
-
-	// With -q and -v, quiet takes precedence and suppresses
-	outQuiet := withCapturedStdout(func() {
-		gf := &GlobalFlags{Verbose: true, Quiet: true}
-		_ = runCheck(gf, "v0.1.0", deps)
-	})
-	if strings.Contains(outQuiet, "lock frontend held by another process") {
-		t.Errorf("expected quiet mode to suppress stderr diagnostic, got:\n%s", outQuiet)
 	}
 }

@@ -47,7 +47,7 @@ func TestHelp_ShowsGroups(t *testing.T) {
 func TestHelp_CommandsListed(t *testing.T) {
 	output := rootHelpOutput(t, "--help")
 
-	for _, want := range []string{"check", "list", "update", "init", "self-update"} {
+	for _, want := range []string{"list", "update", "init", "self-update"} {
 		if !strings.Contains(output, want) {
 			t.Errorf("--help must list command %q, got:\n%s", want, output)
 		}

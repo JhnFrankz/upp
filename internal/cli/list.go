@@ -25,7 +25,7 @@ func NewListCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 // listDeps carries the injectable seam for runList, mirroring
-// updateDeps/checkDeps. The zero value uses the production adapter list
+// updateDeps. The zero value uses the production adapter list
 // builder.
 type listDeps struct {
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
@@ -45,6 +45,15 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 		deps.buildAdapterList = buildAdapterList
 	}
 	adapterList := deps.buildAdapterList(cfg, p.OS)
+
+	// Apply --only/--skip so table rows round-trip with the filter names.
+	only, skip := ParseFilter(gf.Only, gf.Skip)
+	adapterMap := adapterByID(adapterList)
+	filtered := make([]adapters.Adapter, 0, len(adapterList))
+	for _, id := range FilterTools(adapterIDs(adapterList), only, skip, os.Stderr) {
+		filtered = append(filtered, adapterMap[id])
+	}
+	adapterList = filtered
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 

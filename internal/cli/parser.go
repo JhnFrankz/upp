@@ -26,7 +26,7 @@ type UpdateFlags struct {
 }
 
 // BuildRoot creates the root cobra.Command with global flags.
-// Running `upp` with no args shows status (like check), read-only.
+// Running `upp` with no args shows the dashboard welcome screen, read-only.
 func BuildRoot() (*cobra.Command, *GlobalFlags) {
 	gf := &GlobalFlags{}
 
@@ -58,15 +58,13 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 
 // AddCommands registers all subcommands on the root command.
 // Commands are grouped for help output (spec command-interface):
-// Commands (check/list/update), Maintenance (init/self-update).
+// Commands (list/update), Maintenance (init/self-update).
 func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 	root.AddGroup(
 		&cobra.Group{ID: "commands", Title: "Commands"},
 		&cobra.Group{ID: "maintenance", Title: "Maintenance"},
 	)
 
-	check := NewCheckCommand(gf)
-	check.GroupID = "commands"
 	update := NewUpdateCommand(gf)
 	update.GroupID = "commands"
 	list := NewListCommand(gf)
@@ -80,7 +78,6 @@ func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 		init,
 		update,
 		selfUpdate,
-		check,
 		list,
 	)
 }

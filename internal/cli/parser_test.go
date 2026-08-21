@@ -3,9 +3,41 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/platform"
 )
+
+// writeCheckConfig writes a config.toml with the given [settings] body
+// into a fresh HOME, so config.Load() inside a command run sees it. Every
+// official catalog tool is written as disabled so any tool loop over the
+// config stays hermetic and fast.
+func writeCheckConfig(t *testing.T, settingsBody string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var tools strings.Builder
+	if p, err := platform.Detect(); err == nil {
+		for _, tool := range platform.CatalogFor(p.OS) {
+			fmt.Fprintf(&tools, "\n[tools.%s]\nenabled = false\n", tool.ID)
+		}
+	}
+
+	tomlContent := "version = 1\n\n[settings]\n" + settingsBody + "\n" + tools.String()
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return tmpDir
+}
 
 func TestParseFilter_Only(t *testing.T) {
 	onlyList, skipList := ParseFilter("brew,npm", "")
@@ -262,7 +294,7 @@ func TestAddCommands(t *testing.T) {
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
 
-	expectedCommands := []string{"init", "update", "self-update", "check", "list"}
+	expectedCommands := []string{"init", "update", "self-update", "list"}
 	commands := root.Commands()
 
 	if len(commands) != len(expectedCommands) {
@@ -305,6 +337,24 @@ func TestUnknownCommand_Import(t *testing.T) {
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("upp import must be rejected as unknown command")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("expected 'unknown command' error, got: %v", err)
+	}
+}
+
+// TestUnknownCommand_Check locks the spec command-interface "Pruned check
+// command" scenario: after the unified-update-flow removals, `upp check`
+// MUST be rejected as an unknown command (the read-only query surface is
+// `upp update --dry-run`).
+func TestUnknownCommand_Check(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+	root.SetArgs([]string{"check"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("upp check must be rejected as unknown command")
 	}
 	if !strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("expected 'unknown command' error, got: %v", err)

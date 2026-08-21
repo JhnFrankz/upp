@@ -499,8 +499,13 @@ func TestRunUpdate_NoPendingSkipsSelector(t *testing.T) {
 	if called {
 		t.Error("selector must be skipped when no pending updates exist")
 	}
-	if !strings.Contains(out, "All tools not installed. Nothing to do.") {
-		t.Errorf("expected the all-skipped summary; got: %q", out)
+	// D6: the current tool is counted explicitly — "1 up to date, 1 skipped"
+	// replaces the old (wrong) all-skipped summary that ignored StatusCurrent.
+	if !strings.Contains(out, "1 up to date, 1 skipped") {
+		t.Errorf("expected explicit up-to-date and skipped counts; got: %q", out)
+	}
+	if strings.Contains(out, "All tools not installed") {
+		t.Errorf("current tool is installed — all-skipped claim is wrong (D6); got: %q", out)
 	}
 }
 
@@ -572,10 +577,25 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 		})
 	})
 
-	// The pre-check ran over ALL four filtered tools (progress lines included
-	// per design D5).
-	if !strings.Contains(out, "Checking 1/4:") {
-		t.Errorf("expected pre-check progress lines; got: %q", out)
+	// The pre-check ran over ALL four filtered tools before selection, and
+	// the live CheckBoard reported every outcome through the onResult seam
+	// (design D4). Captured stdout is a pipe → non-color fallback (D5): one
+	// plain line per completion, exactly once per tool.
+	wantBoardLines := []string{
+		"  ✓ selected-tool 1.0.0 → 2.0.0",
+		"  ✓ deselected-tool 1.0.0 → 2.0.0",
+		"  ✓ custom-tool 1.0.0 → 2.0.0",
+		"  ✓ current-tool up-to-date",
+	}
+	for _, line := range wantBoardLines {
+		if n := strings.Count(out, line); n != 1 {
+			t.Errorf("board line %q count = %d, want 1; got:\n%s", line, n, out)
+		}
+	}
+	// Spec ux-patterns Progress Indication: the board replaces the old
+	// "Checking X/Y" counter in the TTY pre-check — it must never return.
+	if strings.Contains(out, "Checking") {
+		t.Errorf("board must replace the old Checking X/Y counter; got: %q", out)
 	}
 
 	// Deselected tool: Update never called.
@@ -675,10 +695,18 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 		}
 	})
 
-	// Pre-check progress lines appear before the cancel (design D5: include
-	// them deliberately, do not strip them).
-	if !strings.Contains(out, "Checking 1/2:") {
-		t.Errorf("expected pre-check progress lines; got: %q", out)
+	// Pre-check completed before the cancel, reported through the live board
+	// (design D4; non-color fallback in captured stdout, D5).
+	for _, line := range []string{
+		"  ✓ npm 1.0.0 → 2.0.0",
+		"  ✓ brew up-to-date",
+	} {
+		if n := strings.Count(out, line); n != 1 {
+			t.Errorf("board line %q count = %d, want 1; got:\n%s", line, n, out)
+		}
+	}
+	if strings.Contains(out, "Checking") {
+		t.Errorf("board must replace the old Checking X/Y counter; got: %q", out)
 	}
 	if !strings.Contains(out, "Update canceled — no changes made.") {
 		t.Errorf("expected the fixed cancel message; got: %q", out)
@@ -690,6 +718,127 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 	}
 	if always.updated {
 		t.Error("cancel must not update always-update tools (D7: no force-update in TTY)")
+	}
+}
+
+// dryRunFakes builds n current tools plus named not-installed (skipped) tools
+// for the dry-run summary scenarios.
+func dryRunFakes(currentCount int, skippedNames ...string) []*fakeUpdateAdapter {
+	mk := func(name string, installed bool) *fakeUpdateAdapter {
+		f := &fakeUpdateAdapter{
+			name:   name,
+			policy: adapters.PolicyGated,
+			trust:  adapters.TrustOfficial,
+			info: adapters.UpdateInfo{
+				CurrentVersion:  "1.0.0",
+				LatestVersion:   "1.0.0",
+				UpdateAvailable: false,
+			},
+			result: adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
+		}
+		f.noDetect = !installed
+		return f
+	}
+	fakes := make([]*fakeUpdateAdapter, 0, currentCount+len(skippedNames))
+	for i := 1; i <= currentCount; i++ {
+		fakes = append(fakes, mk(fmt.Sprintf("tool-%d", i), true))
+	}
+	for _, name := range skippedNames {
+		fakes = append(fakes, mk(name, false))
+	}
+	return fakes
+}
+
+// TestRunUpdate_DryRunCurrentWithSkips pins the spec ux-patterns Summary
+// Report scenario "Up-to-date with skips": upp update --dry-run over 8
+// current and 2 not-installed tools reports "8 up to date, 2 skipped" and
+// never claims "All tools up to date." or "All clean!".
+func TestRunUpdate_DryRunCurrentWithSkips(t *testing.T) {
+	probeHome(t)
+	deps := interactiveUpdateDeps(dryRunFakes(8, "missing-a", "missing-b"), nil)
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{DryRun: true}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "8 up to date, 2 skipped") {
+		t.Errorf("expected explicit '8 up to date, 2 skipped' summary; got:\n%s", out)
+	}
+	if strings.Contains(out, "All tools up to date.") {
+		t.Errorf("summary must never claim 'All tools up to date.' when a tool was skipped; got:\n%s", out)
+	}
+	if strings.Contains(out, "All clean!") {
+		t.Errorf("dry-run summary must never claim 'All clean!'; got:\n%s", out)
+	}
+	if strings.Contains(out, "not installed. Nothing to do") {
+		t.Errorf("current tools are installed — 'not installed' claim is wrong (D6); got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_DryRunPendingNeverClean proves the pending-only dry-run path
+// reports "N would update" explicitly and never prints "All clean!" while
+// updates are pending (spec ux-patterns Summary Report, D3).
+func TestRunUpdate_DryRunPendingNeverClean(t *testing.T) {
+	probeHome(t)
+	pending := &fakeUpdateAdapter{
+		name:   "npm",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{pending}, nil)
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{DryRun: true}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "would update") {
+		t.Errorf("pending-only dry-run must report pending updates explicitly; got:\n%s", out)
+	}
+	if strings.Contains(out, "All clean!") {
+		t.Errorf("pending-only path must never print 'All clean!'; got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_AllSucceedSummary pins the ux-patterns Summary Report
+// "All succeed" scenario end to end: a sequential (non-TTY) update run that
+// updates every tool ends with the explicit-counts clean line
+// ("N updated, 0 failed. All clean!").
+func TestRunUpdate_AllSucceedSummary(t *testing.T) {
+	probeHome(t)
+	updated := &fakeUpdateAdapter{
+		name:   "brew",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(updated),
+		stdinIsTTY:       func() bool { return false },
+	}
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "1 updated, 0 failed. All clean!") {
+		t.Errorf("all-succeed run must report '1 updated, 0 failed. All clean!', got:\n%s", out)
 	}
 }
 
@@ -812,6 +961,44 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 			}
 			if tt.fake.updated != tt.wantUpdated {
 				t.Errorf("adapter.updated = %v, want %v", tt.fake.updated, tt.wantUpdated)
+			}
+		})
+	}
+}
+
+// TestVerifyPins_StrictTTDScenarios pins the five CRITICAL scenarios from the
+// verify report: bare --ci dashboard, update --ci failure exit, list --only
+// round-trip, -v shorthand diagnostics, and clean all-success verbose output.
+func TestVerifyPins_StrictTTDScenarios(t *testing.T) {
+	writeCheckConfig(t, "")
+	fail := &fakeUpdateAdapter{name: "broken", policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, updateErr: fmt.Errorf("lock held")}
+	okAd := &fakeUpdateAdapter{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"}}
+	run := func(args ...string) (string, error) {
+		setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fail, okAd), stdinIsTTY: func() bool { return false }}, listDeps{buildAdapterList: fakeAdapterList(fail, okAd)}, selfUpdateDeps{})
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs(args)
+		var err error
+		out := withCapturedStdout(func() { err = root.Execute() })
+		return out, err
+	}
+	for _, tt := range []struct {
+		name, args, want, not string
+		wantErr               bool
+	}{
+		{"bare --ci dashboard", "--ci", "upp update -n", "", false},
+		{"update --ci non-zero on failure", "update --ci --only broken", "Failed: broken", "", true},
+		{"list --only round-trip", "list --only apt", "apt", "brew", false},
+		{"-v shorthand diagnostics", "update -v --only broken", "lock held", "", false},
+		{"all-success verbose clean", "update -v --only apt", "1 updated", "│", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := run(strings.Fields(tt.args)...)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("pin %q: err=%v, wantErr=%v, output:\n%s", tt.name, err, tt.wantErr, out)
+			}
+			if !strings.Contains(out, tt.want) || (tt.not != "" && strings.Contains(out, tt.not)) {
+				t.Errorf("pin %q assertions failed, output:\n%s", tt.name, out)
 			}
 		})
 	}

@@ -34,7 +34,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 // updateDeps carries the injectable seams for runUpdate (design D5),
-// mirroring checkDeps/selfUpdateDeps. The zero value uses production
+// mirroring selfUpdateDeps. The zero value uses production
 // behavior: the production adapter list builder, real TTY detection, and
 // the real CheckboxSelector.
 type updateDeps struct {
@@ -266,17 +266,31 @@ func timeoutErr(name, op string, err error) error {
 }
 
 // runUpdateInteractive implements the TTY update flow (design D2/D4/D5/D7):
-// a concurrent pre-check via runChecks (which renders "Checking X/Y"
-// progress), a checkbox selector over the pending (StatusAvailable) tools,
+// a concurrent pre-check via runChecks (completion callback seam; the live
+// CheckBoard lands in Unit 3), a checkbox selector over the pending
+// (StatusAvailable) tools,
 // and the carried-outcome loop that updates only the user's selection. A
 // cancel shows the fixed message and exits 0; the selector is skipped
 // entirely when nothing is pending (spec ux-patterns "No pending updates").
 func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer) error {
 	// Pre-check: concurrent Detect + Check over the filtered set. The
 	// outcomes carry updateInfo so the loop below never re-calls Check()
-	// (design D4). "Checking X/Y" progress lines render here, before the
-	// selector — interactive-path tests include them deliberately (D5).
-	outcomes := runChecks(filteredAdapters, r, gf.Quiet, true)
+	// (design D4). The live CheckBoard renders the pre-check (spec
+	// ux-patterns Live Check Board): rows are built in canonical filtered
+	// order, painted before the pool starts, flipped once per completion
+	// through the onResult seam, and settled before the selector renders.
+	// Color follows the renderer's single TTY detection (D5); without color
+	// the board falls back to one plain line per completion.
+	names := make([]string, len(filteredAdapters))
+	for i, a := range filteredAdapters {
+		names[i] = a.Info().Name
+	}
+	board := output.NewCheckBoard(os.Stdout, r.Color(), names)
+	board.Start()
+	outcomes := runChecks(filteredAdapters, func(index int, oc checkOutcome) {
+		board.Complete(index, oc.result)
+	})
+	board.Finish()
 
 	// Pending = tools with an update available, in input order (D9).
 	var pending []output.SelectOption
