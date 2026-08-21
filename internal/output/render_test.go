@@ -759,6 +759,13 @@ func TestToolLine_VerboseFailureDiagnostics(t *testing.T) {
 	if !strings.Contains(out, "npm ERR! retry limit reached") {
 		t.Errorf("expected verbose tool line to contain stderr line 2, got:\n%s", out)
 	}
+	// Spec ux-patterns Verbose Error Diagnostics: each stderr line renders
+	// INDENTED beneath the failed tool entry ("    │ <line>").
+	for _, line := range []string{"npm ERR! network connection refused", "npm ERR! retry limit reached"} {
+		if !strings.Contains(out, "    │ "+line) {
+			t.Errorf("stderr line must render indented beneath the failed tool, got:\n%s", out)
+		}
+	}
 }
 
 func TestToolLine_NonVerboseFailureSuppressed(t *testing.T) {
