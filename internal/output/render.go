@@ -77,6 +77,13 @@ func NewRendererForced(w io.Writer, color, emoji, quiet, verbose bool) *Renderer
 	}
 }
 
+// Color reports whether this renderer emits ANSI color sequences. Callers
+// building auxiliary writers (e.g. CheckBoard) reuse the renderer's single
+// TTY-detection source instead of re-detecting (design D5).
+func (r *Renderer) Color() bool {
+	return r.color
+}
+
 // isTerminal checks if the writer is a terminal that supports ANSI codes.
 func isTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
