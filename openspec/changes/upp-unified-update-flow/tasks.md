@@ -30,8 +30,8 @@ Chain strategy: feature-branch-chain
 
 - [x] 1.1 Create `internal/cli/checkrun.go`: move check engine (`runChecks`, `safeCheck`, `checkOutcome`, `checkJob`, worker/concurrency consts) verbatim from `check.go`; add `onResult(index, checkOutcome)` callback (nil = silent); strip originals + `ProgressInPlace`; `update.go` passes nil interim.
 - [x] 1.2 Move mechanism tests (worker clamp, `safeCheck` panic isolation) to `internal/cli/checkrun_test.go`, asserting via callback capture.
-- [ ] 1.3 RED `internal/output/checkboard_test.go`: canonical-order pending lines (`Start`), per-status flips Available/Current/Skipped/Failed (`Complete`), idempotent `Finish`, non-color fallback, concurrent `Complete` under `-race`.
-- [ ] 1.4 Implement `internal/output/checkboard.go`: `NewCheckBoard(w, color, tools)` + `Start/Complete/Finish`, per-line state machine, private mutex, cursor-up+clear redraw; add exported `Renderer.Color()` getter in `render.go`.
+- [x] 1.3 RED `internal/output/checkboard_test.go`: canonical-order pending lines (`Start`), per-status flips Available/Current/Skipped/Failed (`Complete`), idempotent `Finish`, non-color fallback, concurrent `Complete` under `-race`.
+- [x] 1.4 Implement `internal/output/checkboard.go`: `NewCheckBoard(w, color, tools)` + `Start/Complete/Finish`, per-line state machine, private mutex, cursor-up+clear redraw; add exported `Renderer.Color()` getter in `render.go`.
 
 ## Phase 2: Update-flow wiring
 
