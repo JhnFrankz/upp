@@ -61,13 +61,10 @@ Running bare `upp` displays a welcome dashboard and quick reference:
 # Welcome dashboard & command reference
 upp
 
-# Check for available updates (read-only)
-upp check
-
 # Apply updates to all enabled tools
 upp update
 
-# Preview updates without applying
+# Preview pending updates without applying (read-only)
 upp update -n
 
 # List detected tools and their status
@@ -88,9 +85,8 @@ upp init
 
 | Command | Description | Interactive | Modifies system |
 |---------|-------------|-------------|-----------------|
-| `upp check` | Check for available updates (read-only) | No | No |
 | `upp update` | Apply updates for all enabled tools | Yes | Yes |
-| `upp update -n` | Preview updates without executing | No | No |
+| `upp update -n` | Preview pending updates without executing (read-only query surface) | No | No |
 | `upp list` | List detected tools and their status | No | No |
 
 In a terminal, `upp update` shows an interactive selection of pending updates before executing: ↑/↓ to move, Space to toggle a tool, `a`/`n` to select all/none, Enter to update the selected set, Esc or `q` to cancel (nothing updated, exit 0). The selector is skipped in `--ci`, `--quiet`, `--dry-run`, and non-TTY runs — those behave exactly as before.
@@ -106,7 +102,6 @@ In a terminal, `upp update` shows an interactive selection of pending updates be
 
 `upp self-update` replaces the upp binary itself with the latest release: it checks the newest release over HTTPS, verifies the downloaded archive's SHA-256 against `checksums.txt`, and asks for confirmation before an atomic replace (with a timestamped `.backup.<ts>` of the previous binary). It never uses `sudo`; if the install directory is not writable, it tells you to make it writable or install under your home directory.
 
-- **Opt-in hint**: with `settings.check_self_update = true` (default **false** — zero network calls by default), `upp check` and bare `upp` append one hint line when a newer release is known: `⬆️ upp v0.1.1 available (current v0.1.0) — run "upp self-update"`. The hint never changes the exit code, is omitted with `--quiet`, stays silent offline, and is cached for 24h in `{config-dir}/self-update-cache.json`.
 - **Deny paths**: non-TTY stdin or `--ci` deny the update with a clear message and exit non-zero — never hang, auto-proceed, or silently skip. Decline at the prompt = no changes, exit 0.
 - **Flags**: `self-update` accepts no flags in v1; `--only`/`--skip` are ignored. `--quiet` does not suppress the confirmation prompt.
 - **Limits**: development/dirty builds never claim updates (release builds only), Windows is not supported yet, and releases must ship `checksums.txt` or the update fails closed.
@@ -141,7 +136,6 @@ version = 1
 
 [settings]
 interactive = true       # prompt before each update
-check_self_update = false  # opt-in update hint after check/bare upp (default: off, zero network)
 
 [tools.apt]
 enabled = true
