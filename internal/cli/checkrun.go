@@ -104,7 +104,7 @@ func safeCheck(a adapters.Adapter) (oc checkOutcome) {
 // runChecks runs Detect + Check concurrently over the given adapters with a
 // worker pool clamped to [4, 8] workers and deterministic index slotting, so
 // the returned []checkOutcome is always in input order (design D3). It is
-// shared by `upp check` and the interactive update pre-check (Phase 3).
+// shared by the interactive update pre-check and its tests.
 //
 // onResult is the completion seam (design D2): it fires once per adapter
 // with that adapter's slot index and outcome, from the worker goroutine

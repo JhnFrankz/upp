@@ -666,7 +666,7 @@ func TestDashboard_Formatting(t *testing.T) {
 		"upp v0.2.0 (linux/amd64)",
 		"Tools: 5 enabled (10 configured for platform)",
 		"Commands:",
-		"upp check",
+		"upp update -n",
 		"upp update",
 		"upp list",
 		"upp --help",
@@ -674,6 +674,10 @@ func TestDashboard_Formatting(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Dashboard output missing %q, got:\n%s", want, out)
 		}
+	}
+	// The check command is removed; the query surface is `upp update -n`.
+	if strings.Contains(out, "upp check") {
+		t.Errorf("Dashboard must not reference the removed 'upp check', got:\n%s", out)
 	}
 }
 

@@ -417,8 +417,8 @@ func (r *Renderer) Dashboard(data DashboardData) {
 	_, _ = fmt.Fprintf(r.w, "%s upp %s (%s)\n\n", r.cyan("●"), data.Version, data.Platform)
 	_, _ = fmt.Fprintf(r.w, "  Tools: %d enabled (%d configured for platform)\n\n", data.EnabledTools, data.AvailableTools)
 	_, _ = fmt.Fprintln(r.w, "  Commands:")
-	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp check", "Check for tool updates (read-only)")
-	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update", "Update all enabled tools (-n for dry-run)")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update -n", "Preview pending updates (--dry-run)")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update", "Apply updates to all enabled tools")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp list", "List configured tools and versions")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp --help", "Show help and options")
 }
