@@ -236,6 +236,92 @@ func TestUpdateSummary_NotCleanWithSkips(t *testing.T) {
 	}
 }
 
+// TestUpdateSummary_AllCurrentDryRun proves current tools are counted on the
+// update path (design D6). StatusCurrent used to be counted nowhere, so an
+// all-current dry-run fell into the "All tools not installed" branch.
+func TestUpdateSummary_AllCurrentDryRun(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	summary := Summary{
+		Results: []ToolResult{
+			{Name: "brew", Status: StatusCurrent, Version: "4.1.0"},
+			{Name: "npm", Status: StatusCurrent, Version: "10.0.0"},
+		},
+		DryRun: true,
+	}
+
+	r.UpdateSummary(summary)
+
+	output := buf.String()
+	if !strings.Contains(output, "2 up to date") {
+		t.Errorf("summary must count up-to-date tools (D6), got:\n%s", output)
+	}
+	if strings.Contains(output, "not installed") {
+		t.Errorf("all-current run must not claim tools are 'not installed', got:\n%s", output)
+	}
+	if strings.Contains(output, "All clean!") {
+		t.Errorf("dry-run summary must never claim 'All clean!', got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_CurrentWithSkipsDryRun pins the spec ux-patterns Summary
+// Report scenario "Up-to-date with skips": 8 current + 2 skipped tools on a
+// dry-run count both explicitly ("8 up to date, 2 skipped"), the detail list
+// names the current tools, and no "All tools up to date." tagline appears.
+func TestUpdateSummary_CurrentWithSkipsDryRun(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	results := make([]ToolResult, 0, 10)
+	for i := 1; i <= 8; i++ {
+		results = append(results, ToolResult{Name: fmt.Sprintf("tool-%d", i), Status: StatusCurrent})
+	}
+	results = append(results,
+		ToolResult{Name: "missing-a", Status: StatusSkipped},
+		ToolResult{Name: "missing-b", Status: StatusSkipped},
+	)
+
+	r.UpdateSummary(Summary{Results: results, DryRun: true})
+
+	output := buf.String()
+	if !strings.Contains(output, "8 up to date, 2 skipped") {
+		t.Errorf("summary must count up-to-date and skipped explicitly, got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools up to date.") {
+		t.Errorf("summary must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Up to date: tool-1, tool-2, tool-3, tool-4, tool-5, tool-6, tool-7, tool-8") {
+		t.Errorf("detail summary must list current tools (D6), got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_UpdatedAndCurrent proves the up-to-date part composes
+// with real updates in non-dry-run mode, in canonical part order.
+func TestUpdateSummary_UpdatedAndCurrent(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	summary := Summary{
+		Results: []ToolResult{
+			{Name: "brew", Status: StatusUpdated, Version: "4.2.0"},
+			{Name: "npm", Status: StatusUpdated, Version: "10.1.0"},
+			{Name: "go", Status: StatusCurrent, Version: "1.22"},
+		},
+		DryRun: false,
+	}
+
+	r.UpdateSummary(summary)
+
+	output := buf.String()
+	if !strings.Contains(output, "2 updated, 1 up to date") {
+		t.Errorf("summary must compose updated and up-to-date parts in order, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Up to date: go") {
+		t.Errorf("detail summary must list current tools (D6), got:\n%s", output)
+	}
+}
+
 func TestCheckSummary_UpdatesAvailable(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, true, false, false)
