@@ -572,11 +572,25 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 		})
 	})
 
-	// The pre-check ran over ALL four filtered tools before selection (WU1
-	// interim: the engine is silent — nil onResult seam; Unit 3 adds the
-	// live board assertions).
+	// The pre-check ran over ALL four filtered tools before selection, and
+	// the live CheckBoard reported every outcome through the onResult seam
+	// (design D4). Captured stdout is a pipe → non-color fallback (D5): one
+	// plain line per completion, exactly once per tool.
+	wantBoardLines := []string{
+		"  ✓ selected-tool 1.0.0 → 2.0.0",
+		"  ✓ deselected-tool 1.0.0 → 2.0.0",
+		"  ✓ custom-tool 1.0.0 → 2.0.0",
+		"  ✓ current-tool up-to-date",
+	}
+	for _, line := range wantBoardLines {
+		if n := strings.Count(out, line); n != 1 {
+			t.Errorf("board line %q count = %d, want 1; got:\n%s", line, n, out)
+		}
+	}
+	// Spec ux-patterns Progress Indication: the board replaces the old
+	// "Checking X/Y" counter in the TTY pre-check — it must never return.
 	if strings.Contains(out, "Checking") {
-		t.Errorf("pre-check engine must be silent after the D2 seam; got: %q", out)
+		t.Errorf("board must replace the old Checking X/Y counter; got: %q", out)
 	}
 
 	// Deselected tool: Update never called.
@@ -676,10 +690,18 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 		}
 	})
 
-	// Pre-check ran silently before the cancel (WU1 interim: nil onResult
-	// seam; the live board lands in Unit 3).
+	// Pre-check completed before the cancel, reported through the live board
+	// (design D4; non-color fallback in captured stdout, D5).
+	for _, line := range []string{
+		"  ✓ npm 1.0.0 → 2.0.0",
+		"  ✓ brew up-to-date",
+	} {
+		if n := strings.Count(out, line); n != 1 {
+			t.Errorf("board line %q count = %d, want 1; got:\n%s", line, n, out)
+		}
+	}
 	if strings.Contains(out, "Checking") {
-		t.Errorf("pre-check engine must be silent after the D2 seam; got: %q", out)
+		t.Errorf("board must replace the old Checking X/Y counter; got: %q", out)
 	}
 	if !strings.Contains(out, "Update canceled — no changes made.") {
 		t.Errorf("expected the fixed cancel message; got: %q", out)
