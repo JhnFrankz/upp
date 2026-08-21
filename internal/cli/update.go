@@ -34,7 +34,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 // updateDeps carries the injectable seams for runUpdate (design D5),
-// mirroring checkDeps/selfUpdateDeps. The zero value uses production
+// mirroring selfUpdateDeps. The zero value uses production
 // behavior: the production adapter list builder, real TTY detection, and
 // the real CheckboxSelector.
 type updateDeps struct {

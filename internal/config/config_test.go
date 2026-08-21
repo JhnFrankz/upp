@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,9 +12,6 @@ func TestDefaultConfig(t *testing.T) {
 
 	if cfg.Version != 1 {
 		t.Errorf("expected version 1, got %d", cfg.Version)
-	}
-	if cfg.Settings.CheckSelfUpdate {
-		t.Error("expected check_self_update to default to false")
 	}
 	if cfg.Tools == nil {
 		t.Error("tools map should not be nil")
@@ -90,14 +88,13 @@ enabled = true
 		t.Fatal(err)
 	}
 
+	// The removed check_self_update key must be tolerated as an unknown
+	// settings key (spec config-system forward compatibility).
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Settings.CheckSelfUpdate {
-		t.Error("expected check_self_update to be false")
-	}
 	if !cfg.Tools["apt"].Enabled {
 		t.Error("expected apt to be enabled")
 	}
@@ -120,49 +117,6 @@ func TestLoadInvalidTOML(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Error("Load() should error on invalid TOML")
-	}
-}
-
-// TestLoadCheckSelfUpdate covers the opt-in hint setting (spec
-// config-system): absent → false (TOML zero value), explicit false →
-// false, explicit true → enabled.
-func TestLoadCheckSelfUpdate(t *testing.T) {
-	tests := []struct {
-		name     string
-		settings string // [settings] table body, "" for absent
-		want     bool
-	}{
-		{name: "absent defaults to false", settings: "", want: false},
-		{name: "explicit false", settings: "check_self_update = false", want: false},
-		{name: "explicit true enables", settings: "check_self_update = true", want: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			t.Setenv("HOME", tmpDir)
-
-			cfgDir := filepath.Join(tmpDir, ".config", "upp")
-			if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-
-			tomlContent := "version = 1\n\n[settings]\n"
-			if tt.settings != "" {
-				tomlContent += tt.settings + "\n"
-			}
-			if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			cfg, err := Load()
-			if err != nil {
-				t.Fatalf("Load() error: %v", err)
-			}
-			if cfg.Settings.CheckSelfUpdate != tt.want {
-				t.Errorf("CheckSelfUpdate = %v, want %v", cfg.Settings.CheckSelfUpdate, tt.want)
-			}
-		})
 	}
 }
 
@@ -285,8 +239,45 @@ func TestLoadStrayInteractiveKey(t *testing.T) {
 	if cfg.Version != 1 {
 		t.Errorf("version = %d, want 1", cfg.Version)
 	}
-	if cfg.Settings.CheckSelfUpdate {
-		t.Error("stray interactive key must not affect check_self_update")
+}
+
+// TestLoadStrayCheckSelfUpdateKey_NeverRewritten locks the config-system
+// forward-compatibility contract for the removed hint setting (spec
+// config-system migration): an existing config containing
+// `check_self_update = true` loads silently as an unknown settings key,
+// and Save NEVER rewrites the key back into the file.
+func TestLoadStrayCheckSelfUpdateKey_NeverRewritten(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tomlContent := "version = 1\n\n[settings]\ncheck_self_update = true\n"
+	path := filepath.Join(cfgDir, "config.toml")
+	if err := os.WriteFile(path, []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with stray check_self_update key should not error: %v", err)
+	}
+	if cfg.Version != 1 {
+		t.Errorf("version = %d, want 1", cfg.Version)
+	}
+
+	// Save must never re-emit the removed key: struct-only encoding drops it.
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "check_self_update") {
+		t.Errorf("Save must not rewrite the removed check_self_update key, got:\n%s", data)
 	}
 }
 

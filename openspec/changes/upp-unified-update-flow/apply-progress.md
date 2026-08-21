@@ -2,7 +2,7 @@
 
 **Delivery**: Feature Branch Chain — child PRs target the immediate previous PR branch; only tracker `feature/unified-update-flow` merges to main.
 **Mode**: Strict TDD (test runner: `go test ./... -count=1`)
-**Attempt authority**: WU1 acq-wu1-20260821-000711 (proceed); WU2 acq-wu2-20260821-003247 (proceed, token sha256:f80520cf…8751), max 3 attempts / 550 raw-line budget.
+**Attempt authority**: WU1 acq-wu1-20260821-000711 (proceed); WU2 acq-wu2-20260821-003247 (proceed, token sha256:f80520cf…8751); WU3 acq-wu3-20260821-004728 (proceed, token sha256:e35af1f…c12), max 3 attempts / 550 raw-line budget each.
 
 ---
 
@@ -82,13 +82,111 @@ Raw git churn: **519 insertions, 0 deletions** (commit 13560a7) — within the 5
 
 ---
 
+## Work Unit 3 — Board wiring + up-to-date summary (COMPLETE)
+
+**Branch**: `wu3/wire-board` (based off `wu2/checkboard` @ 1195e06; PR #99 → base `wu2/checkboard`, NOT tracker/main)
+**Attempt**: acq-wu3-20260821-004728 (token sha256:e35af1f…c12), 550 raw-line budget — used 252. Attempt resumed after an interrupted mid-TDD-cycle return; commit 6877372 was already on disk and was re-verified, not redone.
+
+### Completed Tasks
+
+- [x] **2.1** Commit 6877372: `runUpdateInteractive` builds `output.NewCheckBoard(os.Stdout, r.Color(), names)` in canonical filtered order; `Start()` before the `runChecks` pool; `board.Complete` as `onResult`; `Finish()` before the pending-only (`StatusAvailable`) CheckboxSelector. The interim "engine must be silent" locks became positive board assertions (exactly one plain fallback line per filtered tool) plus never-return "Checking X/Y" guards in `TestRunUpdate_InteractiveSelection` and `TestRunUpdate_SelectorCancel`. Wiring intent re-verified against design D4/D5/D9 at resume before continuing.
+- [x] **2.2** RED→GREEN: `UpdateSummary` now counts `StatusCurrent` (previously counted nowhere — all-current and current+skipped runs wrongly hit "All tools not installed. Nothing to do."); new "N up to date" part inserted between updated/would-update and skipped (mirrors `CheckSummary` part order); all-skipped special branch requires `current == 0`; `detailSummary` lists current tools under "Up to date:". Tests: `TestUpdateSummary_AllCurrentDryRun`, `TestUpdateSummary_CurrentWithSkipsDryRun` ("8 up to date, 2 skipped", never "All tools up to date."), `TestUpdateSummary_UpdatedAndCurrent`.
+- [x] **2.3** RED→GREEN: CLI-level pins `TestRunUpdate_DryRunCurrentWithSkips` (8 current + 2 not-installed via dry-run → "8 up to date, 2 skipped"; never "All tools up to date." / "All clean!" / "not installed") and `TestRunUpdate_DryRunPendingNeverClean` ("would update", never "All clean!"); `TestRunUpdate_NoPendingSkipsSelector` re-pinned from the old wrong all-skipped summary to "1 up to date, 1 skipped" (D6 correction, documented in PR body).
+
+### TDD Cycle Evidence (WU3)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 2.1 | `internal/cli/update_test.go` | Unit | ✅ cli pkg ok pre-change (baseline re-verified at resume) | ✅ committed in 6877372 (interim locks fail against wiring absence) | ✅ `-run Update -count=1` ok | board line count==1 per tool + never-"Checking" guards | ➖ none needed |
+| 2.2 | `internal/output/render_test.go` | Unit | ✅ output+cli pkgs ok pre-change | ✅ 3 new tests fail: "All tools not installed. Nothing to do." on an 8-current run; no up-to-date part/listing | ✅ `-run TestUpdateSummary` ok | all-current / 8+2 skips / mixed updated+current | ➖ mirrors CheckSummary conventions |
+| 2.3 | `internal/cli/update_test.go` | Unit | ✅ same baseline | ✅ both dry-run tests fail on the "not installed" claim | ✅ `-run TestRunUpdate` ok after render fix + NoPendingSkipsSelector re-pin | pending-only never-clean guard added | ➖ `dryRunFakes` helper extracted |
+
+### Work Unit Evidence (WU3)
+
+| Evidence | Value |
+|---|---|
+| Focused command + result | `go test ./internal/cli/ -run Update -count=1` → ok; `go test ./internal/output/ -run TestUpdateSummary -count=1` → ok |
+| Runtime harness + result | `go test ./internal/output/ ./internal/cli/ -race -count=1` → both ok (board mutex serialization under the concurrent pool is the runtime boundary; TTY visual path stays covered by WU2 simulator tests) |
+| Rollback boundary | Revert 6877372 + 5fe1eff + a6d8ac2: unwinds wiring, summary counting, and their tests atomically; nothing downstream depends on them yet |
+
+### Full Gate Results (WU3)
+
+- `go build ./...` → clean · `go vet ./...` → clean · `gofmt -s -l .` → clean
+- `go test ./... -count=1` → all 9 packages ok
+- PR #99 opened → base `wu2/checkboard`
+
+### Files Changed (WU3)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `internal/cli/update.go` | Modified | Board wiring in `runUpdateInteractive` (6877372) |
+| `internal/output/render.go` | Modified | Up-to-date count part + Current listing + all-skipped branch guard (5fe1eff) |
+| `internal/output/render_test.go` | Modified | 3 D6 summary tests (+86) |
+| `internal/cli/update_test.go` | Modified | Board assertions (6877372), dry-run pins + NoPendingSkipsSelector re-pin, `dryRunFakes` helper (+95/−2 net across commits) |
+
+### Changed Lines (WU3)
+
+Raw git churn: 6877372 (+45/−10) + 5fe1eff (+98/−2) + a6d8ac2 (+95/−2) = **+238/−14 = 252 raw lines** — within the 550 attempt budget.
+
+---
+
+## Work Unit 4 — Removals: `upp check`, hint, `check_self_update` (COMPLETE)
+
+**Branch**: `wu4/removals` (based off `wu3/wire-board` @ a6d8ac2; PR → base `wu3/wire-board`, NOT tracker/main)
+**Attempt**: acq-wu4-20260821-084011 (token sha256:d8a69a0c…81ce), stated budget 650 raw lines — actual raw churn exceeded it (see Changed Lines); all changes map 1:1 to tasks 3.1–3.4, no scope creep.
+
+### Completed Tasks
+
+- [x] **3.1** Commit 9aa957a: deleted `internal/cli/check.go` (`NewCheckCommand`, `runCheck`, `checkDeps`, `maybeShowSelfUpdateHint`, `selfUpdateCacheFile`); relocated `buildAdapterList`/`adapterIDs`/`adapterByID` verbatim into `checkrun.go` (still shared by update.go/list.go — design D3 lists only command/runCheck/checkDeps/hint for deletion); dropped `check` registration in `parser.go` (grouping comment now Commands=list/update) and the `cliDeps.check` slot in `deps.go`; `setCLIDeps` lost its checkDeps parameter. `checkrun.go` untouched except imports + the relocated helpers.
+- [x] **3.2** Deleted `Renderer.SelfUpdateHint` (render.go) and its two render tests; deleted `Settings.CheckSelfUpdate` + its default — `Settings` is now an intentionally empty struct documented as forward-compatible (unknown keys ignored on load, never rewritten by Save).
+- [x] **3.3** Deleted `check_hint_test.go` (8 hint tests; `writeCheckConfig` helper moved into parser_test.go — still used there), `TestCheckProgress_LabelsChecking`, and the runCheck-level `check_test.go`. Fixed expectations: help_test.go wanted-list, parser_test.go `expectedCommands`, integration_test.go subcommand count 5→4 / help list / registration map. Ported onto `upp update --dry-run`: NoConfig, QuietMode_SuppressesProgress, EmptyConfig_AllToolsSkips ("All tools not installed. Nothing to do."), Init→DryRun lifecycle, WithSkips ("1 up to date, 1 skipped"), SummaryOutput, DeterministicOrderUnderConcurrency ("3 would update"/"2 up to date", alpha<gamma<epsilon). New `TestUpdateDryRun_MixedStatusCounts` ports the mixed-status counts coverage (1 would update / 2 up to date / 2 failed, zero Update calls) — the panicking adapter from the old test is replaced by a second check-error adapter because the sequential dry-run path has no safeCheck containment (pre-existing behavior, unchanged).
+- [x] **3.4** RED-first `TestLoadStrayCheckSelfUpdateKey_NeverRewritten`: config with `check_self_update = true` loads without error and `Save` never re-emits the key (failed pre-change because Save re-encoded the struct field). TestLoadValidTOML keeps the key in its TOML as a live tolerance case; TestLoadCheckSelfUpdate and all field references deleted.
+
+### TDD Cycle Evidence (WU4)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 | `internal/cli/parser_test.go` | Integration | ✅ cli/config/output ok @ a6d8ac2 | ✅ `TestUnknownCommand_Check` fails: check still executes | ✅ unknown-command error, exit 1 | ➖ mirrors Export/Import pins (single possible outcome) | ➖ none needed |
+| 3.2 | `internal/output/render_test.go` | Unit | ✅ same baseline | ✅ N/A — pure deletion; compile failure of hint callers is the forcing function | ✅ output pkg ok after method+tests removed | ➖ deletion, no new behavior | ➖ none needed |
+| 3.3 | `internal/cli/integration_test.go` | Integration | ✅ same baseline | ✅ ports fail against old surface (wrong command/summary text) until removal lands | ✅ `-run 'TestUpdateDryRun|TestQuietMode|TestInitUpdate' -count=1` ok | ✅ counts/order/skips/quiet/mixed-status variants | ✅ stale checkDeps comments cleaned, suite green |
+| 3.4 | `internal/config/config_test.go` | Unit | ✅ same baseline | ✅ `TestLoadStrayCheckSelfUpdateKey_NeverRewritten` fails: Save rewrote the key | ✅ config pkg ok after field removal | ✅ stray-key load + never-rewritten round-trip | ➖ none needed |
+
+### Work Unit Evidence (WU4)
+
+| Evidence | Value |
+|---|---|
+| Focused command + result | `go test ./internal/cli/ ./internal/config/ ./internal/output/ -count=1` → all 3 ok |
+| Runtime harness + result | Built `/tmp/opencode/upp-wu4`: `upp check` → `unknown command "check"`, exit 1; `upp update --dry-run` → exit 0. Plus `go test ./internal/{cli,config,output} -race -count=1` → ok |
+| Rollback boundary | Revert 9aa957a: restores check.go, both deleted test files, SelfUpdateHint, CheckSelfUpdate, and the pre-port test expectations atomically; nothing outside internal/ touched |
+
+### Full Gate Results (WU4)
+
+- `go build ./...` clean · `go vet ./...` clean · `gofmt -s -l .` clean
+- `go test ./... -count=1` → all 9 packages ok
+
+### Files Changed (WU4)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `internal/cli/check.go` | Deleted | Command, runCheck, checkDeps, hint logic (shared helpers relocated first) |
+| `internal/cli/check_hint_test.go` | Deleted | 8 hint tests; writeCheckConfig helper preserved in parser_test.go |
+| `internal/cli/check_test.go` | Deleted | runCheck-level tests; coverage ported to dry-run |
+| `internal/cli/checkrun.go` | Modified | +buildAdapterList/adapterIDs/adapterByID (verbatim) + official/config imports |
+| `internal/cli/parser.go` / `deps.go` | Modified | Dropped check registration + cliDeps.check slot |
+| `internal/output/render.go` / `render_test.go` | Modified | Deleted SelfUpdateHint + its 2 tests |
+| `internal/config/config.go` / `config_test.go` | Modified | Settings emptied; compat table test added; dead setting tests removed |
+| `internal/cli/{help,integration,parser}_test.go`, `update.go`, `list.go` | Modified | Expectations fixed, dry-run ports, stale comment refs |
+
+### Changed Lines (WU4)
+
+Raw git churn: commit 9aa957a **+271/−847 = 1118 raw lines** — exceeds the 650-line attempt budget. Cause: mandated deletions alone (check.go 187 + check_hint_test.go 345 + check_test.go 96 = 628) plus required edits/ports leave no smaller atomic slice; deleting runCheck breaks three test files at once, so the unit cannot be split without a red intermediate state. Every line maps to tasks 3.1–3.4.
+
+---
+
 ## Remaining Tasks
 
-- [ ] 2.1 Wire board into `update.go` `runUpdateInteractive` (WU3)
-- [ ] 2.2 `render.go` up-to-date summary count/listing (D6)
-- [ ] 2.3 `update_test.go` board assertions replace "Checking X/Y" interim locks
-- [ ] Phase 3 removals, Phase 4 spec verification, Phase 5 docs/E2E
+- [ ] Phase 4 spec verification, Phase 5 docs/E2E
 
 ## Status
 
-4/17 tasks complete. Ready for WU3 (`sdd-apply` on tasks 2.1–2.3), then verify at chain end.
+11/17 tasks complete. WU4 done (PR → `wu3/wire-board`). Ready for WU5 (`sdd-apply`) or verify at chain end.

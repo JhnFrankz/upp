@@ -21,13 +21,13 @@ type Config struct {
 	Custom   map[string]CustomTool `toml:"custom"`
 }
 
-// Settings holds global preferences.
-type Settings struct {
-	// CheckSelfUpdate opts into the update-detection hint at the end of
-	// check/bare upp output (spec config-system). Default false: with
-	// default config, check performs ZERO self-update network calls.
-	CheckSelfUpdate bool `toml:"check_self_update"`
-}
+// Settings holds global preferences. Intentionally empty since the
+// unified-update-flow removals: `check_self_update` (the opt-in hint
+// toggle) was deleted with the hint feature. Existing configs carrying
+// the key are tolerated as an unknown settings key by BurntSushi's
+// non-strict decode and are never written back by Save (spec
+// config-system forward compatibility).
+type Settings struct{}
 
 // ToolConfig holds per-tool configuration.
 type ToolConfig struct {
@@ -45,12 +45,10 @@ type CustomTool struct {
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
-		Version: ConfigVersion,
-		Settings: Settings{
-			CheckSelfUpdate: false, // opt-in hint: default OFF (spec config-system)
-		},
-		Tools:  make(map[string]ToolConfig),
-		Custom: make(map[string]CustomTool),
+		Version:  ConfigVersion,
+		Settings: Settings{},
+		Tools:    make(map[string]ToolConfig),
+		Custom:   make(map[string]CustomTool),
 	}
 }
 
