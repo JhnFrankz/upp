@@ -572,10 +572,11 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 		})
 	})
 
-	// The pre-check ran over ALL four filtered tools (progress lines included
-	// per design D5).
-	if !strings.Contains(out, "Checking 1/4:") {
-		t.Errorf("expected pre-check progress lines; got: %q", out)
+	// The pre-check ran over ALL four filtered tools before selection (WU1
+	// interim: the engine is silent — nil onResult seam; Unit 3 adds the
+	// live board assertions).
+	if strings.Contains(out, "Checking") {
+		t.Errorf("pre-check engine must be silent after the D2 seam; got: %q", out)
 	}
 
 	// Deselected tool: Update never called.
@@ -675,10 +676,10 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 		}
 	})
 
-	// Pre-check progress lines appear before the cancel (design D5: include
-	// them deliberately, do not strip them).
-	if !strings.Contains(out, "Checking 1/2:") {
-		t.Errorf("expected pre-check progress lines; got: %q", out)
+	// Pre-check ran silently before the cancel (WU1 interim: nil onResult
+	// seam; the live board lands in Unit 3).
+	if strings.Contains(out, "Checking") {
+		t.Errorf("pre-check engine must be silent after the D2 seam; got: %q", out)
 	}
 	if !strings.Contains(out, "Update canceled — no changes made.") {
 		t.Errorf("expected the fixed cancel message; got: %q", out)

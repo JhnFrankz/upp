@@ -485,9 +485,10 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 	}
 }
 
-// TestCheckProgress_LabelsChecking locks the D2 wiring: the read-only check
-// command must pass the "Checking" verb to the renderer, so a multi-tool
-// `upp check` shows "Checking X/Y" progress and never "Updating X/Y".
+// TestCheckProgress_LabelsChecking locks the WU1 interim contract: with the
+// D2 onResult seam in place and no board wired yet, the check engine is
+// silent — `upp check` renders no "Checking X/Y" progress and never claims
+// "Updating". (This test is deleted along with the command in Phase 3.)
 func TestCheckProgress_LabelsChecking(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -505,8 +506,8 @@ func TestCheckProgress_LabelsChecking(t *testing.T) {
 		_ = root.Execute()
 	})
 
-	if !strings.Contains(output, "Checking 1/2") || !strings.Contains(output, "Checking 2/2") {
-		t.Errorf("check progress must read 'Checking X/Y', got:\n%s", output)
+	if strings.Contains(output, "Checking") {
+		t.Errorf("check engine must be silent after the D2 seam (WU1 interim), got:\n%s", output)
 	}
 	if strings.Contains(output, "Updating") {
 		t.Errorf("read-only check must never print 'Updating', got:\n%s", output)
