@@ -21,13 +21,25 @@ func (a *ScoopAdapter) Check() (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("scoop is not installed")
 	}
 
-	// scoop status outputs installed vs latest versions.
-	// For MVP, we report "unknown" and rely on the update command.
-	_ = commandOutput("scoop", "status")
+	// Self-only: scan `scoop status` output for scoop's own row to report a
+	// real self-update availability. `scoop --version` is intentionally NOT
+	// used — it reports a script commit hash rather than a usable version.
+	// The parse is fail-closed: an absent or unparseable scoop row (found =
+	// false, e.g. an old scoop or an unstable output shape) falls back to
+	// current-only and reports no availability, no error.
+	current := "unknown"
+	latest := "unknown"
+	if out := commandOutput("scoop", "status"); out != "" {
+		if cur, lat, ok := parseScoopStatusOutput(out); ok {
+			current = cur
+			latest = lat
+		}
+	}
+
 	return adapters.UpdateInfo{
-		CurrentVersion:  "unknown",
-		LatestVersion:   "unknown",
-		UpdateAvailable: true, // Assume updates may be available
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: current != "unknown" && latest != "unknown" && current != latest,
 	}, nil
 }
 
@@ -36,20 +48,30 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 		return adapters.Result{Success: false}, fmt.Errorf("scoop is not installed")
 	}
 
+	before := "unknown"
+	if out := commandOutput("scoop", "status"); out != "" {
+		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
+			before = cur
+		}
+	}
+
 	if dryRun {
 		return adapters.Result{
 			Success: true,
-			Before:  "unknown",
-			After:   "unknown",
+			Before:  before,
+			After:   before,
 		}, nil
 	}
 
-	_, stderr, err := runCmd("scoop update *")
+	// Self-only: `scoop update scoop` upgrades Scoop itself, never the
+	// packages it manages. A bulk `scoop update *` (which updates every
+	// app) is intentionally avoided — self-only semantics per point 4.
+	_, stderr, err := runCmd("scoop update scoop")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
-			Before:  "unknown",
-			After:   "unknown",
+			Before:  before,
+			After:   before,
 			Error:   fmt.Errorf("scoop update failed: %w", err),
 		}, nil
 	}
@@ -57,16 +79,23 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if stderr != "" && strings.Contains(stderr, "ERROR") {
 		return adapters.Result{
 			Success: false,
-			Before:  "unknown",
-			After:   "unknown",
+			Before:  before,
+			After:   before,
 			Error:   fmt.Errorf("scoop update error: %s", truncate(stderr, 200)),
 		}, nil
 	}
 
+	after := before
+	if out := commandOutput("scoop", "status"); out != "" {
+		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
+			after = cur
+		}
+	}
+
 	return adapters.Result{
 		Success: true,
-		Before:  "unknown",
-		After:   "unknown",
+		Before:  before,
+		After:   after,
 	}, nil
 }
 

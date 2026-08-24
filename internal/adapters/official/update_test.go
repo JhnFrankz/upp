@@ -31,7 +31,7 @@ const (
 	goWindowsUpdateCmd     = "winget upgrade GoLang.Go --accept-source-agreements --accept-package-agreements"
 	opencodeUpdateCmd      = "curl -fsSL https://opencode.ai/install | bash"
 	wingetUpdateCmd        = "winget upgrade winget"
-	scoopUpdateCmd         = "scoop update *"
+	scoopUpdateCmd         = "scoop update scoop"
 	nvmInstallStableCmd    = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
 )
 

@@ -544,9 +544,34 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"scoop": true},
-				cmdArgs:  map[string]fakeResult{"scoop": {stdout: "Name  Installed  Latest"}},
+				cmdArgs: map[string]fakeResult{
+					"scoop status": {stdout: "Name       Installed  Latest\n----       ---------  ------\nscoop      1.0.0      1.2.0\n"},
+				},
+				shell: map[string]fakeResult{scoopUpdateCmd: failIfRun},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: true},
+			want: adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "1.2.0", UpdateAvailable: true},
+		},
+		{
+			name:    "scoop/no-own-row-current-only",
+			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"scoop": true},
+				cmdArgs: map[string]fakeResult{
+					"scoop status": {stdout: "Name       Installed  Latest\n----       ---------  ------\nfoo        1.0.0      1.2.0\n"},
+				},
+				shell: map[string]fakeResult{scoopUpdateCmd: failIfRun},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
+		},
+		{
+			name:    "scoop/empty-status-output-current-only",
+			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"scoop": true},
+				cmdArgs:  map[string]fakeResult{"scoop status": {}},
+				shell:    map[string]fakeResult{scoopUpdateCmd: failIfRun},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
 		},
 		{
 			name:    "scoop/not-installed-error",
