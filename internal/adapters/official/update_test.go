@@ -30,7 +30,7 @@ const (
 	goDarwinUpdateCmd      = "brew upgrade go"
 	goWindowsUpdateCmd     = "winget upgrade GoLang.Go --accept-source-agreements --accept-package-agreements"
 	opencodeUpdateCmd      = "curl -fsSL https://opencode.ai/install | bash"
-	wingetUpdateCmd        = "winget upgrade --all --accept-source-agreements --accept-package-agreements"
+	wingetUpdateCmd        = "winget upgrade winget"
 	scoopUpdateCmd         = "scoop update *"
 	nvmInstallStableCmd    = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
 )
@@ -619,7 +619,9 @@ func TestUpdate(t *testing.T) {
 			want: adapters.Result{Success: true, Before: "v0.3.6", After: "v0.3.6"},
 		},
 
-		// --- winget (unknown versions + upgrade) ---
+		// --- winget (self-only: real versions + `winget upgrade winget`) ---
+		// versions come from `winget --version` (faked per row); the update
+		// command is keyed `winget upgrade winget` (WU2 re-key).
 		{
 			name:    "winget/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
@@ -629,18 +631,23 @@ func TestUpdate(t *testing.T) {
 		{
 			name:    "winget/dry-run-shortcut",
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
-			fakes:   execFakes{lookPath: map[string]bool{"winget": true}},
-			dryRun:  true,
-			want:    adapters.Result{Success: true, Before: "unknown", After: "unknown"},
+			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
+				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
+				shell:    map[string]fakeResult{wingetUpdateCmd: failIfRun},
+			},
+			dryRun: true,
+			want:   adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
 		},
 		{
 			name:    "winget/update-command-error",
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"winget": true},
+				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
 				shell:    map[string]fakeResult{wingetUpdateCmd: {err: errors.New("winget: no installed package found")}},
 			},
-			want:      adapters.Result{Success: false, Before: "unknown", After: "unknown"},
+			want:      adapters.Result{Success: false, Before: "v1.8.2301", After: "v1.8.2301"},
 			resultErr: true,
 		},
 		{
@@ -648,9 +655,10 @@ func TestUpdate(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"winget": true},
+				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
 				shell:    map[string]fakeResult{wingetUpdateCmd: {stderr: "Error: source is not valid"}},
 			},
-			want:      adapters.Result{Success: false, Before: "unknown", After: "unknown"},
+			want:      adapters.Result{Success: false, Before: "v1.8.2301", After: "v1.8.2301"},
 			resultErr: true,
 		},
 		{
@@ -658,9 +666,10 @@ func TestUpdate(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"winget": true},
+				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
 				shell:    map[string]fakeResult{wingetUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "unknown", After: "unknown"},
+			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
 		},
 
 		// --- scoop (unknown versions + update) ---
