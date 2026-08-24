@@ -123,3 +123,61 @@ func sorted(items []string) []string {
 	}
 	return out
 }
+
+// TestParseWingetUpgradeOutput drives the pure, fail-closed helper that scans
+// `winget upgrade` (no args) output for the winget self row. It records the
+// self row Id as Microsoft.AppInstaller and returns (current, latest, found);
+// unparseable or absent rows yield found=false (task 2.1).
+func TestParseWingetUpgradeOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		out       string
+		wantCur   string
+		wantLat   string
+		wantFound bool
+	}{
+		{
+			name:      "own-row-lead-v-4-part",
+			out:       "Name  Id  Version  Available  Source\n------\nwinget  Microsoft.AppInstaller  v1.8.2301  v1.8.2311  winget\n",
+			wantCur:   "v1.8.2301",
+			wantLat:   "v1.8.2311",
+			wantFound: true,
+		},
+		{
+			name:      "own-row-plain-versions",
+			out:       "winget  Microsoft.AppInstaller  1.8.2301  1.8.2311  winget\n",
+			wantCur:   "1.8.2301",
+			wantLat:   "1.8.2311",
+			wantFound: true,
+		},
+		{
+			name:      "no-own-row",
+			out:       "Name  Id  Version  Available  Source\n------\nfoo  Baz.Corp.App  1.0.0  2.0.0  winget\n",
+			wantCur:   "",
+			wantLat:   "",
+			wantFound: false,
+		},
+		{
+			name:      "empty-output",
+			out:       "",
+			wantCur:   "",
+			wantLat:   "",
+			wantFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCur, gotLat, gotFound := parseWingetUpgradeOutput(tt.out)
+			if gotCur != tt.wantCur {
+				t.Errorf("current = %q, want %q", gotCur, tt.wantCur)
+			}
+			if gotLat != tt.wantLat {
+				t.Errorf("latest = %q, want %q", gotLat, tt.wantLat)
+			}
+			if gotFound != tt.wantFound {
+				t.Errorf("found = %v, want %v", gotFound, tt.wantFound)
+			}
+		})
+	}
+}
