@@ -14,8 +14,8 @@ import (
 // runCmd/runCmdArgs. A mismatch between key and production command is a test
 // failure, never a silent fake miss.
 const (
-	aptUpdateCmd           = "sudo apt update -qq && sudo apt upgrade -y -qq"
-	brewUpdateCmd          = "brew update && brew upgrade"
+	aptUpdateCmd           = "sudo apt install --only-upgrade apt"
+	brewUpdateCmd          = "brew update"
 	npmUpdateCmd           = "npm update -g"
 	pnpmUpdateCmd          = "pnpm update -g"
 	pnpmPruneCmd           = "pnpm store prune 2>/dev/null"
