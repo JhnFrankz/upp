@@ -133,12 +133,16 @@ func TestCheck(t *testing.T) {
 		},
 
 		// --- brew (version extraction) ---
+		// Every check row keys the update command with failIfRun so that if
+		// Check() is ever (incorrectly) changed to invoke `brew update`, the
+		// mutating command runs inside check and the row fails loudly.
 		{
 			name:    "brew/normal",
 			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "4.1.0", LatestVersion: "4.1.0", UpdateAvailable: false},
 		},
@@ -148,6 +152,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0\nUpdating Homebrew...\n==> Auto-updated!"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "4.1.0", LatestVersion: "4.1.0", UpdateAvailable: false},
 		},
@@ -157,6 +162,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
 		},
@@ -166,6 +172,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {err: errors.New("brew: command not found")}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
 		},
