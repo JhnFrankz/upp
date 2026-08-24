@@ -133,12 +133,16 @@ func TestCheck(t *testing.T) {
 		},
 
 		// --- brew (version extraction) ---
+		// Every check row keys the update command with failIfRun so that if
+		// Check() is ever (incorrectly) changed to invoke `brew update`, the
+		// mutating command runs inside check and the row fails loudly.
 		{
 			name:    "brew/normal",
 			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "4.1.0", LatestVersion: "4.1.0", UpdateAvailable: false},
 		},
@@ -148,6 +152,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0\nUpdating Homebrew...\n==> Auto-updated!"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "4.1.0", LatestVersion: "4.1.0", UpdateAvailable: false},
 		},
@@ -157,6 +162,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
 		},
@@ -166,6 +172,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
 				cmdArgs:  map[string]fakeResult{"brew": {err: errors.New("brew: command not found")}},
+				shell:    map[string]fakeResult{brewUpdateCmd: failIfRun},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
 		},
@@ -489,15 +496,36 @@ func TestCheck(t *testing.T) {
 			wantErr: true,
 		},
 
-		// --- winget (unknown/unknown/available) ---
+		// --- winget (self-only: version + own-row parse from `winget upgrade`) ---
+		// The self row identifies Windows Package Manager by its manifest Id
+		// (Microsoft.AppInstaller). The winget update key is guarded with
+		// failIfRun so a Check() that (incorrectly) runs the mutating
+		// self-update command fails loudly (mirrors the brew Check guard).
 		{
-			name:    "winget/always-unknown",
+			name:    "winget/update-available",
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"winget": true},
-				cmdArgs:  map[string]fakeResult{"winget": {stdout: "Name  Version  Available"}},
+				cmdArgs: map[string]fakeResult{
+					"winget --version": {stdout: "v1.8.2301"},
+					"winget upgrade":   {stdout: "winget  Microsoft.AppInstaller  v1.8.2301  v1.8.2311  winget\n"},
+				},
+				shell: map[string]fakeResult{wingetUpdateCmd: failIfRun},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: true},
+			want: adapters.UpdateInfo{CurrentVersion: "v1.8.2301", LatestVersion: "v1.8.2311", UpdateAvailable: true},
+		},
+		{
+			name:    "winget/old-version-no-row",
+			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
+				cmdArgs: map[string]fakeResult{
+					"winget --version": {stdout: "v1.4.0"},
+					"winget upgrade":   {stdout: ""},
+				},
+				shell: map[string]fakeResult{wingetUpdateCmd: failIfRun},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v1.4.0", LatestVersion: "v1.4.0", UpdateAvailable: false},
 		},
 		{
 			name:    "winget/not-installed-error",
@@ -506,15 +534,44 @@ func TestCheck(t *testing.T) {
 			wantErr: true,
 		},
 
-		// --- scoop (unknown/unknown/available) ---
+		// --- scoop (self-only: parse `scoop status` own row) ---
+		// The self row anchors on the scoop tool-name field (Installed /
+		// Latest after it). The scoop update key is guarded with failIfRun
+		// so a Check() that (incorrectly) runs the mutating self-update
+		// command fails loudly (mirrors the brew/winget Check guards).
 		{
-			name:    "scoop/always-unknown",
+			name:    "scoop/update-available",
 			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"scoop": true},
-				cmdArgs:  map[string]fakeResult{"scoop": {stdout: "Name  Installed  Latest"}},
+				cmdArgs: map[string]fakeResult{
+					"scoop status": {stdout: "Name       Installed  Latest\n----       ---------  ------\nscoop      1.0.0      1.2.0\n"},
+				},
+				shell: map[string]fakeResult{scoopUpdateCmd: failIfRun},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: true},
+			want: adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "1.2.0", UpdateAvailable: true},
+		},
+		{
+			name:    "scoop/no-own-row-current-only",
+			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"scoop": true},
+				cmdArgs: map[string]fakeResult{
+					"scoop status": {stdout: "Name       Installed  Latest\n----       ---------  ------\nfoo        1.0.0      1.2.0\n"},
+				},
+				shell: map[string]fakeResult{scoopUpdateCmd: failIfRun},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
+		},
+		{
+			name:    "scoop/empty-status-output-current-only",
+			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"scoop": true},
+				cmdArgs:  map[string]fakeResult{"scoop status": {}},
+				shell:    map[string]fakeResult{scoopUpdateCmd: failIfRun},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
 		},
 		{
 			name:    "scoop/not-installed-error",

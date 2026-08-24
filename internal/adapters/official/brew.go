@@ -51,8 +51,12 @@ func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	// First update brew itself, then upgrade all packages.
-	_, stderr, err := runCmd("brew update && brew upgrade")
+	// Self-only: `brew update` refreshes Homebrew's git metadata (a mutating
+	// operation, so it must never run inside Check) but does NOT bump the
+	// versions of the packages brew manages. `brew upgrade brew` is
+	// intentionally avoided — it is non-canonical and is a known portable-ruby
+	// footgun (Homebrew's ruby shims make it error-prone).
+	_, stderr, err := runCmd("brew update")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

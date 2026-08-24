@@ -212,3 +212,78 @@ func isExitCode(err error, code int) bool {
 func formatUpdateCmd(cmd string) string {
 	return fmt.Sprintf("exec: %s", cmd)
 }
+
+// wingetSelfID is the manifest Id that identifies Windows Package Manager
+// itself in `winget upgrade` (no args) output. winget's self-update package
+// is the App Installer, whose Id is "Microsoft.AppInstaller"; the "winget"
+// display label and the "winget" Source column are not unique enough to anchor
+// on (the display label is field 0 and the Source column shares the same
+// string), so the manifest Id is the unambiguous key.
+const wingetSelfID = "Microsoft.AppInstaller"
+
+// parseWingetUpgradeOutput scans `winget upgrade` (no args) output for the
+// winget self row and returns (current, latest, found). It is a PURE,
+// fail-closed function: unparseable output or a missing self row yields
+// found=false and no error, so an old winget (< 1.6, which lists no self row)
+// reports "availability unavailable gracefully". The leading-v on a version
+// (e.g. "v1.8.2311") is tolerated — the string is returned unchanged, since
+// the winget versions genuinely carry the leading v.
+func parseWingetUpgradeOutput(out string) (current, latest string, found bool) {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		// Locate the Id field; the two fields after it are Current and
+		// Latest. Anchor on the manifest Id so a wrong key at the display
+		// Name or Source column cannot mis-align the version positions.
+		for i := 0; i < len(fields); i++ {
+			if !strings.EqualFold(fields[i], wingetSelfID) {
+				continue
+			}
+			// Id, Current, Latest must all be present in the row.
+			if i+2 < len(fields) {
+				return fields[i+1], fields[i+2], true
+			}
+			return "", "", false
+		}
+	}
+	return "", "", false
+}
+
+// parseScoopStatusOutput scans `scoop status` output for the scoop self row
+// and returns (current, latest, found). It is a PURE, fail-closed function:
+// an absent or unparseable scoop row yields found=false and no error, so when
+// the `scoop status` output shape is unstable the caller falls back to
+// current-only. The leading-v on a version (e.g. "v0.22.0") is tolerated —
+// the string is returned unchanged, since scoop versions genuinely carry the
+// leading v (winget parity). A leading WARN banner line (scoop prints
+// "Scoop is out of date" to stderr, but a hermetic capture may concatenate it
+// into stdout) is tolerated: the row is recognized ONLY when the "scoop"
+// token is followed by two version-like fields, so a banner like
+// "WARN Scoop is out of date." is skipped and the real table row is found.
+func parseScoopStatusOutput(out string) (current, latest string, found bool) {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		// Locate the tool-name field; the two fields after it are Installed
+		// and Latest. Both MUST be version-like — a WARN banner ("WARN Scoop
+		// is out of date.") contains "Scoop" but its trailing fields are
+		// words, not versions, so it cannot masquerade as a data row.
+		for i := 0; i < len(fields); i++ {
+			if !strings.EqualFold(fields[i], "scoop") {
+				continue
+			}
+			if i+2 >= len(fields) {
+				continue
+			}
+			if !isVersionLike(fields[i+1]) || !isVersionLike(fields[i+2]) {
+				continue
+			}
+			return fields[i+1], fields[i+2], true
+		}
+	}
+	return "", "", false
+}

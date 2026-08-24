@@ -809,6 +809,151 @@ func TestRunUpdate_DryRunPendingNeverClean(t *testing.T) {
 	}
 }
 
+// TestRunUpdate_ManagerSelfUpdateDryRun pins the manager self-update row
+// rendering contract (spec ux-patterns "Manager Self-Update Row Rendering"):
+// brew — which reports no self-update availability signal by design
+// (UpdateAvailable=false) — renders as CURRENT in `upp update -n` (there is
+// no `-n` signal to plan); apt and winget — which report real availability —
+// render as PLANNED ("would update") in `-n`. The dry-run summary must never
+// pair "All clean!" with a pending manager update.
+func TestRunUpdate_ManagerSelfUpdateDryRun(t *testing.T) {
+	probeHome(t)
+	brewCurrent := &fakeUpdateAdapter{
+		name:   "brew",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "4.1.0",
+			LatestVersion:   "4.1.0",
+			UpdateAvailable: false, // brew current-only by design
+		},
+		result: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+	}
+	aptPending := &fakeUpdateAdapter{
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "2.4.0",
+			LatestVersion:   "2.4.5",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.5"},
+	}
+	wingetPending := &fakeUpdateAdapter{
+		name:   "winget",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "v1.8.2301",
+			LatestVersion:   "v1.8.2311",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2311"},
+	}
+
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{brewCurrent, aptPending, wingetPending}, nil)
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{DryRun: true}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+
+	// brew: current, never "would update" (no -n signal exists for it).
+	if !strings.Contains(out, "up to date") {
+		t.Errorf("brew must render current in -n; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Up to date: brew") {
+		t.Errorf("brew must be listed as up to date in -n; got:\n%s", out)
+	}
+	// brew must never render as a planned (available) self-update action.
+	if strings.Contains(out, "[available] brew") || strings.Contains(out, "Dry run — no changes") && strings.Contains(out, "brew (") {
+		t.Errorf("brew must never be 'would update' in -n (current-only by design); got:\n%s", out)
+	}
+	// apt + winget: planned self-update actions reported explicitly.
+	if !strings.Contains(out, "2 would update") {
+		t.Errorf("pending apt+winget must report '2 would update'; got:\n%s", out)
+	}
+	// Dry-run with a pending manager update must never claim "All clean!".
+	if strings.Contains(out, "All clean!") {
+		t.Errorf("'All clean!' may not be paired with a pending manager update in -n; got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_ManagerSelfUpdateBrewNeverSelector pins the interactive TTY
+// selector contract (spec ux-patterns "Manager Self-Update Row Rendering"):
+// brew — which reports no self-update availability by design — MUST NOT appear
+// in the pending CheckboxSelector, because self-updates run only via the
+// sequential/`--ci` PolicyAlwaysUpdate path. apt and winget, which report real
+// availability, DO appear. Brew must never force-update in a TTY run (design
+// D7).
+func TestRunUpdate_ManagerSelfUpdateBrewNeverSelector(t *testing.T) {
+	probeHome(t)
+	brewCurrent := &fakeUpdateAdapter{
+		name:   "brew",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "4.1.0",
+			LatestVersion:   "4.1.0",
+			UpdateAvailable: false,
+		},
+		result: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+	}
+	aptPending := &fakeUpdateAdapter{
+		name:   "apt",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "2.4.0",
+			LatestVersion:   "2.4.5",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.5"},
+	}
+	wingetPending := &fakeUpdateAdapter{
+		name:   "winget",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "v1.8.2301",
+			LatestVersion:   "v1.8.2311",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2311"},
+	}
+
+	sel, got := fakeSelector([]string{"apt", "winget"}, false)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{brewCurrent, aptPending, wingetPending}, sel)
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+
+	// Selector options: only the pending managers (apt + winget); brew absent.
+	wantOpts := []output.SelectOption{
+		{ID: "apt", Label: "apt", Version: "2.4.0 → 2.4.5"},
+		{ID: "winget", Label: "winget", Version: "v1.8.2301 → v1.8.2311"},
+	}
+	if len(*got) != len(wantOpts) {
+		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
+	}
+	for i, want := range wantOpts {
+		if (*got)[i] != want {
+			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
+		}
+	}
+	// brew must never be force-updated in a TTY interactive run (design D7).
+	if brewCurrent.updated {
+		t.Error("brew must never be force-updated in TTY mode (D7): only the pending selection is processed")
+	}
+	// The board should show brew current and apt/winget available.
+	if !strings.Contains(out, "brew up-to-date") {
+		t.Errorf("board must show brew current; got:\n%s", out)
+	}
+}
+
 // TestRunUpdate_AllSucceedSummary pins the ux-patterns Summary Report
 // "All succeed" scenario end to end: a sequential (non-TTY) update run that
 // updates every tool ends with the explicit-counts clean line

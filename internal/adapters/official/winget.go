@@ -21,13 +21,32 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("winget is not installed")
 	}
 
-	// winget list outputs a table; parsing exact versions is complex.
-	// For MVP, we report "unknown" and rely on the update command.
-	_ = commandOutput("winget", "list")
+	// Self-only: report winget's own version from `winget --version`, then
+	// scan `winget upgrade` (no args) for winget's own row to report a real
+	// self-update availability. The version extraction tolerates a leading v
+	// (e.g. "v1.8.2311") through isVersionLike/extractVersionFromString.
+	current := commandOutput("winget", "--version")
+	current = extractVersionFromString(current)
+	if current == "" {
+		current = "unknown"
+	}
+
+	latest := current
+	found := false
+	if out := commandOutput("winget", "upgrade"); out != "" {
+		if _, lat, ok := parseWingetUpgradeOutput(out); ok && lat != "" {
+			latest = lat
+			found = true
+		}
+	}
+
+	// winget < 1.6 lists no self row (found=false) → availability unavailable
+	// gracefully, no error. AlwaysUpdate policy still runs the update when
+	// requested, but Check() reports current (no phantom upgrade).
 	return adapters.UpdateInfo{
-		CurrentVersion:  "unknown",
-		LatestVersion:   "unknown",
-		UpdateAvailable: true, // Assume updates may be available
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: found && current != latest,
 	}, nil
 }
 
@@ -36,20 +55,29 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
 	}
 
+	before := commandOutput("winget", "--version")
+	before = extractVersionFromString(before)
+	if before == "" {
+		before = "unknown"
+	}
+
 	if dryRun {
 		return adapters.Result{
 			Success: true,
-			Before:  "unknown",
-			After:   "unknown",
+			Before:  before,
+			After:   before,
 		}, nil
 	}
 
-	_, stderr, err := runCmd("winget upgrade --all --accept-source-agreements --accept-package-agreements")
+	// Self-only: `winget upgrade winget` upgrades Windows Package Manager
+	// itself (equiv. Microsoft.AppInstaller), never the packages it manages.
+	// A bulk `winget upgrade --all` is intentionally avoided.
+	_, stderr, err := runCmd("winget upgrade winget")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
-			Before:  "unknown",
-			After:   "unknown",
+			Before:  before,
+			After:   before,
 			Error:   fmt.Errorf("winget upgrade failed: %w", err),
 		}, nil
 	}
@@ -57,16 +85,22 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if stderr != "" && strings.Contains(stderr, "Error") {
 		return adapters.Result{
 			Success: false,
-			Before:  "unknown",
-			After:   "unknown",
+			Before:  before,
+			After:   before,
 			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
 		}, nil
 	}
 
+	after := commandOutput("winget", "--version")
+	after = extractVersionFromString(after)
+	if after == "" {
+		after = "unknown"
+	}
+
 	return adapters.Result{
 		Success: true,
-		Before:  "unknown",
-		After:   "unknown",
+		Before:  before,
+		After:   after,
 	}, nil
 }
 

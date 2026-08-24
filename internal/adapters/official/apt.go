@@ -67,7 +67,12 @@ func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("sudo apt update -qq && sudo apt upgrade -y -qq")
+	// Self-only: `sudo apt install --only-upgrade apt` upgrades the APT
+	// package manager itself, never the packages it manages (a full
+	// `apt upgrade` is intentionally avoided). Stays sudo-gated: the row means
+	// "apt package stale" (distro-managed, often intentional). Check() stays
+	// root-free and reports real Installed vs Candidate availability.
+	_, stderr, err := runCmd("sudo apt install --only-upgrade apt")
 	if err != nil {
 		return adapters.Result{
 			Success:    false,

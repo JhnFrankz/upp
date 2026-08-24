@@ -123,3 +123,130 @@ func sorted(items []string) []string {
 	}
 	return out
 }
+
+// TestParseWingetUpgradeOutput drives the pure, fail-closed helper that scans
+// `winget upgrade` (no args) output for the winget self row. It records the
+// self row Id as Microsoft.AppInstaller and returns (current, latest, found);
+// unparseable or absent rows yield found=false (task 2.1).
+func TestParseWingetUpgradeOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		out       string
+		wantCur   string
+		wantLat   string
+		wantFound bool
+	}{
+		{
+			name:      "own-row-lead-v-4-part",
+			out:       "Name  Id  Version  Available  Source\n------\nwinget  Microsoft.AppInstaller  v1.8.2301  v1.8.2311  winget\n",
+			wantCur:   "v1.8.2301",
+			wantLat:   "v1.8.2311",
+			wantFound: true,
+		},
+		{
+			name:      "own-row-plain-versions",
+			out:       "winget  Microsoft.AppInstaller  1.8.2301  1.8.2311  winget\n",
+			wantCur:   "1.8.2301",
+			wantLat:   "1.8.2311",
+			wantFound: true,
+		},
+		{
+			name:      "no-own-row",
+			out:       "Name  Id  Version  Available  Source\n------\nfoo  Baz.Corp.App  1.0.0  2.0.0  winget\n",
+			wantCur:   "",
+			wantLat:   "",
+			wantFound: false,
+		},
+		{
+			name:      "empty-output",
+			out:       "",
+			wantCur:   "",
+			wantLat:   "",
+			wantFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCur, gotLat, gotFound := parseWingetUpgradeOutput(tt.out)
+			if gotCur != tt.wantCur {
+				t.Errorf("current = %q, want %q", gotCur, tt.wantCur)
+			}
+			if gotLat != tt.wantLat {
+				t.Errorf("latest = %q, want %q", gotLat, tt.wantLat)
+			}
+			if gotFound != tt.wantFound {
+				t.Errorf("found = %v, want %v", gotFound, tt.wantFound)
+			}
+		})
+	}
+}
+
+// TestParseScoopStatusOutput drives the pure, fail-closed helper that scans
+// `scoop status` output for the scoop self row (task 3.1). It returns
+// (current, latest, found); an absent or unparseable scoop row yields
+// found=false (current-only fallback when the output shape is unstable). A
+// leading WARN line (scoop prints "Scoop is out of date" to stderr) is
+// tolerated — the table is still parsed. The leading-v on a version is
+// tolerated since scoop versions genuinely carry the leading v, matching the
+// winget parity conventions.
+func TestParseScoopStatusOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		out       string
+		wantCur   string
+		wantLat   string
+		wantFound bool
+	}{
+		{
+			name:      "own-row",
+			out:       "Name       Installed  Latest\n----       ---------  ------\nscoop      1.0.0      1.2.0\n",
+			wantCur:   "1.0.0",
+			wantLat:   "1.2.0",
+			wantFound: true,
+		},
+		{
+			name:      "own-row-lead-v",
+			out:       "scoop  v0.22.0  v0.23.0\n",
+			wantCur:   "v0.22.0",
+			wantLat:   "v0.23.0",
+			wantFound: true,
+		},
+		{
+			name:      "warn-stderr-tolerated",
+			out:       "WARN  Scoop is out of date. Run 'scoop update' to get the latest changes.\n\nName       Installed  Latest\n----       ---------  ------\nscoop      0.3.0      0.4.0\n",
+			wantCur:   "0.3.0",
+			wantLat:   "0.4.0",
+			wantFound: true,
+		},
+		{
+			name:      "no-own-row-fallback-current-only",
+			out:       "Name       Installed  Latest\n----       ---------  ------\nfoo        1.0.0      1.2.0\n",
+			wantCur:   "",
+			wantLat:   "",
+			wantFound: false,
+		},
+		{
+			name:      "empty-output",
+			out:       "",
+			wantCur:   "",
+			wantLat:   "",
+			wantFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCur, gotLat, gotFound := parseScoopStatusOutput(tt.out)
+			if gotCur != tt.wantCur {
+				t.Errorf("current = %q, want %q", gotCur, tt.wantCur)
+			}
+			if gotLat != tt.wantLat {
+				t.Errorf("latest = %q, want %q", gotLat, tt.wantLat)
+			}
+			if gotFound != tt.wantFound {
+				t.Errorf("found = %v, want %v", gotFound, tt.wantFound)
+			}
+		})
+	}
+}
