@@ -38,6 +38,17 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
 	}
 
+	// Delegated update path (WU2, spec Official Adapter Catalog / Resolved
+	// Owner Update Delegation): go is owned by brew on macOS and winget on
+	// Windows, so it delegates to the resolving manager there. On Linux go has
+	// NO resolving owner (standalone manual binary replace), so ResolveOwner
+	// returns nil and the standalone path below runs. runtime.GOOS is
+	// translated to the platform key because ResolveOwner is keyed by PLATFORM
+	// constants, not runtime.GOOS (darwin).
+	if owner := ResolveOwner("go", runtimeGOOSToPlatform(runtime.GOOS)); owner != nil {
+		return owner.Update(dryRun)
+	}
+
 	before := extractGoVersion(commandOutput("go", "version"))
 
 	if dryRun {
@@ -56,10 +67,6 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 		// Manual binary update: download latest from go.dev.
 		cmd = "curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"
 		privileges = []string{"sudo"}
-	case "darwin":
-		cmd = "brew upgrade go"
-	case "windows":
-		cmd = "winget upgrade GoLang.Go --accept-source-agreements --accept-package-agreements"
 	default:
 		return adapters.Result{
 			Success: false,

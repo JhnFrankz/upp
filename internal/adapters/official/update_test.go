@@ -14,25 +14,17 @@ import (
 // runCmd/runCmdArgs. A mismatch between key and production command is a test
 // failure, never a silent fake miss.
 const (
-	aptUpdateCmd           = "sudo apt install --only-upgrade apt"
-	brewUpdateCmd          = "brew update"
-	npmUpdateCmd           = "npm update -g"
-	pnpmUpdateCmd          = "pnpm update -g"
-	pnpmPruneCmd           = "pnpm store prune 2>/dev/null"
-	bunUpdateCmd           = "bun upgrade"
-	ghLinuxUpdateCmd       = "sudo apt update -qq && sudo apt install -y gh"
-	ghDarwinUpdateCmd      = "brew upgrade gh"
-	ghWindowsUpdateCmd     = "winget upgrade gh --accept-source-agreements --accept-package-agreements"
-	dockerLinuxUpdateCmd   = "sudo apt update -qq && sudo apt upgrade -y docker-ce docker-ce-cli containerd.io"
-	dockerDarwinUpdateCmd  = "brew upgrade docker"
-	dockerWindowsUpdateCmd = "winget upgrade Docker.DockerDesktop --accept-source-agreements --accept-package-agreements"
-	goLinuxUpdateCmd       = "curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
-	goDarwinUpdateCmd      = "brew upgrade go"
-	goWindowsUpdateCmd     = "winget upgrade GoLang.Go --accept-source-agreements --accept-package-agreements"
-	opencodeUpdateCmd      = "curl -fsSL https://opencode.ai/install | bash"
-	wingetUpdateCmd        = "winget upgrade winget"
-	scoopUpdateCmd         = "scoop update scoop"
-	nvmInstallStableCmd    = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
+	aptUpdateCmd        = "sudo apt install --only-upgrade apt"
+	brewUpdateCmd       = "brew update"
+	npmUpdateCmd        = "npm update -g"
+	pnpmUpdateCmd       = "pnpm update -g"
+	pnpmPruneCmd        = "pnpm store prune 2>/dev/null"
+	bunUpdateCmd        = "bun upgrade"
+	goLinuxUpdateCmd    = "curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
+	opencodeUpdateCmd   = "curl -fsSL https://opencode.ai/install | bash"
+	wingetUpdateCmd     = "winget upgrade winget"
+	scoopUpdateCmd      = "scoop update scoop"
+	nvmInstallStableCmd = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
 )
 
 // failIfRun is a fake result that fails loudly: any row that keys a command
@@ -344,7 +336,7 @@ func TestUpdate(t *testing.T) {
 			want: adapters.Result{Success: true, Before: "1.0.30", After: "1.0.30"},
 		},
 
-		// --- gh (per-GOOS update command) ---
+		// --- gh (delegated to resolving manager) ---
 		{
 			name:    "gh/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
@@ -352,74 +344,88 @@ func TestUpdate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "gh/dry-run-shortcut",
+			name:    "gh/linux-dry-run-delegates-to-apt",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    failIfRun, // dry-run must never exec the update cmd
+				},
 			},
 			dryRun: true,
-			want:   adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
+			want:   adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0"},
 		},
 		{
-			name:    "gh/update-command-error",
+			name:    "gh/linux-update-delegates-to-apt-error",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
-				shell:    map[string]fakeResult{ghLinuxUpdateCmd: {err: errors.New("apt: lock held")}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {err: errors.New("apt: lock held")},
+				},
 			},
-			want:      adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 			resultErr: true,
 		},
 		{
-			name:    "gh/stderr-error-marker",
+			name:    "gh/linux-update-delegates-to-apt-stderr",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
-				shell:    map[string]fakeResult{ghLinuxUpdateCmd: {stderr: "E: Package gh has no installation candidate"}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {stderr: "E: Unable to acquire the dpkg frontend lock"},
+				},
 			},
-			want:      adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 			resultErr: true,
 		},
 		{
-			name:    "gh/success",
+			name:    "gh/linux-update-delegates-to-apt-success",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
-				shell:    map[string]fakeResult{ghLinuxUpdateCmd: {}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {},
+				},
 			},
-			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 		},
 		{
-			name:    "gh/darwin-success",
+			name:    "gh/macos-delegates-to-brew-success",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
-				shell:    map[string]fakeResult{ghDarwinUpdateCmd: {}},
+				lookPath: map[string]bool{"gh": true, "brew": true},
+				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}, "brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
+			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
 		},
 		{
-			name:    "gh/windows-success",
+			name:    "gh/windows-delegates-to-winget-success",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "windows",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
-				shell:    map[string]fakeResult{ghWindowsUpdateCmd: {}},
+				lookPath: map[string]bool{"gh": true, "winget": true},
+				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}, "winget --version": {stdout: "v1.8.2301"}},
+				shell:    map[string]fakeResult{wingetUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
+			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
 		},
 
-		// --- docker (per-GOOS update command) ---
+		// --- docker (delegated to resolving manager) ---
 		{
 			name:    "docker/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
@@ -427,74 +433,88 @@ func TestUpdate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "docker/dry-run-shortcut",
+			name:    "docker/linux-dry-run-delegates-to-apt",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    failIfRun,
+				},
 			},
 			dryRun: true,
-			want:   adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
+			want:   adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0"},
 		},
 		{
-			name:    "docker/update-command-error",
+			name:    "docker/linux-update-delegates-to-apt-error",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
-				shell:    map[string]fakeResult{dockerLinuxUpdateCmd: {err: errors.New("apt: lock held")}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {err: errors.New("apt: lock held")},
+				},
 			},
-			want:      adapters.Result{Success: false, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 			resultErr: true,
 		},
 		{
-			name:    "docker/stderr-error-marker",
+			name:    "docker/linux-update-delegates-to-apt-stderr",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
-				shell:    map[string]fakeResult{dockerLinuxUpdateCmd: {stderr: "E: Unable to locate package docker-ce"}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {stderr: "E: Unable to acquire the dpkg frontend lock"},
+				},
 			},
-			want:      adapters.Result{Success: false, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 			resultErr: true,
 		},
 		{
-			name:    "docker/success",
+			name:    "docker/linux-update-delegates-to-apt-success",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
-				shell:    map[string]fakeResult{dockerLinuxUpdateCmd: {}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {},
+				},
 			},
-			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 		},
 		{
-			name:    "docker/darwin-success",
+			name:    "docker/macos-delegates-to-brew-success",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
-				shell:    map[string]fakeResult{dockerDarwinUpdateCmd: {}},
+				lookPath: map[string]bool{"docker": true, "brew": true},
+				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}, "brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
+			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
 		},
 		{
-			name:    "docker/windows-success",
+			name:    "docker/windows-delegates-to-winget-success",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "windows",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
-				shell:    map[string]fakeResult{dockerWindowsUpdateCmd: {}},
+				lookPath: map[string]bool{"docker": true, "winget": true},
+				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}, "winget --version": {stdout: "v1.8.2301"}},
+				shell:    map[string]fakeResult{wingetUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
+			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
 		},
 
-		// --- go (per-GOOS update command) ---
+		// --- go (standalone on Linux; delegated on macOS/Windows) ---
 		{
 			name:    "go/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
@@ -502,17 +522,19 @@ func TestUpdate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "go/dry-run-shortcut",
+			name:    "go/linux-dry-run-shortcut",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
 				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				shell:    map[string]fakeResult{goLinuxUpdateCmd: failIfRun},
 			},
 			dryRun: true,
 			want:   adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
 		},
 		{
-			name:    "go/update-command-error",
+			name:    "go/linux-update-command-error",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
@@ -524,7 +546,7 @@ func TestUpdate(t *testing.T) {
 			resultErr: true,
 		},
 		{
-			name:    "go/stderr-error-marker",
+			name:    "go/linux-update-stderr-error-marker",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
@@ -536,7 +558,7 @@ func TestUpdate(t *testing.T) {
 			resultErr: true,
 		},
 		{
-			name:    "go/success",
+			name:    "go/linux-update-standalone-success",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
@@ -547,26 +569,26 @@ func TestUpdate(t *testing.T) {
 			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
 		},
 		{
-			name:    "go/darwin-success",
+			name:    "go/macos-delegates-to-brew-success",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"go": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:    map[string]fakeResult{goDarwinUpdateCmd: {}},
+				lookPath: map[string]bool{"go": true, "brew": true},
+				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}, "brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
+			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
 		},
 		{
-			name:    "go/windows-success",
+			name:    "go/windows-delegates-to-winget-success",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "windows",
 			fakes: execFakes{
-				lookPath: map[string]bool{"go": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:    map[string]fakeResult{goWindowsUpdateCmd: {}},
+				lookPath: map[string]bool{"go": true, "winget": true},
+				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}, "winget --version": {stdout: "v1.8.2301"}},
+				shell:    map[string]fakeResult{wingetUpdateCmd: {}},
 			},
-			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
+			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
 		},
 
 		// --- opencode (curl installer) ---
@@ -798,6 +820,135 @@ func TestUpdate(t *testing.T) {
 			}
 			if tt.resultErr != (got.Error != nil) {
 				t.Errorf("Result.Error presence = %v, want %v (got error: %v)", got.Error != nil, tt.resultErr, got.Error)
+			}
+			if got.Success != tt.want.Success {
+				t.Errorf("Result.Success = %v, want %v", got.Success, tt.want.Success)
+			}
+			if got.Before != tt.want.Before {
+				t.Errorf("Result.Before = %q, want %q", got.Before, tt.want.Before)
+			}
+			if got.After != tt.want.After {
+				t.Errorf("Result.After = %q, want %q", got.After, tt.want.After)
+			}
+			if !equalPrivileges(got.Privileges, tt.want.Privileges) {
+				t.Errorf("Result.Privileges = %v, want %v", got.Privileges, tt.want.Privileges)
+			}
+		})
+	}
+}
+
+// --- WU2: delegated update + ownership (spec Official Adapter Catalog /
+// Resolved Owner Update Delegation) ---
+//
+// An owned tool (gh, docker, go) MUST delegate its Update() to its resolving
+// manager rather than run its own hardcoded manager command. These cases pin
+// that behavior hermetically: the owned tool's own update command key is
+// replaced by the MANAGER's update command key, proving the tool never runs
+// its own command on the delegated path. docker on Linux is the GOTCHA case
+// (runtime.GOOS "linux" -> platform "linux"); go is the standalone case on
+// Linux (nil owner -> own command still runs).
+
+// TestUpdateDelegation proves the owned-tool Update() delegation contract:
+// gh/docker delegate to their resolving manager (apt/brew/winget), and go on
+// Linux has no resolving owner so its own (manual binary replace) command
+// still runs. Each row drives the runtime.GOOS that the production adapter
+// sees so the runtimeGOOSToPlatform translation is exercised for real.
+func TestUpdateDelegation(t *testing.T) {
+	sudo := []string{"sudo"}
+
+	tests := []updateCase{
+		// gh on Linux owned by apt (Gated): delegated apt.Update() runs, so
+		// the result carries APT's versions + sudo. gh's own
+		// "sudo apt install -y gh" command is intentionally NOT faked — if gh
+		// ran its own command instead of delegating, the before/after would
+		// be gh's "2.45.0" and the row would fail.
+		{
+			name:    "gh/linux-delegates-to-apt",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true, "apt": true},
+				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		// gh on macOS owned by brew (AlwaysUpdate): delegated brew.Update()
+		// runs, so the result carries brew's versions. gh's own
+		// "brew upgrade gh" is not faked — a non-delegating gh would return
+		// "2.45.0" and fail the assertion.
+		{
+			name:    "gh/macos-delegates-to-brew",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "darwin",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true, "brew": true},
+				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}, "brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: {}},
+			},
+			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+		},
+		// docker on Linux owned by apt (Gated): delegated apt.Update() runs,
+		// carrying apt's versions + sudo. docker's own
+		// "apt upgrade docker-ce ..." is not faked.
+		{
+			name:    "docker/linux-delegates-to-apt",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true, "apt": true},
+				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
+				shell: map[string]fakeResult{
+					aptInstalledCmd: {stdout: "2.4.0"},
+					aptUpdateCmd:    {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		// go on macOS owned by brew (AlwaysUpdate): delegated brew.Update()
+		// runs, carrying brew's versions.
+		{
+			name:    "go/macos-delegates-to-brew",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "darwin",
+			fakes: execFakes{
+				lookPath: map[string]bool{"go": true, "brew": true},
+				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}, "brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{brewUpdateCmd: {}},
+			},
+			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+		},
+		// go on Linux is standalone (no resolving owner) — its own manual
+		// binary-replace command must still run.
+		{
+			name:    "go/linux-standalone-keeps-own-cmd",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"go": true},
+				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				shell:    map[string]fakeResult{goLinuxUpdateCmd: {}},
+			},
+			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.goos != "" && tt.goos != runtime.GOOS {
+				t.Skipf("row is for %s, running on %s", tt.goos, runtime.GOOS)
+			}
+			if tt.setup != nil {
+				tt.setup(t)
+			}
+			setExecFakes(t, tt.fakes)
+
+			got, err := tt.newAdpt().Update(tt.dryRun)
+			if err != nil {
+				t.Fatalf("Update() unexpected error: %v", err)
 			}
 			if got.Success != tt.want.Success {
 				t.Errorf("Result.Success = %v, want %v", got.Success, tt.want.Success)
