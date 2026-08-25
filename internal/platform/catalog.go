@@ -58,6 +58,22 @@ func IsOfficialTool(id string) bool {
 	return false
 }
 
+// IsManager reports whether the given tool ID is a declared manager-kind
+// official tool (apt, brew, winget, scoop). It is the catalog's canonical
+// manager-membership check, used by config validation to decide whether a
+// custom tool's declared `manager` value is a valid owning manager. A value
+// naming a non-manager official tool, an unknown tool, or an empty string
+// returns false, so an invalid config value is ignored (tool proceeds
+// standalone) rather than erroring — forward-compatible (design Config).
+func IsManager(id string) bool {
+	for _, tool := range OfficialTools {
+		if tool.ID == id && tool.Kind == adapters.KindManager {
+			return true
+		}
+	}
+	return false
+}
+
 // FilterByPlatform returns adapter tool IDs that match the given platform.
 func FilterByPlatform(os string) []string {
 	var ids []string

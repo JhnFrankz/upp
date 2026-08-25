@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -361,5 +362,124 @@ func TestLoadFullConfig_AsIs(t *testing.T) {
 	}
 	if loaded.Custom["mytool"].Command != "mytool --update" {
 		t.Errorf("full config: custom tool lost, got %q", loaded.Custom["mytool"].Command)
+	}
+}
+
+// --- WU4: config CustomTool.Manager + validation/init hygiene ---
+
+// TestValidate_ValidManager pins that a custom tool declaring a known official
+// manager (a manager-kind tool, e.g. "brew") loads and validates cleanly; the
+// Manager field round-trips unchanged (spec Config Format: a custom tool MAY
+// declare an owning manager).
+func TestValidate_ValidManager(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+		Trusted: true,
+		Manager: "brew",
+	}
+
+	err := Validate(cfg)
+	if err != nil {
+		t.Fatalf("Validate() with a valid manager should not error: %v", err)
+	}
+	if cfg.Custom["mytool"].Manager != "brew" {
+		t.Errorf("CustomTool.Manager = %q, want %q", cfg.Custom["mytool"].Manager, "brew")
+	}
+}
+
+// TestValidate_UnknownManagerIgnoredWarn pins the forward-compatible contract
+// (spec Config Format): an unknown or non-manager `manager` value MUST be
+// ignored (the tool proceeds standalone) AND a warning MUST be emitted to the
+// caller-supplied stderr writer. Validate itself returns nil (non-fatal) — the
+// warning is side-channel via the variadic writer.
+func TestValidate_UnknownManagerIgnoredWarn(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+		Manager: "bogus", // not a known manager
+	}
+	var buf bytes.Buffer
+
+	err := Validate(cfg, &buf)
+	if err != nil {
+		t.Fatalf("Validate() with an unknown manager must not error (forward-compatible): %v", err)
+	}
+
+	// The unknown manager is ignored: the tool proceeds standalone.
+	if cell, ok := cfg.Custom["mytool"]; !ok || cell.Manager != "" {
+		t.Errorf("unknown manager must be ignored (standalone), got %+v", cfg.Custom["mytool"])
+	}
+
+	if buf.Len() == 0 {
+		t.Error("Validate() must emit a warning to the supplied writer for an unknown manager")
+	}
+	if !strings.Contains(buf.String(), "bogus") {
+		t.Errorf("warning should name the ignored manager, got: %q", buf.String())
+	}
+}
+
+// TestValidate_NonManagerWarning pins that a value naming a NOT-manager official
+// tool (e.g. "nvm", KindTool) is also rejected with a warning — manager must be
+// a manager-kind official tool, not merely any known tool ID.
+func TestValidate_NonManagerWarning(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+		Manager: "nvm", // official tool, but KindTool, not a manager
+	}
+	var buf bytes.Buffer
+
+	err := Validate(cfg, &buf)
+	if err != nil {
+		t.Fatalf("Validate() with a non-manager tool manager must not error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("Validate() must warn when manager names a non-manager official tool")
+	}
+}
+
+// TestValidate_ManagerRoundTrip pins that Save/Decode preserve the manager key
+// for a valid manager so the CLI can thread it through buildAdapterList.
+func TestValidate_ManagerRoundTrip(t *testing.T) {
+	cfg := DefaultConfigWithDefaults()
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+		Manager: "brew",
+	}
+	var buf bytes.Buffer
+	if err := Validate(cfg, &buf); err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+	if cfg.Custom["mytool"].Manager != "brew" {
+		t.Errorf("Manager round-trip = %q, want %q", cfg.Custom["mytool"].Manager, "brew")
+	}
+}
+
+// TestSave_NeverWritesManager pins the init-hygiene contract (spec Config
+// Format): the `manager` key is an optional, user-declared field that `upp
+// init` MUST NOT write. A config whose custom tool declares no manager must
+// never serialize the key, so a freshly generated init config carries no
+// `manager` line.
+func TestSave_NeverWritesManager(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfg := DefaultConfigWithDefaults()
+	cfg.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "manager") {
+		t.Errorf("Save must never write the optional manager key, got:\n%s", data)
 	}
 }

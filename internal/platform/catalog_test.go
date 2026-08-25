@@ -100,3 +100,33 @@ func TestFilterByPlatform(t *testing.T) {
 		}
 	}
 }
+
+// TestIsManager covers IsManager directly (verify WARNING: 0% in-package
+// coverage). It proves the catalog's canonical manager-membership check: the
+// four declared manager-kind tools return true, every KindTool tool and any
+// unknown or empty value returns false (fail-open toward standalone — config
+// validation ignores an invalid manager value rather than erroring).
+func TestIsManager(t *testing.T) {
+	managerIDs := []string{"apt", "brew", "winget", "scoop"}
+	for _, id := range managerIDs {
+		if !IsManager(id) {
+			t.Errorf("IsManager(%q) = false, want true (declared manager kind)", id)
+		}
+	}
+
+	toolIDs := []string{"nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"}
+	for _, id := range toolIDs {
+		if IsManager(id) {
+			t.Errorf("IsManager(%q) = true, want false (tool kind)", id)
+		}
+	}
+
+	// Unknown and empty values are ignored (config value naming a non-manager
+	// official tool, an unknown tool, or an empty string is not a valid owner).
+	if IsManager("mycustomtool") {
+		t.Error("IsManager(unknown tool) = true, want false")
+	}
+	if IsManager("") {
+		t.Error("IsManager(empty string) = true, want false")
+	}
+}

@@ -741,6 +741,75 @@ func TestMultipleCustomTools(t *testing.T) {
 	}
 }
 
+// --- WU4: buildAdapterList threads custom-tool manager ---
+
+// TestBuildAdapterList_ThreadsCustomManager pins the WU4 contract (design
+// Config; spec Config Format): a custom tool declaring a valid `manager` gets
+// that manager resolved from the OFFICIAL registry and injected as the
+// adapter's ManagerAdapter, so the delegated update + grouping paths can use
+// it. The resolution happens in the CLI layer (buildAdapterList) because the
+// adapters package must not import the official registry (no import cycle).
+func TestBuildAdapterList_ThreadsCustomManager(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Custom["mytool"] = config.CustomTool{
+		Command: "mytool --update",
+		Trusted: false,
+		Manager: "brew", // valid manager-kind official tool
+	}
+
+	adapterList := buildAdapterList(cfg, "linux")
+
+	var custom *adapters.CustomAdapter
+	for _, a := range adapterList {
+		if ca, ok := a.(*adapters.CustomAdapter); ok && ca.Name() == "mytool" {
+			custom = ca
+			break
+		}
+	}
+	if custom == nil {
+		t.Fatal("custom adapter 'mytool' should be in adapter list")
+	}
+	mgr := custom.ManagerAdapter()
+	if mgr == nil {
+		t.Fatal("custom tool with manager='brew' should have an injected ManagerAdapter")
+	}
+	if mgr.Name() != "brew" {
+		t.Errorf("ManagerAdapter().Name() = %q, want %q", mgr.Name(), "brew")
+	}
+	// The injected manager must be a manager-kind official adapter.
+	if mgr.Info().Kind != adapters.KindManager {
+		t.Errorf("injected manager Kind = %v, want KindManager", mgr.Info().Kind)
+	}
+}
+
+// TestBuildAdapterList_UnknownManagerStaysStandalone pins that a custom tool
+// with a manager value naming an UNKNOWN tool (already cleared by config
+// Validate, but guarded here too) leaves the tool standalone: no manager is
+// injected, so the delegated path is not taken.
+func TestBuildAdapterList_UnknownManagerStaysStandalone(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Custom["mytool"] = config.CustomTool{
+		Command: "mytool --update",
+		Manager: "bogus", // unknown — not a manager-kind official tool
+	}
+
+	adapterList := buildAdapterList(cfg, "linux")
+
+	var custom *adapters.CustomAdapter
+	for _, a := range adapterList {
+		if ca, ok := a.(*adapters.CustomAdapter); ok && ca.Name() == "mytool" {
+			custom = ca
+			break
+		}
+	}
+	if custom == nil {
+		t.Fatal("custom adapter 'mytool' should be in adapter list even with unknown manager")
+	}
+	if custom.ManagerAdapter() != nil {
+		t.Error("custom tool with unknown manager must stay standalone (nil ManagerAdapter)")
+	}
+}
+
 // --- Init → Update Dry-Run Lifecycle Test ---
 
 func TestInitUpdateDryRunLifecycle(t *testing.T) {
