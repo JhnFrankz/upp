@@ -79,6 +79,22 @@ type Result struct {
 	Privileges []string // e.g., ["sudo"]
 }
 
+// Kind distinguishes manager adapters (which own other tools) from
+// owned/standalone tool adapters. It is the declared ownership kind a tool
+// reports through ToolInfo (spec Tool Ownership Declaration).
+type Kind int
+
+const (
+	// KindTool is the ZERO value on purpose: a tool with no manager (or an
+	// owned tool that is itself not a manager). An unset Kind MUST resolve to
+	// the tool tier so an undeclared ownership kind fails open toward
+	// standalone behavior, mirroring the TrustLevel/UpdatePolicy convention.
+	KindTool Kind = iota
+	// KindManager is for manager adapters (apt, brew, winget, scoop) that
+	// declare owning a set of tools per platform.
+	KindManager
+)
+
 // ToolInfo holds static metadata about a tool.
 type ToolInfo struct {
 	ID           string
@@ -86,6 +102,8 @@ type ToolInfo struct {
 	Platforms    []string
 	Trust        TrustLevel
 	UpdatePolicy UpdatePolicy
-	Command      string   // real update command; empty for official adapters
-	Privileges   []string // e.g., ["sudo"]
+	Kind         Kind
+	Manager      map[string]string // platform -> owning manager ID (nil for standalone)
+	Command      string            // real update command; empty for official adapters
+	Privileges   []string          // e.g., ["sudo"]
 }

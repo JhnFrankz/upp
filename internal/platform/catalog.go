@@ -1,27 +1,37 @@
 package platform
 
+import (
+	"github.com/JhnFrankz/upp/internal/adapters"
+)
+
 // ToolEntry describes a tool in the platform catalog.
+// Kind and Manager carry a display copy of the adapter's declared ownership
+// model (design: ToolInfo is canonical, the catalog mirrors it for display;
+// parity_test pins both). Manager is a platform -> owning manager ID map,
+// nil for standalone tools.
 type ToolEntry struct {
 	ID        string
 	Name      string
 	Platforms []string
+	Kind      adapters.Kind
+	Manager   map[string]string
 }
 
 // OfficialTools is the complete registry of built-in tools.
-// Each tool lists the platforms it supports.
+// Each tool lists the platforms it supports and its ownership declaration.
 var OfficialTools = []ToolEntry{
-	{ID: "apt", Name: "APT Package Manager", Platforms: []string{OSLinux}},
-	{ID: "brew", Name: "Homebrew", Platforms: []string{OSLinux, OSMacOS}},
-	{ID: "winget", Name: "Windows Package Manager", Platforms: []string{OSWindows}},
-	{ID: "scoop", Name: "Scoop", Platforms: []string{OSWindows}},
-	{ID: "nvm", Name: "Node Version Manager", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "npm", Name: "npm", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "pnpm", Name: "pnpm", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "bun", Name: "Bun", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "gh", Name: "GitHub CLI", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "docker", Name: "Docker", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "go", Name: "Go", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
-	{ID: "opencode", Name: "OpenCode", Platforms: []string{OSLinux, OSMacOS, OSWindows}},
+	{ID: "apt", Name: "APT Package Manager", Platforms: []string{OSLinux}, Kind: adapters.KindManager},
+	{ID: "brew", Name: "Homebrew", Platforms: []string{OSLinux, OSMacOS}, Kind: adapters.KindManager},
+	{ID: "winget", Name: "Windows Package Manager", Platforms: []string{OSWindows}, Kind: adapters.KindManager},
+	{ID: "scoop", Name: "Scoop", Platforms: []string{OSWindows}, Kind: adapters.KindManager},
+	{ID: "nvm", Name: "Node Version Manager", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
+	{ID: "npm", Name: "npm", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
+	{ID: "pnpm", Name: "pnpm", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
+	{ID: "bun", Name: "Bun", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
+	{ID: "gh", Name: "GitHub CLI", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool, Manager: map[string]string{OSLinux: "apt", OSMacOS: "brew", OSWindows: "winget"}},
+	{ID: "docker", Name: "Docker", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool, Manager: map[string]string{OSLinux: "apt", OSMacOS: "brew", OSWindows: "winget"}},
+	{ID: "go", Name: "Go", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool, Manager: map[string]string{OSMacOS: "brew", OSWindows: "winget"}},
+	{ID: "opencode", Name: "OpenCode", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
 }
 
 // CatalogFor returns the list of official tools available on the given OS.

@@ -5,6 +5,30 @@ import (
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
+// OwnerMetadataSummary summarizes the ownership model across all official
+// adapters: how many declare KindManager and how many declare KindTool, plus
+// the total. It is derived from the canonical adapter Info() Kind, so it stays
+// in sync with the declared model (spec Manager Owned-Tool Cardinality /
+// design registry convenience) without a separate hardcoded count.
+type OwnerMetadataSummary struct {
+	Total    int
+	Managers int
+	Tools    int
+}
+
+// OwnerMetadata returns the per-Kind counts across AllAdapters.
+func OwnerMetadata() OwnerMetadataSummary {
+	meta := OwnerMetadataSummary{Total: len(AllAdapters())}
+	for _, a := range AllAdapters() {
+		if a.Info().Kind == adapters.KindManager {
+			meta.Managers++
+		} else {
+			meta.Tools++
+		}
+	}
+	return meta
+}
+
 // AllAdapters returns every official adapter, regardless of platform.
 // The caller is responsible for filtering by platform if needed.
 func AllAdapters() []adapters.Adapter {
