@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -89,10 +90,10 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 		deps.stdinIsTTY = stdinIsTTY
 	}
 	if deps.stdinIsTTY() && !gf.CI && !gf.Quiet && !uf.DryRun {
-		return runUpdateInteractive(gf, uf, deps, filteredAdapters, r)
+		return runUpdateInteractive(gf, uf, deps, filteredAdapters, r, p.OS)
 	}
 
-	return runUpdateSequential(gf, uf, filteredAdapters, r)
+	return runUpdateSequential(gf, uf, filteredAdapters, r, p.OS)
 }
 
 // runUpdateSequential is today's update loop, unchanged: per tool it runs
@@ -100,7 +101,11 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 // summary. It is byte-identical to the pre-Phase-3 sequential behavior —
 // the interactive gate routes TTY runs away from it, and every bypass path
 // (non-TTY, --ci, --quiet, --dry-run) still lands here.
-func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer) error {
+//
+// osName is the canonical platform key (platform.OSLinux/OSMacOS/OSWindows)
+// used to resolve an owned tool's effective UpdatePolicy from its manager on
+// the delegated path (WU2, spec Update Gating).
+func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string) error {
 	var results []output.ToolResult
 	total := len(filteredAdapters)
 	hasFailure := false
@@ -191,9 +196,12 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 		// Gate: adapters declaring PolicyGated (apt, npm, pnpm, nvm)
 		// update only when check() reported an update available (design
 		// D2, spec Update Gating). Adapters declaring PolicyAlwaysUpdate
-		// (brew, bun, docker, gh, go, opencode, winget, scoop, custom)
-		// always run their update when requested.
-		if info.UpdatePolicy == adapters.PolicyGated && !updateInfo.UpdateAvailable {
+		// (brew, bun, opencode, winget, scoop, custom) always run their
+		// update when requested. On the delegated path, the gate uses the
+		// MANAGER's effective policy: an owned tool (docker, gh, go) inherits
+		// its managing adapter's UpdatePolicy, and the owned tool's own
+		// declared policy is INERT (spec Update Gating).
+		if resolveEffectiveUpdatePolicy(a, osName) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
 			results = append(results, output.ToolResult{
 				Name:    info.Name,
 				Status:  output.StatusCurrent,
@@ -272,7 +280,7 @@ func timeoutErr(name, op string, err error) error {
 // and the carried-outcome loop that updates only the user's selection. A
 // cancel shows the fixed message and exits 0; the selector is skipped
 // entirely when nothing is pending (spec ux-patterns "No pending updates").
-func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer) error {
+func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string) error {
 	// Pre-check: concurrent Detect + Check over the filtered set. The
 	// outcomes carry updateInfo so the loop below never re-calls Check()
 	// (design D4). The live CheckBoard renders the pre-check (spec
@@ -364,7 +372,7 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 			// Check() (D4). Per-tool ConfirmAction still runs for selected
 			// tools: the selector is a user-choice UI, NOT a security
 			// confirmation (spec ux-patterns).
-			hasFailure = processSelectedOutcome(gf, a, oc.updateInfo, updateIndex, updateTotal, r, &results) || hasFailure
+			hasFailure = processSelectedOutcome(gf, a, oc.updateInfo, updateIndex, updateTotal, r, &results, osName) || hasFailure
 		default:
 			// Skipped/Failed/Current append as-is, byte-identical to the
 			// sequential summary.
@@ -386,7 +394,7 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 // for one selected pending tool, appending its result. The updateInfo comes
 // from the carried pre-check outcome — Check() is never re-invoked (design
 // D4). It returns whether the tool failed, for the CI failure aggregation.
-func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adapters.UpdateInfo, index, total int, r *output.Renderer, results *[]output.ToolResult) bool {
+func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adapters.UpdateInfo, index, total int, r *output.Renderer, results *[]output.ToolResult, osName string) bool {
 	info := a.Info()
 
 	// Progress, mirroring the sequential loop (index/total over the
@@ -431,9 +439,12 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 	// Gate: adapters declaring PolicyGated (apt, npm, pnpm, nvm)
 	// update only when check() reported an update available (design
 	// D2, spec Update Gating). Adapters declaring PolicyAlwaysUpdate
-	// (brew, bun, docker, gh, go, opencode, winget, scoop, custom)
-	// always run their update when requested.
-	if info.UpdatePolicy == adapters.PolicyGated && !updateInfo.UpdateAvailable {
+	// (brew, bun, opencode, winget, scoop, custom) always run their
+	// update when requested. On the delegated path, the gate uses the
+	// MANAGER's effective policy: an owned tool inherits its managing
+	// adapter's UpdatePolicy, and the owned tool's own declared policy is
+	// INERT (spec Update Gating).
+	if resolveEffectiveUpdatePolicy(a, osName) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
 		*results = append(*results, output.ToolResult{
 			Name:    info.Name,
 			Status:  output.StatusCurrent,
@@ -474,4 +485,32 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 		Stderr: errMsg.Error(),
 	})
 	return true
+}
+
+// resolveEffectiveUpdatePolicy returns the UpdatePolicy that governs whether
+// an adapter's Update() runs. For an owned tool (an official tool with a
+// resolving manager on the given OS, or a custom tool carrying an injected
+// manager adapter) the MANAGER's policy governs — the owned tool's own
+// declared policy is INERT on the delegated path (spec Update Gating).
+// Otherwise the adapter's own declared policy applies. osName is the canonical
+// platform key (platform.OSLinux/OSMacOS/OSWindows), NOT runtime.GOOS (which
+// returns "darwin" on macOS) — the WU1-documented gotcha.
+func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string) adapters.UpdatePolicy {
+	if owner := resolvingOwner(a, osName); owner != nil {
+		return owner.Info().UpdatePolicy
+	}
+	return a.Info().UpdatePolicy
+}
+
+// resolvingOwner returns the manager adapter that owns the given adapter on
+// the given OS, or nil when the adapter has no resolving owner (standalone).
+// A custom tool exposes its injected manager via ManagerAdapter; an official
+// tool resolves through official.ResolveOwner (keyed by platform constant).
+func resolvingOwner(a adapters.Adapter, osName string) adapters.Adapter {
+	if custom, ok := a.(*adapters.CustomAdapter); ok {
+		if m := custom.ManagerAdapter(); m != nil {
+			return m
+		}
+	}
+	return official.ResolveOwner(a.Name(), osName)
 }

@@ -14,20 +14,34 @@ type CustomAdapter struct {
 	command  string
 	checkCmd string
 	trusted  bool
+	manager  Adapter // resolving owner adapter (nil = standalone custom tool)
 }
 
 // NewCustomAdapter creates a CustomAdapter from config values.
 // Returns an error if the command is empty (required field).
-func NewCustomAdapter(id, command, checkCmd string, trusted bool) (*CustomAdapter, error) {
+//
+// manager is the optional resolving owner adapter (WU2, spec Official Adapter
+// Catalog / Resolved Owner Update Delegation). A custom tool MAY declare an
+// owning manager (config `manager` field, threaded through buildAdapterList):
+// when present, Update() delegates to the manager rather than running the
+// tool's own command, and the manager's UpdatePolicy governs the CLI gate
+// (the custom tool's own declared policy is INERT on the delegated path).
+// Passing no manager (or nil) keeps the custom tool standalone. The variadic
+// form preserves backward compatibility with existing 4-arg callers.
+func NewCustomAdapter(id, command, checkCmd string, trusted bool, manager ...Adapter) (*CustomAdapter, error) {
 	if command == "" {
 		return nil, fmt.Errorf("custom tool %q: command is required", id)
 	}
-	return &CustomAdapter{
+	ca := &CustomAdapter{
 		id:       id,
 		command:  command,
 		checkCmd: checkCmd,
 		trusted:  trusted,
-	}, nil
+	}
+	if len(manager) > 0 {
+		ca.manager = manager[0]
+	}
+	return ca, nil
 }
 
 func (c *CustomAdapter) Name() string { return c.id }
@@ -68,6 +82,15 @@ func (c *CustomAdapter) Check() (UpdateInfo, error) {
 
 // Update executes the tool's update command.
 func (c *CustomAdapter) Update(dryRun bool) (Result, error) {
+	// Delegated update path (WU2, spec Resolved Owner Update Delegation): a
+	// custom tool with a resolving owner manager delegates to the manager's
+	// Update() instead of running its own command. The manager's self-update
+	// (and its command/privileges) governs; the custom tool's own command is
+	// never invoked on the delegated path.
+	if c.manager != nil {
+		return c.manager.Update(dryRun)
+	}
+
 	privileges := detectPrivileges(c.command)
 
 	if !c.Detect() {
@@ -108,15 +131,32 @@ func (c *CustomAdapter) Info() ToolInfo {
 		trust = TrustCustomTrusted
 	}
 
-	return ToolInfo{
+	info := ToolInfo{
 		ID:           c.id,
 		Name:         c.id,
 		Platforms:    []string{"linux", "darwin", "windows"},
 		Trust:        trust,
 		UpdatePolicy: PolicyAlwaysUpdate,
+		Kind:         KindTool,
 		Command:      c.command,
 		Privileges:   detectPrivileges(c.command),
 	}
+	if c.manager != nil {
+		// An owned custom tool is not a manager itself and must not gate
+		// independently: the manager's UpdatePolicy governs on the delegated
+		// path (spec Update Gating). The declared policy here is INERT for the
+		// CLI gate, which resolves the effective policy from the owner.
+		info.Kind = KindTool
+	}
+	return info
+}
+
+// ManagerAdapter returns the injected resolving owner adapter a custom tool
+// delegates to, or nil when the custom tool is standalone. The CLI gate uses
+// it to derive the effective UpdatePolicy on the delegated path (the custom
+// tool's own declared policy is INERT there, spec Update Gating).
+func (c *CustomAdapter) ManagerAdapter() Adapter {
+	return c.manager
 }
 
 // IsTrusted returns whether the custom adapter is trusted via config.

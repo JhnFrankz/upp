@@ -350,6 +350,91 @@ func TestCustomAdapter_Privileges(t *testing.T) {
 	}
 }
 
+// --- WU2: custom-tool manager delegation (spec Resolved Owner Update
+// Delegation / Update Gating) ---
+//
+// A custom tool that carries a resolving owner manager MUST delegate its
+// Update() to that manager and MUST NOT invoke its own command. The
+// ManagerAdapter() accessor lets the CLI gate derive the effective policy.
+
+// fakeManagerAdapter is a minimal manager stand-in for custom-tool delegation
+// tests: it records whether Update was invoked, so an owned custom tool that
+// (wrongly) ran its own command instead of delegating fails the assertion.
+type fakeManagerAdapter struct {
+	name    string
+	updated bool
+}
+
+func (f *fakeManagerAdapter) Name() string { return f.name }
+func (f *fakeManagerAdapter) Detect() bool { return true }
+func (f *fakeManagerAdapter) Check() (UpdateInfo, error) {
+	return UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "1.0.0", UpdateAvailable: false}, nil
+}
+func (f *fakeManagerAdapter) Update(dryRun bool) (Result, error) {
+	f.updated = true
+	return Result{Success: true, Before: "1.0.0", After: "1.1.0"}, nil
+}
+func (f *fakeManagerAdapter) Info() ToolInfo {
+	return ToolInfo{ID: f.name, Name: f.name, UpdatePolicy: PolicyGated}
+}
+
+// TestCustomAdapter_VariadicManagerNil keeps the 4-arg form working: no
+// manager passed => standalone custom tool, ManagerAdapter() returns nil.
+func TestCustomAdapter_VariadicManagerNil(t *testing.T) {
+	ca, err := NewCustomAdapter("mytool", "mytool --update", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ca.ManagerAdapter() != nil {
+		t.Error("ManagerAdapter() = non-nil, want nil for a custom tool with no manager")
+	}
+}
+
+// TestCustomAdapter_Update_DelegatesToManager proves an owned custom tool
+// delegates its Update() to the manager: the manager's Update is invoked, the
+// custom tool's own command is never run, and the result carries the manager's
+// before/after versions.
+func TestCustomAdapter_Update_DelegatesToManager(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"brew": true, "mytool": true},
+	})
+	mgr := &fakeManagerAdapter{name: "brew"}
+	ca, err := NewCustomAdapter("mytool", "mytool --update", "", false, mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ca.Update(false)
+	if err != nil {
+		t.Fatalf("Update() unexpected error: %v", err)
+	}
+	if !mgr.updated {
+		t.Error("manager.Update() was not invoked — custom tool did not delegate")
+	}
+	if !result.Success {
+		t.Error("Update() Success = false, want true (manager succeeded)")
+	}
+	if result.Before != "1.0.0" || result.After != "1.1.0" {
+		t.Errorf("Update() Before/After = (%q, %q), want manager's (1.0.0, 1.1.0)", result.Before, result.After)
+	}
+}
+
+// TestCustomAdapter_Info_ManagerAdapter exposes the manager so the CLI gate can
+// resolve the effective policy on the delegated path.
+func TestCustomAdapter_Info_ManagerAdapter(t *testing.T) {
+	mgr := &fakeManagerAdapter{name: "brew"}
+	ca, err := NewCustomAdapter("mytool", "mytool --update", "", false, mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ca.ManagerAdapter(); got != mgr {
+		t.Errorf("ManagerAdapter() = %v, want the injected manager %v", got, mgr)
+	}
+	if ca.Info().Kind != KindTool {
+		t.Errorf("owned custom tool Info().Kind = %v, want KindTool", ca.Info().Kind)
+	}
+}
+
 func TestExtractBaseCommand(t *testing.T) {
 	tests := []struct {
 		cmd  string
