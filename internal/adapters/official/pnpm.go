@@ -115,5 +115,6 @@ func (a *PnpmAdapter) Info() adapters.ToolInfo {
 		Platforms:    []string{"linux", "macos", "windows"},
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
+		Kind:         adapters.KindTool,
 	}
 }

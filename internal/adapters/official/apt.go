@@ -109,6 +109,7 @@ func (a *AptAdapter) Info() adapters.ToolInfo {
 		Platforms:    []string{"linux"},
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
+		Kind:         adapters.KindManager,
 	}
 }
 

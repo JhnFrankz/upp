@@ -106,5 +106,6 @@ func (a *ScoopAdapter) Info() adapters.ToolInfo {
 		Platforms:    []string{"windows"},
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
+		Kind:         adapters.KindManager,
 	}
 }

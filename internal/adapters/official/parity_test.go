@@ -73,6 +73,40 @@ func TestCatalogPlatformsMatchAdapterPlatforms(t *testing.T) {
 	}
 }
 
+// TestCatalogOwnershipMatchesAdapter pins the catalog's display copy of the
+// ownership model to the adapter's declared Kind/Manager, so the two
+// registries (catalog for display, adapter for canonical behavior) cannot
+// silently drift (design: catalog carries a display copy; parity pins both).
+func TestCatalogOwnershipMatchesAdapter(t *testing.T) {
+	catalog := catalogIndex(t)
+	for _, a := range AllAdapters() {
+		id := a.Name()
+		entry, ok := catalog[id]
+		if !ok {
+			continue // already reported by TestEveryAdapterIsInCatalog
+		}
+		info := a.Info()
+		if entry.Kind != info.Kind {
+			t.Errorf("ownership kind drift for %q: catalog %v, adapter %v", id, entry.Kind, info.Kind)
+		}
+		if !sameStringMap(entry.Manager, info.Manager) {
+			t.Errorf("ownership manager drift for %q: catalog %v, adapter %v", id, entry.Manager, info.Manager)
+		}
+	}
+}
+
+func sameStringMap(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 func TestCatalogNamesMatchAdapterNames(t *testing.T) {
 	catalog := catalogIndex(t)
 	for _, a := range AllAdapters() {
