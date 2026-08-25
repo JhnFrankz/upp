@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -40,6 +41,13 @@ type CustomTool struct {
 	Command  string `toml:"command"`
 	CheckCmd string `toml:"check_cmd,omitempty"`
 	Trusted  bool   `toml:"trusted"`
+	// Manager is an optional owning manager ID (apt, brew, winget, scoop).
+	// When declared and resolvable on the current platform, the custom tool
+	// groups and updates under that manager (spec Config Format / design
+	// Config). It is NOT written by `upp init` — an optional, user-declared
+	// field. An unknown or non-manager value is ignored with a warning
+	// (forward-compatible), leaving the tool standalone.
+	Manager string `toml:"manager,omitempty"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -118,7 +126,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid TOML in %s: %w", path, err)
 	}
 
-	if err := Validate(cfg); err != nil {
+	if err := Validate(cfg, os.Stderr); err != nil {
 		return nil, err
 	}
 
@@ -157,10 +165,19 @@ func Save(cfg *Config) error {
 }
 
 // Validate checks the config for structural issues.
-// Returns warnings as nil (non-fatal) — callers should check warnings separately.
-func Validate(cfg *Config) error {
+//
+// It returns an error only for fatal structural problems. Non-fatal warnings
+// (e.g. an unknown custom-tool manager, which is ignored for forward
+// compatibility) are written to the optional warn writers, defaulting to
+// os.Stderr. The variadic form keeps existing single-arg callers working.
+func Validate(cfg *Config, warn ...io.Writer) error {
 	if cfg.Version < 1 {
 		return fmt.Errorf("config version must be >= 1, got %d", cfg.Version)
+	}
+
+	w := io.Writer(os.Stderr)
+	if len(warn) > 0 && warn[0] != nil {
+		w = warn[0]
 	}
 
 	// Detect current platform for compatibility checks
@@ -206,6 +223,17 @@ func Validate(cfg *Config) error {
 	for id, custom := range cfg.Custom {
 		if custom.Command == "" {
 			return fmt.Errorf("custom tool %q missing required 'command' field", id)
+		}
+
+		// A custom tool MAY declare an owning manager (spec Config Format).
+		// A non-empty manager value naming something other than a known
+		// manager-kind official tool is IGNORED (the tool proceeds standalone)
+		// and a warning is emitted — forward-compatible. Empty is a valid
+		// "no manager" declaration.
+		if custom.Manager != "" && !platform.IsManager(custom.Manager) {
+			_, _ = fmt.Fprintf(w, "Warning: custom tool %q: unknown manager %q ignored; tool proceeds standalone\n", id, custom.Manager)
+			custom.Manager = ""
+			cfg.Custom[id] = custom
 		}
 	}
 
