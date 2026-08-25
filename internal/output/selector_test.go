@@ -152,6 +152,72 @@ func TestSelector_RenderShape(t *testing.T) {
 	}
 }
 
+// TestSelector_RenderGroupHeader locks the grouped selector contract (task
+// 3.3): a SelectOption carrying a non-empty Group renders that group header
+// line once, before its options; options with no Group (or the same Group)
+// render without repeating the header; and selection still returns the IDs in
+// display order.
+func TestSelector_RenderGroupHeader(t *testing.T) {
+	var buf bytes.Buffer
+	opts := []SelectOption{
+		{ID: "brew", Label: "brew", Version: "4.0.0 → 4.1.0", Group: "Homebrew"},
+		{ID: "gh", Label: "GitHub CLI", Version: "2.3.0 → 2.4.0", Group: "Homebrew"},
+		{ID: "npm", Label: "npm"},
+	}
+
+	sel := NewCheckboxSelector(&buf, strings.NewReader("\r"), opts)
+	res, err := sel.Run()
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if res.Canceled {
+		t.Error("Run must not report canceled on Enter")
+	}
+	if !slices.Equal(res.Selected, []string{"brew", "gh", "npm"}) {
+		t.Errorf("Selected = %v, want [brew gh npm]", res.Selected)
+	}
+
+	out := buf.String()
+	// Group header renders exactly once, before its two options.
+	if n := strings.Count(out, "Homebrew"); n != 1 {
+		t.Errorf("group header 'Homebrew' must render once, got %d\n%s", n, out)
+	}
+	// Options present; npm (no Group) renders without a header.
+	if !strings.Contains(out, "[x] brew") || !strings.Contains(out, "[x] GitHub CLI") || !strings.Contains(out, "[x] npm") {
+		t.Errorf("grouped selector must render all options, got:\n%s", out)
+	}
+	// Group header precedes its options.
+	if strings.Index(out, "Homebrew") > strings.Index(out, "[x] brew") {
+		t.Errorf("group header must render before its options, got:\n%s", out)
+	}
+}
+
+// TestSelector_GroupSelectionPreservesOrder pins the display-order selection
+// contract with groups (task 3.3): toggling an option across two groups still
+// returns selected IDs in display order (brew group then standalone), never
+// interaction order.
+func TestSelector_GroupSelectionPreservesOrder(t *testing.T) {
+	var buf bytes.Buffer
+	opts := []SelectOption{
+		{ID: "brew", Label: "brew", Group: "Homebrew"},
+		{ID: "gh", Label: "GitHub CLI", Group: "Homebrew"},
+		{ID: "npm", Label: "npm"},
+	}
+	// Deselect brew (cursor stays on brew, one Space): result must be the
+	// display-order remaining set [gh, npm] (brew group item then standalone).
+	sel := NewCheckboxSelector(&buf, strings.NewReader(" \r"), opts)
+	res, err := sel.Run()
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if res.Canceled {
+		t.Error("Run must not report canceled")
+	}
+	if !slices.Equal(res.Selected, []string{"gh", "npm"}) {
+		t.Errorf("Selected = %v, want [gh npm]", res.Selected)
+	}
+}
+
 // --- Raw mode (threat matrix: terminal raw mode) ---
 //
 // The reader is a real *os.File (os.Pipe read end) so Run enters the raw-mode

@@ -57,36 +57,21 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 
-	var entries []output.ListEntry
-	for _, a := range adapterList {
-		info := a.Info()
-		installed := a.Detect()
-
-		status := output.StatusSkipped
-		version := ""
-
-		if installed {
-			status = output.StatusCurrent
-			// Try to get version
-			updateInfo, err := a.Check()
-			if err == nil {
-				version = updateInfo.CurrentVersion
-			}
-		}
-
-		entries = append(entries, output.ListEntry{
-			ID:      info.ID,
-			Name:    info.Name,
-			Status:  status,
-			Version: version,
-		})
-	}
-
-	if len(entries) == 0 {
+	// Build the grouped rows (manager headers first, then their owned tools,
+	// then standalone tools) from the filtered adapter set. Grouping is
+	// display-only: --only/--skip already filtered per-tool ID above, so the
+	// rendered rows round-trip with the filter names (design: display-only).
+	if len(adapterList) == 0 {
 		fmt.Println("No tools configured.")
 		return nil
 	}
 
-	r.ListTools(entries)
+	groups := output.GroupByOwner(adapterList, p.OS)
+	if len(groups) == 0 {
+		fmt.Println("No tools configured.")
+		return nil
+	}
+
+	r.ListTools(groups)
 	return nil
 }
