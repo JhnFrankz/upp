@@ -30,18 +30,18 @@ The system MUST output in English only. Output language is NOT configurable: the
 
 ### Requirement: Live Check Board
 
-In TTY interactive `upp update` runs (stdin is a TTY; `--ci`, `--quiet`, and `--dry-run` are not set), the pre-check phase MUST render a live board with exactly one stable line per filtered tool, laid out in canonical tool discovery order before any result arrives. When an individual tool's check completes, its own line MUST flip in place to a ✓ marker with `current → new`; up-to-date tools MUST remain visible on the board marked ✓ up-to-date; a failed check MUST flip that line to ✗ with its inline error. Completion order MUST NOT reorder board lines. When the board settles, the CheckboxSelector MUST render over the pending-only tool set; up-to-date and failed tools MUST NOT appear in the selector. Board rendering MUST be atomic across concurrent workers: a mutex MUST serialize line updates so output never interleaves or corrupts. When color is unavailable (non-color stdout or non-TTY output), the board MUST fall back to one plain line per completion without ANSI cursor control.
+In TTY interactive `upp update` runs, the pre-check board MUST render one stable line per filtered tool, laid out grouped under per-manager headers in canonical discovery order before any result arrives. Manager headers render first, then their owned tools, then standalone tools. An owned tool MUST NOT appear as a top-level line separate from its manager group. Per-tool completion flip, up-to-date visibility, failed-check ✗ behavior, atomic concurrent rendering, the settled-board gating of the selector, and non-color fallback MUST remain unchanged. Grouping MUST NOT reorder stable board lines or alter completion ordering.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Board renders up-front | TTY, 5 enabled tools | `upp update` pre-check starts | One stable line per tool shown immediately, in canonical order |
-| Per-tool completion flip | brew finishes first, v1.2 → v1.3 available | brew's check completes | Only brew's line flips to ✓ showing `1.2 → 1.3`; other lines unchanged |
-| Up-to-date stays visible | npm is current | npm's check completes | npm's line shows ✓ up-to-date and remains on the board |
-| Failed check flips to ✗ | apt's check errors | apt's check completes | apt's line flips to ✗ with its inline error |
-| Settled board gates selector | Board settled, 2 of 5 tools pending | Pre-check phase ends | CheckboxSelector lists only the 2 pending tools; current and failed tools excluded |
-| Atomic concurrent rendering | Worker pool completes checks concurrently | Multiple lines update at once | Mutex serializes updates; no interleaved or corrupted output |
+| Board renders grouped | TTY, Linux, apt+gh+docker | `upp update` pre-check starts | apt header, then gh+docker child lines, then standalone tools; one stable line per tool |
+| Owned tool in group | Platform Linux, docker owned by apt | Pre-check renders | docker line appears beneath apt header, not top-level |
+| Per-tool completion flip | brew finishes first, v1.2 → v1.3 | brew check completes | Only brew's line flips to ✓ showing `1.2 → 1.3`; other lines unchanged |
+| Settled board gates selector | Board settled, 2 of 5 tools pending | Pre-check ends | CheckboxSelector lists only the 2 pending tools; current and failed excluded |
+| Atomic concurrent rendering | Worker pool completes checks concurrently | Multiple lines update | Mutex serializes updates; no interleaved or corrupted output |
 | Non-color fallback | stdout lacks color support | Pre-check runs | One plain line per completion; no ANSI cursor control |
-| Bypass modes unchanged | `--ci`, `--quiet`, `--dry-run`, or non-TTY stdin | `upp update` | No board; sequential output per existing flag contracts |
+
+(Previously: the board rendered a flat per-tool list with no manager grouping or headers.)
 
 ### Requirement: Color and Emoji
 
@@ -168,33 +168,30 @@ For long-running operations, the system SHOULD show per-operation progress label
 
 ### Requirement: List Table Output
 
-`upp list` MUST render a table whose columns are labeled to match their data and MUST include the tool ID in its own column. The ID column MUST show the IDs used by `--only`/`--skip` and config (`apt`, `brew`, ...), so table rows map to filter names.
+`upp list` MUST render a table whose columns are labeled to match their data and MUST include the tool ID in its own column, and MUST group rows under their owning manager. Manager adapters render as group headers; owned tools (gh, docker, go) render as child rows beneath their resolved manager for the current platform. Owned tools MUST NOT render as standalone top-level rows. Grouping is DISPLAY-ONLY: `--only`/`--skip` filter names remain the per-tool IDs and MUST NOT change semantics.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Correct columns | 10 tools detected | `upp list` | Header `ID \| Name \| Status \| Version`; each row's ID usable with `--only`/`--skip` |
-| Filter round-trip | Row shows ID `apt` | `upp list --only apt` | `apt` listed (row ID matches filter name) |
+| Filter round-trip | Row shows ID `gh` | `upp list --only gh` | `gh` listed (row ID matches filter name) |
+| Grouped by manager | Platform Linux, docker owned by apt | `upp list` | apt renders as header; docker renders as child row beneath it |
+| Owned tool not independent | Platform macOS, gh owned by brew | `upp list` | gh appears under brew group, not as its own top-level row |
+| Filters ignore grouping | `--only gh` and `--skip apt` on Linux | `upp list --only gh --skip apt` | gh still selected by ID regardless of being grouped under apt |
 
-(Previously: the filter round-trip scenario was demonstrated through the now-removed `upp check --only apt`.)
+(Previously: `upp list` rendered a flat per-tool table with no manager grouping; owned tools appeared as independent top-level rows.)
 
 ### Requirement: Interactive Update Tool Selection
 
-In TTY `upp update` runs, the system MUST show a checkbox selector of pending tool updates before any update executes, with all pending tools pre-checked. The system MUST skip the selector when `--ci` is set, when stdin is not a TTY, when `--quiet` is set, or when `--dry-run` is set. When no pending updates exist, the system MUST skip the selector and show the normal summary.
-
-The selector is a user-choice UI, NOT a security confirmation: per-tool `security.ConfirmAction` gating MUST still run unchanged for every selected custom tool.
+In TTY `upp update` runs, the pending-update checkbox selector MUST group pending updates under per-manager headers. Manager adapters with pending self-update render as their group header; owned tools with a pending delegated update render as child rows within their owning manager's group. Grouping is DISPLAY-ONLY and applies to the pending-only set, which is unchanged. The selector remains a user-choice UI, NOT a security confirmation: per-tool `security.ConfirmAction` gating MUST still run unchanged for every selected custom tool.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Default TTY show | TTY stdin, 3 pending updates | `upp update` | Selector rendered with all 3 tools pre-checked; no update executed yet |
-| Enter updates all | Selector shown, 3 pre-checked | Enter pressed | All 3 updated; summary matches full-set update |
-| Esc cancels run | Selector shown, pending updates | Esc pressed | Nothing updated, clear cancel message, exit 0 |
-| `q` cancels run | Selector shown, pending updates | `q` pressed | Nothing updated, clear cancel message, exit 0 |
-| No pending updates | TTY, all tools current | `upp update` | No selector; normal summary shown |
-| `--ci` bypass | `--ci` set, pending updates | `upp update --ci` | No selector; current non-interactive behavior unchanged |
-| Non-TTY bypass | stdin not a TTY, pending updates | `upp update` | No selector rendered; updates proceed non-interactively |
-| `--quiet` bypass | `--quiet` set, pending updates | `upp update --quiet` | No selector; quiet per-tool output + summary |
-| `--dry-run` bypass | `--dry-run` set, pending updates | `upp update --dry-run` | No selector; planned actions listed, no changes |
+| Selector groups pending | TTY, Linux, apt+gh pending | CheckboxSelector renders | apt group header with gh child row pre-checked |
+| Owned tool in group | Platform Windows, winget+gh pending, scoop pending | CheckboxSelector renders | winget group with gh child; scoop as standalone group |
+| Bypass unchanged | `--ci`, non-TTY, `--quiet`, or `--dry-run` | `upp update` | No selector; existing non-interactive behavior unchanged |
 | Not a security confirmation | Custom high-risk tool selected in selector | Selector submitted | `security.ConfirmAction` prompt still shown before execution |
+
+(Previously: the selector rendered a flat pending-only list with no manager grouping.)
 
 ### Requirement: Manager Self-Update Row Rendering
 

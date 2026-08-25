@@ -10,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // fakeUpdateAdapter is a test double for the update gating matrix. It records
@@ -217,6 +219,135 @@ func TestRunUpdate_GatingMatrix(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// --- WU2: gate resolution from owner (spec Update Gating — owned tool INERT) ---
+//
+// resolveEffectiveUpdatePolicy returns the UpdatePolicy that governs whether an
+// adapter's Update() runs. For an owned tool (an official tool with a resolving
+// manager, or a custom tool carrying an injected manager) the MANAGER's policy
+// governs — the owned tool's own declared policy is INERT on the delegated
+// path. The owner is resolved by OS platform key (the WU1 gotcha: platform
+// constants, not runtime.GOOS).
+
+// TestResolvingOwner proves resolvingOwner returns the manager adapter that
+// owns a given adapter on a given OS, or nil when standalone (verify WARNING:
+// cli.resolvingOwner 50% coverage). It exercises both branches directly: the
+// CustomAdapter branch (a custom tool exposing its injected manager via
+// ManagerAdapter) and the official branch (official.ResolveOwner keyed by
+// platform constant). Since resolvingOwner is unexported, the test lives in
+// package cli and drives it through the real adapters via the custom tool's
+// injected manager.
+func TestResolvingOwner(t *testing.T) {
+	t.Run("custom adapter with injected manager returns the manager", func(t *testing.T) {
+		brew := official.AdapterByName("brew")
+		custom, err := adapters.NewCustomAdapter("mytool", "mytool", "", false, brew)
+		if err != nil {
+			t.Fatalf("NewCustomAdapter() error: %v", err)
+		}
+		if got := resolvingOwner(custom, platform.OSMacOS); got == nil || got.Name() != "brew" {
+			t.Errorf("resolvingOwner(custom with brew manager) = %v, want brew adapter", got)
+		}
+	})
+
+	t.Run("custom adapter without manager is standalone nil", func(t *testing.T) {
+		custom, err := adapters.NewCustomAdapter("solo", "solo", "", false)
+		if err != nil {
+			t.Fatalf("NewCustomAdapter() error: %v", err)
+		}
+		if got := resolvingOwner(custom, platform.OSLinux); got != nil {
+			t.Errorf("resolvingOwner(standalone custom) = %v, want nil", got)
+		}
+	})
+
+	t.Run("official tool resolves via ResolveOwner", func(t *testing.T) {
+		gh := official.AdapterByName("gh")
+		if got := resolvingOwner(gh, platform.OSLinux); got == nil || got.Name() != "apt" {
+			t.Errorf("resolvingOwner(gh, linux) = %v, want apt", got)
+		}
+		if got := resolvingOwner(gh, platform.OSMacOS); got == nil || got.Name() != "brew" {
+			t.Errorf("resolvingOwner(gh, macos) = %v, want brew", got)
+		}
+	})
+
+	t.Run("official standalone tool returns nil", func(t *testing.T) {
+		npm := official.AdapterByName("npm")
+		if got := resolvingOwner(npm, platform.OSLinux); got != nil {
+			t.Errorf("resolvingOwner(npm, linux) = %v, want nil (standalone)", got)
+		}
+	})
+}
+
+// TestResolveEffectiveUpdatePolicy pins the INERT ownership semantics across
+// every platform on any host: docker declares AlwaysUpdate but is owned by apt
+// (Gated) on Linux and brew (Always) on macOS; gh is owned by apt (Gated) on
+// Linux and brew (Always) on macOS; go owns nothing on Linux (standalone →
+// own Always policy) but is owned by brew on macOS. Each case drives the
+// effective policy directly, so the darwin branch is proven without running on
+// a Mac.
+func TestResolveEffectiveUpdatePolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		os   string
+		self adapters.UpdatePolicy
+		want adapters.UpdatePolicy
+	}{
+		{"docker-linux-inherits-apt-gated", "docker", "linux", adapters.PolicyAlwaysUpdate, adapters.PolicyGated},
+		{"docker-macos-inherits-brew-always", "docker", "macos", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
+		{"gh-linux-inherits-apt-gated", "gh", "linux", adapters.PolicyAlwaysUpdate, adapters.PolicyGated},
+		{"gh-macos-inherits-brew-always", "gh", "macos", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
+		{"go-linux-standalone-own-always", "go", "linux", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
+		{"go-macos-inherits-brew-always", "go", "macos", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
+		{"npm-standalone-own-gated", "npm", "linux", adapters.PolicyGated, adapters.PolicyGated},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &fakeUpdateAdapter{name: tt.id, policy: tt.self}
+			if got := resolveEffectiveUpdatePolicy(a, tt.os); got != tt.want {
+				t.Errorf("resolveEffectiveUpdatePolicy(%q, %q) = %v, want %v", tt.id, tt.os, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRunUpdate_OwnedToolInheritsGatedGate proves the INERT gate at the
+// sequential flow level on a Linux host: an owned tool (docker) declaring
+// PolicyAlwaysUpdate must be SKIPPED as current (never updated) when its
+// resolving manager (apt, Gated) reports no update available. This is the
+// "docker owned by apt (Gated) on Linux, apt check reports no update →
+// delegated apt.Update() skipped; docker reported current" scenario.
+func TestRunUpdate_OwnedToolInheritsGatedGate(t *testing.T) {
+	probeHome(t)
+	// docker's own Check reports no update (its design behavior); the manager
+	// apt is Gated, so the gate skips docker even though docker's own declared
+	// policy is AlwaysUpdate.
+	docker := &fakeUpdateAdapter{
+		name:   "docker",
+		policy: adapters.PolicyAlwaysUpdate, // docker's own policy — INERT
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "26.1.4",
+			LatestVersion:   "26.1.4",
+			UpdateAvailable: false, // docker reports no self-update availability
+		},
+		result: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(docker),
+		stdinIsTTY:       func() bool { return false },
+	}
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("runUpdate returned error: %v", err)
+		}
+	})
+	if docker.updated {
+		t.Error("owned docker must inherit apt (Gated) policy and NOT update when apt reports no update")
+	}
+	if !strings.Contains(out, "Up to date: docker") {
+		t.Errorf("owned docker must be reported current; got: %q", out)
 	}
 }
 
@@ -1088,7 +1219,7 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 			r := output.NewRendererForced(&buf, false, false, gf.Quiet, false)
 
 			run := func() {
-				failed := processSelectedOutcome(gf, tt.fake, tt.updateInfo, 1, 1, r, &results)
+				failed := processSelectedOutcome(gf, tt.fake, tt.updateInfo, 1, 1, r, &results, "linux")
 				if failed != tt.wantFailed {
 					t.Errorf("processSelectedOutcome() failed = %v, want %v", failed, tt.wantFailed)
 				}

@@ -338,6 +338,35 @@ func TestCheckBoard_ConcurrentComplete_SerializesUpdates(t *testing.T) {
 	}
 }
 
+// TestCheckBoard_GroupedOrder_Preserved locks the grouped board contract
+// (task 3.3): when names arrive in group order (manager row first, then its
+// owned tools, then standalone tools) the board preserves that grouped order
+// exactly — the manager row anchors its group and is the first line of it.
+// Slot logic is unchanged: completions flip by index, never reorder lines.
+func TestCheckBoard_GroupedOrder_Preserved(t *testing.T) {
+	var buf bytes.Buffer
+	// Group order: brew (manager) then gh (owned by brew), then npm standalone.
+	b := NewCheckBoard(&buf, true, []string{"brew", "gh", "npm"})
+	b.Start()
+
+	assertFrame(t, replay(&buf), []string{
+		"  ⟳ brew",
+		"  ⟳ gh",
+		"  ⟳ npm",
+	})
+
+	// Flip brew (index 0) and npm (index 2); gh stays pending. Order (brew,
+	// gh, npm) is never reordered by completion.
+	b.Complete(0, ToolResult{Name: "brew", Status: StatusCurrent, Version: "4.1.0"})
+	b.Complete(2, ToolResult{Name: "npm", Status: StatusAvailable, Version: "10.0.0 → 10.1.0"})
+
+	assertFrame(t, replay(&buf), []string{
+		"  ✓ brew up-to-date",
+		"  ⟳ gh",
+		"  ✓ npm 10.0.0 → 10.1.0",
+	})
+}
+
 // --- Defensive: out-of-range indices are ignored, never panic ---
 
 func TestCheckBoard_Complete_OutOfRangeIndexIgnored(t *testing.T) {

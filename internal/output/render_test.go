@@ -3,9 +3,14 @@ package output
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 func TestStatusIcons_ColorMode(t *testing.T) {
@@ -332,7 +337,7 @@ func TestListTools(t *testing.T) {
 		{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
 	}
 
-	r.ListTools(entries)
+	r.ListTools([]Group{{Items: entries}})
 
 	output := buf.String()
 	if !strings.Contains(output, "Homebrew") {
@@ -352,7 +357,7 @@ func TestListTools_IDColumn(t *testing.T) {
 		{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
 	}
 
-	r.ListTools(entries)
+	r.ListTools([]Group{{Items: entries}})
 
 	output := buf.String()
 	header := strings.SplitN(output, "\n", 2)[0]
@@ -367,6 +372,138 @@ func TestListTools_IDColumn(t *testing.T) {
 	// display name.
 	if !strings.Contains(output, "brew") || !strings.Contains(output, "npm") {
 		t.Errorf("list rows must show tool IDs usable with --only/--skip, got:\n%s", output)
+	}
+}
+
+// TestListTools_GroupedHeaderThenChildren locks the design grouping contract
+// (task 3.1): a manager group renders its header line (the manager name) first,
+// then the manager's own row, then the owned tool rows indented beneath it; a
+// standalone group renders its rows without a header line; and the standalone
+// group comes after all manager groups.
+func TestListTools_GroupedHeaderThenChildren(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	groups := []Group{
+		{
+			Header: "Homebrew",
+			Items: []ListEntry{
+				{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
+				{ID: "gh", Name: "GitHub CLI", Status: StatusCurrent, Version: "2.4.0"},
+			},
+		},
+		{
+			Items: []ListEntry{
+				{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
+			},
+		},
+	}
+
+	r.ListTools(groups)
+
+	output := buf.String()
+	// Manager header line present for the brew group.
+	if !strings.Contains(output, "Homebrew") {
+		t.Errorf("manager group must render its header, got:\n%s", output)
+	}
+	// Manager's own row and its owned tool row both present.
+	if !strings.Contains(output, "brew") || !strings.Contains(output, "gh") {
+		t.Errorf("group rows must include the manager and its owned tool, got:\n%s", output)
+	}
+	// Standalone group present after the manager group.
+	if !strings.Contains(output, "npm") {
+		t.Errorf("standalone group must render after manager groups, got:\n%s", output)
+	}
+	// The header line carries only "ID | Name | Status | Version".
+	header := strings.SplitN(output, "\n", 2)[0]
+	if !strings.Contains(header, "ID") || !strings.Contains(header, "Name") {
+		t.Errorf("column header must lead the grouped output, got: %q", header)
+	}
+}
+
+// TestGroupByOwner_LinuxGroupsOwnedTools proves GroupByOwner (task 3.2) groups
+// owned tools under their resolving manager header, then places standalone
+// tools last. On linux, docker and gh are owned by apt; brew/apt are managers
+// present in the set; npm/nvm/pnpm/bun/opencode/go are standalone (go has no
+// linux owner). Manager headers follow official.AllAdapters order.
+func TestGroupByOwner_LinuxGroupsOwnedTools(t *testing.T) {
+	tools := official.AdaptersForPlatform(platform.OSLinux)
+
+	groups := GroupByOwner(tools, platform.OSLinux)
+
+	// The manager groups appear first, in AllAdapters order (apt, brew).
+	// apt owns docker + gh on linux; brew owns nothing on linux (go's linux
+	// owner is absent, so go is standalone).
+	var gotHeaders []string
+	for _, g := range groups {
+		if g.Header != "" {
+			gotHeaders = append(gotHeaders, g.Header)
+		}
+	}
+
+	aptFound := slices.Contains(gotHeaders, "APT Package Manager")
+	brewFound := slices.Contains(gotHeaders, "Homebrew")
+	if !aptFound {
+		t.Errorf("apt manager header missing; got headers %v", gotHeaders)
+	}
+	if !brewFound {
+		t.Errorf("brew manager header missing; got headers %v", gotHeaders)
+	}
+
+	// Docker + gh must be grouped under apt (their linux owner) — find the apt
+	// group and confirm it contains both.
+	var aptGroup *Group
+	for i := range groups {
+		if groups[i].Header == "APT Package Manager" {
+			aptGroup = &groups[i]
+			break
+		}
+	}
+	if aptGroup == nil {
+		t.Fatalf("no apt group found in %+v", groups)
+	}
+	ids := make([]string, len(aptGroup.Items))
+	for i, item := range aptGroup.Items {
+		ids[i] = item.ID
+	}
+	if !slices.Contains(ids, "docker") || !slices.Contains(ids, "gh") {
+		t.Errorf("apt group must own docker+gh, got ids %v", ids)
+	}
+
+	// Every tool is placed exactly once across all groups (no lost/duplicated
+	// rows, filter round-trip intact).
+	var allIDs []string
+	for _, g := range groups {
+		for _, item := range g.Items {
+			allIDs = append(allIDs, item.ID)
+		}
+	}
+	for _, a := range tools {
+		if !slices.Contains(allIDs, a.Name()) {
+			t.Errorf("tool %s missing from grouping output", a.Name())
+		}
+	}
+}
+
+// TestGroupByOwner_FilteredManagerNoPhantomHeader pins the display-only
+// grouping contract (task 3.5): when a manager is filtered out (not in the
+// input set), its owned tools fall to the standalone group rather than
+// producing a phantom manager header — the --only/--skip round-trip IDs stay
+// usable.
+func TestGroupByOwner_FilteredManagerNoPhantomHeader(t *testing.T) {
+	// Build a set with ONLY docker (its linux owner apt filtered out).
+	tools := []adapters.Adapter{official.AdapterByName("docker")}
+
+	groups := GroupByOwner(tools, platform.OSLinux)
+
+	if len(groups) != 1 {
+		t.Fatalf("expected exactly 1 group (standalone), got %d: %+v", len(groups), groups)
+	}
+	if groups[0].Header != "" {
+		t.Errorf("filtered-out manager must not create a phantom header, got %q", groups[0].Header)
+	}
+	if len(groups[0].Items) != 1 || groups[0].Items[0].ID != "docker" {
+		t.Errorf("docker must round-trip in the standalone group, got %+v", groups[0].Items)
 	}
 }
 

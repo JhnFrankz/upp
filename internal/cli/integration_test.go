@@ -287,6 +287,42 @@ func TestListCommand_NoConfig(t *testing.T) {
 	}
 }
 
+// TestListCommand_FilterRoundTrip_GroupingDisplayOnly proves the --only/--skip
+// filter round-trip survives the grouping change (task 3.5): runList filters
+// by per-tool ID BEFORE GroupByOwner, so a filtered ID still appears as a row
+// (usable with --only/--skip) even when its owning manager was filtered out —
+// grouping is display-only and never drops or renames a row ID.
+func TestListCommand_FilterRoundTrip_GroupingDisplayOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// docker is owned by apt on linux. Request --only docker so apt (the
+	// manager) is filtered out; docker must still render a row (round-trip
+	// ID), never be dropped by a phantom manager group.
+	docker := &fakeUpdateAdapter{
+		name:   "docker",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "26.0.0"},
+	}
+	setCLIDeps(t, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(docker)}, selfUpdateDeps{})
+
+	output := withCapturedStdout(func() {
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs([]string{"list", "--only", "docker"})
+		_ = root.Execute()
+	})
+
+	if !strings.Contains(output, "docker") {
+		t.Errorf("--only docker must round-trip the docker row despite grouping, got:\n%s", output)
+	}
+	// The filtered-out manager (apt) must not render a phantom header.
+	if strings.Contains(output, "APT Package Manager") {
+		t.Errorf("filtered-out manager must not create a phantom header, got:\n%s", output)
+	}
+}
+
 // --- Update Dry-Run Command Integration Tests (ported from `upp check`) ---
 
 // TestUpdateDryRunCommand_NoConfig is the `upp update --dry-run` port of the
@@ -702,6 +738,75 @@ func TestMultipleCustomTools(t *testing.T) {
 
 	if customCount != 3 {
 		t.Errorf("expected 3 custom adapters, got %d", customCount)
+	}
+}
+
+// --- WU4: buildAdapterList threads custom-tool manager ---
+
+// TestBuildAdapterList_ThreadsCustomManager pins the WU4 contract (design
+// Config; spec Config Format): a custom tool declaring a valid `manager` gets
+// that manager resolved from the OFFICIAL registry and injected as the
+// adapter's ManagerAdapter, so the delegated update + grouping paths can use
+// it. The resolution happens in the CLI layer (buildAdapterList) because the
+// adapters package must not import the official registry (no import cycle).
+func TestBuildAdapterList_ThreadsCustomManager(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Custom["mytool"] = config.CustomTool{
+		Command: "mytool --update",
+		Trusted: false,
+		Manager: "brew", // valid manager-kind official tool
+	}
+
+	adapterList := buildAdapterList(cfg, "linux")
+
+	var custom *adapters.CustomAdapter
+	for _, a := range adapterList {
+		if ca, ok := a.(*adapters.CustomAdapter); ok && ca.Name() == "mytool" {
+			custom = ca
+			break
+		}
+	}
+	if custom == nil {
+		t.Fatal("custom adapter 'mytool' should be in adapter list")
+	}
+	mgr := custom.ManagerAdapter()
+	if mgr == nil {
+		t.Fatal("custom tool with manager='brew' should have an injected ManagerAdapter")
+	}
+	if mgr.Name() != "brew" {
+		t.Errorf("ManagerAdapter().Name() = %q, want %q", mgr.Name(), "brew")
+	}
+	// The injected manager must be a manager-kind official adapter.
+	if mgr.Info().Kind != adapters.KindManager {
+		t.Errorf("injected manager Kind = %v, want KindManager", mgr.Info().Kind)
+	}
+}
+
+// TestBuildAdapterList_UnknownManagerStaysStandalone pins that a custom tool
+// with a manager value naming an UNKNOWN tool (already cleared by config
+// Validate, but guarded here too) leaves the tool standalone: no manager is
+// injected, so the delegated path is not taken.
+func TestBuildAdapterList_UnknownManagerStaysStandalone(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Custom["mytool"] = config.CustomTool{
+		Command: "mytool --update",
+		Manager: "bogus", // unknown — not a manager-kind official tool
+	}
+
+	adapterList := buildAdapterList(cfg, "linux")
+
+	var custom *adapters.CustomAdapter
+	for _, a := range adapterList {
+		if ca, ok := a.(*adapters.CustomAdapter); ok && ca.Name() == "mytool" {
+			custom = ca
+			break
+		}
+	}
+	if custom == nil {
+		t.Fatal("custom adapter 'mytool' should be in adapter list even with unknown manager")
+	}
+	if custom.ManagerAdapter() != nil {
+		t.Error("custom tool with unknown manager must stay standalone (nil ManagerAdapter)")
 	}
 }
 

@@ -83,6 +83,7 @@ func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
 		Platforms:    []string{"linux", "macos", "windows"},
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
+		Kind:         adapters.KindTool,
 	}
 }
 

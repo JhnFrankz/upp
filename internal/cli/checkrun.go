@@ -162,7 +162,20 @@ func buildAdapterList(cfg *config.Config, osName string) []adapters.Adapter {
 
 	// Add custom adapters
 	for id, custom := range cfg.Custom {
-		a, err := adapters.NewCustomAdapter(id, custom.Command, custom.CheckCmd, custom.Trusted)
+		// A custom tool MAY declare an owning manager (spec Config Format).
+		// The config `manager` string is resolved HERE (in the CLI layer) to
+		// an adapters.Adapter, because the adapters package must not import
+		// the official registry (no import cycle). Only a known manager-kind
+		// official tool (apt/brew/winget/scoop) is acceptable as an owner;
+		// an unknown/non-manager value leaves the tool standalone — but config
+		// Validate already cleared such a value, so this is a defensive guard.
+		var managerArgs []adapters.Adapter
+		if custom.Manager != "" {
+			if mgr := official.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == adapters.KindManager {
+				managerArgs = append(managerArgs, mgr)
+			}
+		}
+		a, err := adapters.NewCustomAdapter(id, custom.Command, custom.CheckCmd, custom.Trusted, managerArgs...)
 		if err != nil {
 			continue
 		}

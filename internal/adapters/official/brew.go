@@ -92,6 +92,7 @@ func (a *BrewAdapter) Info() adapters.ToolInfo {
 		Platforms:    []string{"linux", "macos"},
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
+		Kind:         adapters.KindManager,
 	}
 }
 

@@ -3,7 +3,6 @@ package official
 import (
 	"fmt"
 	"runtime"
-	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 )
@@ -38,63 +37,24 @@ func (a *GhAdapter) Update(dryRun bool) (adapters.Result, error) {
 		return adapters.Result{Success: false}, fmt.Errorf("gh is not installed")
 	}
 
-	before := extractVersion(commandOutput("gh", "--version"))
-
-	if dryRun {
-		return adapters.Result{
-			Success: true,
-			Before:  before,
-			After:   before,
-		}, nil
+	// Delegated update path (WU2, spec Official Adapter Catalog / Resolved
+	// Owner Update Delegation): an owned tool delegates to its resolving
+	// manager rather than run its own hardcoded manager command. The manager's
+	// Update() runs its self-only command (apt self-only, brew update, winget
+	// self-only) — never an "apt install gh" / "brew upgrade gh" invocation.
+	// runtime.GOOS is translated to the platform key because ResolveOwner is
+	// keyed by PLATFORM constants (linux/macos/windows), not runtime.GOOS
+	// (darwin) — the WU1-documented gotcha.
+	if owner := ResolveOwner("gh", runtimeGOOSToPlatform(runtime.GOOS)); owner != nil {
+		return owner.Update(dryRun)
 	}
 
-	var cmd string
-	var privileges []string
-
-	switch runtime.GOOS {
-	case "linux":
-		cmd = "sudo apt update -qq && sudo apt install -y gh"
-		privileges = []string{"sudo"}
-	case "darwin":
-		cmd = "brew upgrade gh"
-	case "windows":
-		cmd = "winget upgrade gh --accept-source-agreements --accept-package-agreements"
-	default:
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("unsupported platform: %s", runtime.GOOS),
-		}, nil
-	}
-
-	_, stderr, err := runCmd(cmd)
-	if err != nil {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("gh update failed: %w", err),
-			Privileges: privileges,
-		}, nil
-	}
-
-	if stderr != "" && (strings.Contains(stderr, "Error") || strings.Contains(stderr, "error") || strings.Contains(stderr, "E:")) {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("gh update error: %s", truncate(stderr, 200)),
-			Privileges: privileges,
-		}, nil
-	}
-
-	after := extractVersion(commandOutput("gh", "--version"))
+	// Unreachable in practice: gh is owned on every supported platform. Kept
+	// as a fail-closed fallback rather than silently returning an empty result
+	// if the ownership map ever regresses.
 	return adapters.Result{
-		Success:    true,
-		Before:     before,
-		After:      after,
-		Privileges: privileges,
+		Success: false,
+		Error:   fmt.Errorf("gh has no resolving owner on %s", runtime.GOOS),
 	}, nil
 }
 
@@ -105,5 +65,7 @@ func (a *GhAdapter) Info() adapters.ToolInfo {
 		Platforms:    []string{"linux", "macos", "windows"},
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
+		Kind:         adapters.KindTool,
+		Manager:      map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
 	}
 }
