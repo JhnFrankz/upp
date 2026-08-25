@@ -373,20 +373,29 @@ func (r *Renderer) detailSummary(summary Summary) {
 
 // --- List output ---
 
-// ListTools renders a table of detected tools.
-func (r *Renderer) ListTools(tools []ListEntry) {
+// ListTools renders a table of detected tools, grouped by owning manager
+// when groups carry a non-empty Header (design: group rendering/wiring).
+// Each group prints its manager header line once, then its child rows indented
+// beneath it (the manager's own row leads, followed by the tools it owns).
+// A standalone group (empty Header) prints only its rows.
+func (r *Renderer) ListTools(groups []Group) {
 	w := tabwriter.NewWriter(r.w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 		r.cyan("ID"), "Name", "Status", "Version")
 
-	for _, t := range tools {
-		status := r.statusLabel(t.Status)
-		version := t.Version
-		if version == "" {
-			version = "-"
+	for _, g := range groups {
+		if g.Header != "" {
+			_, _ = fmt.Fprintf(w, "%s\n", g.Header)
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			t.ID, t.Name, status, version)
+		for _, t := range g.Items {
+			status := r.statusLabel(t.Status)
+			version := t.Version
+			if version == "" {
+				version = "-"
+			}
+			_, _ = fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+				t.ID, t.Name, status, version)
+		}
 	}
 	_ = w.Flush()
 }

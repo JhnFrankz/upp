@@ -14,6 +14,7 @@ type SelectOption struct {
 	ID      string // tool ID (--only/--skip key)
 	Label   string // display name
 	Version string // inline "Current → Latest"
+	Group   string // owning manager label; non-empty options render a group header line first
 }
 
 // SelectResult holds the outcome of a selector run.
@@ -69,7 +70,15 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 	// buffer/pipe writers stay plain (existing Renderer conventions).
 	r := NewRenderer(s.w, false)
 	render := func() {
+		lastGroup := ""
 		for i, opt := range s.opts {
+			// A group header line renders once, before the first option of
+			// that group (design: selector group headers). Options without a
+			// Group field (or repeated within a contiguous run) are unaffected.
+			if opt.Group != "" && opt.Group != lastGroup {
+				_, _ = fmt.Fprintln(s.w, opt.Group)
+				lastGroup = opt.Group
+			}
 			marker := "[ ]"
 			if selected[i] {
 				marker = "[x]"

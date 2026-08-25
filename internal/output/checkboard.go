@@ -29,7 +29,11 @@ type CheckBoard struct {
 }
 
 // NewCheckBoard creates a board with one pending row per tool name, in the
-// given canonical order. color enables the in-place ANSI board; callers pass
+// given canonical order. For grouped runs the caller passes names in group
+// order (manager rows first, then their owned tools, then standalone tools),
+// so header-anchored manager rows lead their groups; a separate header line is
+// not emitted — the manager's own row is the group anchor (slot logic
+// unchanged). color enables the in-place ANSI board; callers pass
 // Renderer.Color() so TTY detection keeps a single source of truth (D5).
 func NewCheckBoard(w io.Writer, color bool, tools []string) *CheckBoard {
 	lines := make([]string, len(tools))

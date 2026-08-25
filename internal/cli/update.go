@@ -280,6 +280,9 @@ func timeoutErr(name, op string, err error) error {
 // and the carried-outcome loop that updates only the user's selection. A
 // cancel shows the fixed message and exits 0; the selector is skipped
 // entirely when nothing is pending (spec ux-patterns "No pending updates").
+//
+// osName is the canonical platform key used to resolve an owned tool's
+// effective UpdatePolicy from its manager on the delegated path (WU2).
 func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string) error {
 	// Pre-check: concurrent Detect + Check over the filtered set. The
 	// outcomes carry updateInfo so the loop below never re-calls Check()
@@ -289,25 +292,35 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 	// through the onResult seam, and settled before the selector renders.
 	// Color follows the renderer's single TTY detection (D5); without color
 	// the board falls back to one plain line per completion.
-	names := make([]string, len(filteredAdapters))
-	for i, a := range filteredAdapters {
+	//
+	// Grouping (design render/wiring): the filtered set is reordered into
+	// group order (manager rows first, then their owned tools, then
+	// standalone tools) so the board rows and the selector options appear
+	// grouped by ownership. Display-only: the reorder never changes per-tool
+	// completion or the filtered set membership/IDs. For the hermetic fake
+	// adapters in tests (all standalone) this is a no-op that preserves
+	// byte-identical behavior.
+	grouped := output.GroupOrder(filteredAdapters, osName)
+	names := make([]string, len(grouped))
+	for i, a := range grouped {
 		names[i] = a.Info().Name
 	}
 	board := output.NewCheckBoard(os.Stdout, r.Color(), names)
 	board.Start()
-	outcomes := runChecks(filteredAdapters, func(index int, oc checkOutcome) {
+	outcomes := runChecks(grouped, func(index int, oc checkOutcome) {
 		board.Complete(index, oc.result)
 	})
 	board.Finish()
 
-	// Pending = tools with an update available, in input order (D9).
+	// Pending = tools with an update available, in group order (D9).
 	var pending []output.SelectOption
-	for _, oc := range outcomes {
+	for i, oc := range outcomes {
 		if oc.result.Status == output.StatusAvailable {
 			pending = append(pending, output.SelectOption{
 				ID:      oc.result.Name,
 				Label:   oc.result.Name,
 				Version: oc.result.Version,
+				Group:   output.OwnerGroupLabel(grouped[i], osName, grouped),
 			})
 		}
 	}

@@ -287,6 +287,42 @@ func TestListCommand_NoConfig(t *testing.T) {
 	}
 }
 
+// TestListCommand_FilterRoundTrip_GroupingDisplayOnly proves the --only/--skip
+// filter round-trip survives the grouping change (task 3.5): runList filters
+// by per-tool ID BEFORE GroupByOwner, so a filtered ID still appears as a row
+// (usable with --only/--skip) even when its owning manager was filtered out —
+// grouping is display-only and never drops or renames a row ID.
+func TestListCommand_FilterRoundTrip_GroupingDisplayOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// docker is owned by apt on linux. Request --only docker so apt (the
+	// manager) is filtered out; docker must still render a row (round-trip
+	// ID), never be dropped by a phantom manager group.
+	docker := &fakeUpdateAdapter{
+		name:   "docker",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "26.0.0"},
+	}
+	setCLIDeps(t, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(docker)}, selfUpdateDeps{})
+
+	output := withCapturedStdout(func() {
+		root, gf := BuildRoot()
+		AddCommands(root, gf)
+		root.SetArgs([]string{"list", "--only", "docker"})
+		_ = root.Execute()
+	})
+
+	if !strings.Contains(output, "docker") {
+		t.Errorf("--only docker must round-trip the docker row despite grouping, got:\n%s", output)
+	}
+	// The filtered-out manager (apt) must not render a phantom header.
+	if strings.Contains(output, "APT Package Manager") {
+		t.Errorf("filtered-out manager must not create a phantom header, got:\n%s", output)
+	}
+}
+
 // --- Update Dry-Run Command Integration Tests (ported from `upp check`) ---
 
 // TestUpdateDryRunCommand_NoConfig is the `upp update --dry-run` port of the
