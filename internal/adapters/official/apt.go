@@ -87,6 +87,47 @@ func (a *AptAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// UpdatePackage runs the per-package update command for an owned tool under
+// apt (e.g. `sudo apt install --only-upgrade gh`), via apt's privileged
+// (sudo) executor. This is the manager-group bulk path (design D3): it
+// upgrades the owned PACKAGE, NOT apt's self-only row. It is the sudo-gated
+// mutating counterpart to CheckPackage's read-only availability query.
+func (a *AptAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
+	}
+
+	before, _ := a.CurrentVersion()
+	_, stderr, err := runCmd(fmt.Sprintf("sudo apt install --only-upgrade %s", pkg))
+	if err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("apt upgrade failed: %w", err),
+			Privileges: []string{"sudo"},
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "E:") {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("apt upgrade error: %s", truncate(stderr, 200)),
+			Privileges: []string{"sudo"},
+		}, nil
+	}
+
+	after, _ := a.CurrentVersion()
+	return adapters.Result{
+		Success:    true,
+		Before:     before,
+		After:      after,
+		Privileges: []string{"sudo"},
+	}, nil
+}
+
 func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")

@@ -70,6 +70,54 @@ func (a *WingetAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// UpdatePackage runs the per-package update command for an owned tool under
+// winget (e.g. `winget upgrade gh`), via winget's executor. This is the
+// manager-group bulk path (design D3): it upgrades the owned PACKAGE, NOT
+// winget's self-only `winget upgrade winget`. winget is a non-privileged
+// manager, so the group update may auto-proceed.
+func (a *WingetAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
+	}
+
+	before := commandOutput("winget", "--version")
+	before = extractVersionFromString(before)
+	if before == "" {
+		before = "unknown"
+	}
+
+	_, stderr, err := runCmd(fmt.Sprintf("winget upgrade %s", pkg))
+	if err != nil {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("winget upgrade failed: %w", err),
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "Error") {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
+		}, nil
+	}
+
+	after := commandOutput("winget", "--version")
+	after = extractVersionFromString(after)
+	if after == "" {
+		after = "unknown"
+	}
+
+	return adapters.Result{
+		Success: true,
+		Before:  before,
+		After:   after,
+	}, nil
+}
+
 func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")

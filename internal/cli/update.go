@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -30,6 +31,13 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&uf.DryRun, "dry-run", "n", false, "show planned actions without executing")
+	// Opt-in group bulk flags (spec command-interface Opt-in flags / bulk-update
+	// Opt-In Group Bulk Trigger): --manager <mgr> and its alias --update-group
+	// <mgr>. Either binds uf.Manager, which routes runUpdate to the
+	// manager-group bulk path. Present but inert in the default path (a bare
+	// `upp update` leaves Manager empty — bulk default is a later increment).
+	cmd.Flags().StringVar(&uf.Manager, "manager", "", "run a manager-group bulk update of <mgr>'s owned tools (opt-in)")
+	cmd.Flags().StringVar(&uf.Manager, "update-group", "", "alias for --manager: run a manager-group bulk update of <mgr>'s owned tools (opt-in)")
 
 	return cmd
 }
@@ -64,6 +72,14 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 		deps.buildAdapterList = buildAdapterList
 	}
 	adapterList := deps.buildAdapterList(cfg, p.OS)
+
+	// Opt-in group bulk path (design D3): when --manager / --update-group is
+	// set, route to runUpdateGroup and bypass the standard per-tool path
+	// entirely. A bare `upp update` leaves uf.Manager empty, so the default
+	// path is unchanged (spec bulk-update "Default unchanged").
+	if uf.Manager != "" {
+		return runUpdateGroup(gf, uf, adapterList, p.OS)
+	}
 
 	toolIDs := adapterIDs(adapterList)
 	onlyList, skipList := ParseFilter(gf.Only, gf.Skip)
@@ -498,6 +514,273 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 		Stderr: errMsg.Error(),
 	})
 	return true
+}
+
+// runUpdateGroup implements the opt-in manager-group bulk path (spec
+// bulk-update, design D3): `upp update --manager <mgr>` / `--update-group
+// <mgr>` enumerates the manager's resolving owned tools on the current
+// platform, drops any --skip-ed, checks per-package availability, gates on the
+// manager's UpdatePolicy, confirms by REAL command risk (EnforceRisk, D4), and
+// runs each owned tool's per-manager package command via the manager's
+// privileged executor. It returns a manager-group bulk summary.
+//
+// The manager's own self-only row is NEVER conflated with the owned-tool group
+// batch (spec bulk-update "Manager self separate"): apt's own self path stays
+// apt.Update; the group path upgrades gh/docker via their package commands.
+//
+// osName is the canonical platform key (platform.OSLinux/OSMacOS/OSWindows).
+func runUpdateGroup(gf *GlobalFlags, uf *UpdateFlags, adapterList []adapters.Adapter, osName string) error {
+	manager := adapterByName(adapterList, uf.Manager)
+	if manager == nil {
+		return fmt.Errorf("manager %q not found in the current platform", uf.Manager)
+	}
+	if manager.Info().Kind != adapters.KindManager {
+		return fmt.Errorf("%q is not a manager", uf.Manager)
+	}
+
+	// Enumerate the manager's owned tools (KindTool whose resolving owner on
+	// this platform is the manager), then drop --skip-ed.
+	_, skipList := ParseFilter(gf.Only, gf.Skip)
+	var owned []adapters.Adapter
+	for _, a := range adapterList {
+		if a.Info().Kind != adapters.KindTool {
+			continue
+		}
+		owner := resolvingOwner(a, osName)
+		if owner == nil || owner.Name() != uf.Manager {
+			continue
+		}
+		owned = append(owned, a)
+	}
+	owned = filterGroupSkip(owned, skipList)
+
+	r := output.NewRendererVerbose(os.Stdout, gf.Quiet, gf.Verbose)
+
+	// Per-package availability (spec bulk-update Per-Package Availability
+	// Check). A tool whose package has no update (or whose check fails) is
+	// reported current / skipped — it is NOT updated.
+	var tools []groupTool
+	for _, a := range owned {
+		pkg := ownedPackage(a, osName)
+		if pkg == "" {
+			// Fail-closed: no declared package → skipped from the batch, never
+			// guessed (design Migration/Rollout).
+			continue
+		}
+		checker, ok := manager.(adapters.PackageChecker)
+		if !ok {
+			return fmt.Errorf("manager %q does not support per-package checks", uf.Manager)
+		}
+		info, err := checker.CheckPackage(pkg)
+		t := groupTool{adapter: a, pkg: pkg}
+		if err != nil {
+			t.failed = true
+		} else {
+			t.info = info
+		}
+		tools = append(tools, t)
+	}
+
+	// Gate (design D5): the group's gate IS the manager's UpdatePolicy. A
+	// PolicyGated manager (apt) gates the group on availability: each owned
+	// tool updates only when its package has an update, and the group is
+	// blocked (all reported current) when no owned package is available. A
+	// PolicyAlwaysUpdate manager (brew, winget, scoop) runs its group when
+	// requested — owned tools update regardless of the check result (spec
+	// tool-adapter "Owned inherits always").
+	managerPolicy := resolveEffectiveUpdatePolicy(manager, osName)
+
+	// Group bulk summary, built in canonical enumeration order (spec
+	// ux-patterns Group bulk summary).
+	var results []output.ToolResult
+	hasFailure := false
+	for _, t := range tools {
+		info := t.adapter.Info()
+		if t.failed {
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusFailed,
+			})
+			hasFailure = true
+			continue
+		}
+		// Per-Package Availability (spec bulk-update): a Gated manager's owned
+		// tool whose package has no update is reported current, never updated.
+		// An AlwaysUpdate manager's owned tool is NOT availability-blocked — it
+		// proceeds to confirm + update (single-adapter parity).
+		if managerPolicy == adapters.PolicyGated && !t.info.UpdateAvailable {
+			results = append(results, output.ToolResult{
+				Name:    info.Name,
+				Status:  output.StatusCurrent,
+				Version: t.info.CurrentVersion,
+			})
+			continue
+		}
+
+		// Dry-run: show the planned package update without executing it (spec
+		// ux-patterns "Group dry-run": a pending owned tool reports "would
+		// update"). Dry-run fires BEFORE the confirm block so a sudo group in
+		// --dry-run never prompts nor mutates.
+		if uf.DryRun {
+			results = append(results, output.ToolResult{
+				Name:    info.Name,
+				Status:  output.StatusAvailable,
+				Version: fmt.Sprintf("%s → %s", t.info.CurrentVersion, t.info.LatestVersion),
+			})
+			continue
+		}
+
+		// Confirm by REAL command risk (design D4, spec security-model): an
+		// owned tool is TrustOfficial, but a sudo-heavy package command
+		// (apt) MUST prompt / fail in --ci despite that.
+		riskCommand := fmt.Sprintf("%s %s", updateCmdName(uf.Manager), t.pkg)
+		riskLevel := security.ClassifyCommand(riskCommand)
+		decision := security.ConfirmAction(security.ConfirmConfig{
+			ToolName:    info.Name,
+			TrustLevel:  info.Trust,
+			RiskLevel:   riskLevel,
+			Command:     riskCommand,
+			Privileges:  info.Privileges,
+			CI:          gf.CI,
+			EnforceRisk: true,
+		})
+
+		switch decision {
+		case security.ConfirmDeny:
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusSkipped,
+			})
+			continue
+		case security.ConfirmError:
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusFailed,
+				Error:  fmt.Errorf("CI mode: group update requires confirmation"),
+			})
+			hasFailure = true
+			continue
+		}
+
+		// Run the owned tool's per-manager package command via the manager's
+		// privileged executor (PackageUpdater).
+		updater, ok := manager.(adapters.PackageUpdater)
+		if !ok {
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusFailed,
+				Error:  fmt.Errorf("manager %q does not support per-package updates", uf.Manager),
+			})
+			hasFailure = true
+			continue
+		}
+		result, err := updater.UpdatePackage(t.pkg)
+		if err != nil {
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusFailed,
+				Error:  timeoutErr(info.Name, "update", err),
+			})
+			hasFailure = true
+			continue
+		}
+		if result.Success {
+			results = append(results, output.ToolResult{
+				Name:    info.Name,
+				Status:  output.StatusUpdated,
+				Version: result.After,
+			})
+		} else {
+			errMsg := result.Error
+			if errMsg == nil {
+				errMsg = fmt.Errorf("update failed")
+			}
+			results = append(results, output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusFailed,
+				Error:  timeoutErr(info.Name, "update", errMsg),
+			})
+			hasFailure = true
+		}
+	}
+
+	// Render the group bulk summary per owned tool in canonical order.
+	for _, res := range results {
+		r.ToolLine(res)
+	}
+
+	// --ci: a high-risk sudo group update that needed confirmation fails
+	// non-zero (spec security-model "--ci sudo group fails").
+	if gf.CI && hasFailure {
+		return fmt.Errorf("group update completed with failures")
+	}
+
+	return nil
+}
+
+// groupTool is one owned tool in a manager-group bulk batch, carrying its
+// package name, its per-package availability, and whether the availability
+// check failed (a failed check is never "available" nor current — it is
+// reported failed).
+type groupTool struct {
+	adapter adapters.Adapter
+	pkg     string
+	info    adapters.UpdateInfo
+	failed  bool
+}
+
+// adapterByName returns the adapter in the list with the given name, or nil.
+func adapterByName(adapterList []adapters.Adapter, name string) adapters.Adapter {
+	for _, a := range adapterList {
+		if a.Name() == name {
+			return a
+		}
+	}
+	return nil
+}
+
+// filterGroupSkip drops any owned tool named in the --skip list. It matches by
+// tool ID (case-insensitive), consistent with the per-tool filter. Unlike
+// FilterTools it does not warn about unknown names (the group batch is
+// derived from the ownership model, not user-provided the selector set).
+func filterGroupSkip(owned []adapters.Adapter, skipList []string) []adapters.Adapter {
+	if len(skipList) == 0 {
+		return owned
+	}
+	skipSet := make(map[string]bool, len(skipList))
+	for _, s := range skipList {
+		skipSet[strings.ToLower(s)] = true
+	}
+	var result []adapters.Adapter
+	for _, a := range owned {
+		if skipSet[strings.ToLower(a.Name())] {
+			continue
+		}
+		result = append(result, a)
+	}
+	return result
+}
+
+// ownedPackage returns the package name under the resolving manager for an
+// owned tool on osName, or "" when none is declared (fail-closed: absent
+// entries skip the group batch, never guessed).
+func ownedPackage(a adapters.Adapter, osName string) string {
+	return a.Info().ManagerPackage[osName]
+}
+
+// updateCmdName returns the package-manager command token used to build the
+// conventional risk command for a manager's owned-package command.
+func updateCmdName(manager string) string {
+	switch manager {
+	case "apt":
+		return "sudo apt install --only-upgrade"
+	case "brew":
+		return "brew upgrade"
+	case "winget":
+		return "winget upgrade"
+	default:
+		return manager + " upgrade"
+	}
 }
 
 // resolveEffectiveUpdatePolicy returns the UpdatePolicy that governs whether
