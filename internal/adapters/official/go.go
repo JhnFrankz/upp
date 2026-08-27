@@ -108,13 +108,14 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *GoAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "go",
-		Name:         "Go",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindTool,
-		Manager:      map[string]string{"macos": "brew", "windows": "winget"},
+		ID:             "go",
+		Name:           "Go",
+		Platforms:      []string{"linux", "macos", "windows"},
+		Trust:          adapters.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
+		Kind:           adapters.KindTool,
+		Manager:        map[string]string{"macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"},
 	}
 }
 

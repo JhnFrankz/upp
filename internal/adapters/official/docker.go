@@ -58,12 +58,13 @@ func (a *DockerAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *DockerAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "docker",
-		Name:         "Docker",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindTool,
-		Manager:      map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
+		ID:             "docker",
+		Name:           "Docker",
+		Platforms:      []string{"linux", "macos", "windows"},
+		Trust:          adapters.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
+		Kind:           adapters.KindTool,
+		Manager:        map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"linux": "docker-ce", "macos": "docker", "windows": "Docker.Docker"},
 	}
 }

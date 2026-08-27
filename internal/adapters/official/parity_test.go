@@ -92,6 +92,66 @@ func TestCatalogOwnershipMatchesAdapter(t *testing.T) {
 		if !sameStringMap(entry.Manager, info.Manager) {
 			t.Errorf("ownership manager drift for %q: catalog %v, adapter %v", id, entry.Manager, info.Manager)
 		}
+		if !sameStringMap(entry.ManagerPackage, info.ManagerPackage) {
+			t.Errorf(
+				"ownership package drift for %q: catalog %v, adapter %v",
+				id, entry.ManagerPackage, info.ManagerPackage,
+			)
+		}
+	}
+}
+
+// TestCatalogPackageMapping pins the sudo-critical package mapping against the
+// catalog mirror (task 1.5 golden table). The mapping is the source of truth
+// for what command a manager-group bulk update runs, so the exact package
+// names per platform must be pinned here AND in the adapter Info(), and both
+// must agree (TestCatalogOwnershipMatchesAdapter). The docker->docker-ce row
+// on apt is the highest-risk entry: a typo would run a wrong sudo command.
+func TestCatalogPackageMapping(t *testing.T) {
+	catalog := catalogIndex(t)
+	for _, a := range AllAdapters() {
+		id := a.Name()
+		entry, ok := catalog[id]
+		if !ok {
+			continue // already reported by TestEveryAdapterIsInCatalog
+		}
+		if !sameStringMap(entry.ManagerPackage, a.Info().ManagerPackage) {
+			t.Errorf(
+				"package map drift for %q: catalog %v, adapter %v",
+				id, entry.ManagerPackage, a.Info().ManagerPackage,
+			)
+		}
+	}
+}
+
+// TestEveryManagerHasManagerPackage pins the WU1 invariant: every owned
+// tool's Manager[p] MUST have a corresponding ManagerPackage[p]. An owned
+// tool whose manager is known but whose package is not would make a
+// manager-group bulk update run a wrong command (or a sudo command with the
+// wrong package name), so the package map must not silently lag the manager
+// map. This test references adapters.ToolInfo.ManagerPackage, which does not
+// exist until WU1.GREEN adds the field — so it is the RED test for task 1.1.
+func TestEveryManagerHasManagerPackage(t *testing.T) {
+	for _, a := range AllAdapters() {
+		info := a.Info()
+		for platform, owner := range info.Manager {
+			if pkg := info.ManagerPackage[platform]; pkg == "" {
+				t.Errorf(
+					"tool %q is owned by %q on %q but declares no ManagerPackage[%q]; "+
+						"add the per-platform package name so an owned tool can be bulk-updated",
+					info.ID, owner, platform, platform,
+				)
+			}
+		}
+		for platform := range info.ManagerPackage {
+			if info.Manager[platform] == "" {
+				t.Errorf(
+					"tool %q declares ManagerPackage[%q]=%q but has no owner on %q; "+
+						"a package must never exist without its owner",
+					info.ID, platform, info.ManagerPackage[platform], platform,
+				)
+			}
+		}
 	}
 }
 

@@ -15,7 +15,7 @@ Every adapter MUST implement four operations:
 - `update() → Result` — perform the update, return success/failure + details
 - `list() → ToolInfo` — return installed tool info (name, version, source, owning manager, kind)
 
-`ToolInfo` MUST carry an owning `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` otherwise). A tool with a resolving owner on the current platform reports that manager; a tool with no owner reports no manager.
+`ToolInfo` MUST carry an owning `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` otherwise). A tool with a resolving owner on the current platform reports that manager; a tool with no owner reports no manager. A `ToolInfo` whose `Kind=KindTool` and that has a resolving owner on the current platform MUST also declare a per-manager package-name entry (see Per-Manager Package Mapping), so the owned tool's package under its manager is known.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -27,8 +27,9 @@ Every adapter MUST implement four operations:
 | Update fails | Update command exits non-zero | `update()` called | `success=false`, error message returned |
 | ToolInfo carries owner | docker installed on Linux | `list()` called | `ToolInfo` includes `Manager["linux"]="apt"`, `Kind=KindTool` |
 | Manager carries kind | apt installed on Linux | `list()` called | `ToolInfo.Kind=KindManager` |
+| Owned tool carries package | gh owned by apt on Linux | `list()` called | `ToolInfo` declares package `gh` under `Manager["linux"]="apt"` |
 
-(Previously: `list() → ToolInfo` returned only name/version/source; `ToolInfo` had no `Manager` or `Kind` field.)
+(Previously: `list() → ToolInfo` returned only name/version/source; `ToolInfo` had no `Manager` or `Kind` field, and no per-manager package-name field existed.)
 
 ### Requirement: Official Adapter Catalog
 
@@ -60,6 +61,25 @@ Each official adapter MUST use the platform-native update mechanism. An owned to
 | Linux apt self-only | Platform Linux, apt installed | `apt.update()` | Runs `sudo apt install --only-upgrade apt` (never `apt upgrade`) |
 
 (Previously: gh/docker/go ran their own hardcoded manager commands (e.g. `gh.go` ran `sudo apt update && sudo apt install -y gh`) and appeared as independent update rows duplicating manager logic.)
+
+### Requirement: Per-Manager Package Mapping
+
+Every owned tool adapter (gh, docker, go) MUST declare, per platform, the package name under its owning manager. The system MUST NOT infer a package name from the tool ID (the names differ). Declared minimum mapping:
+
+| Tool | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| gh | `gh` | `gh` | `gh` |
+| docker | `docker-ce` | `docker` | `Docker.Docker` |
+| go | `golang` | `golang` | `GoLang.Go` |
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| docker on apt | Platform Linux, docker owned by apt | package resolved | Package = `docker-ce` |
+| docker on winget | Platform Windows, docker owned by winget | package resolved | Package = `Docker.Docker` |
+| go on brew | Platform macOS, go owned by brew | package resolved | Package = `golang` |
+| gh on apt | Platform Linux, gh owned by apt | package resolved | Package = `gh` |
+
+(Previously: owned tools had no per-manager package-name concept; delegated update ran the manager's self-only command, so the owned tool's package was never named.)
 
 ### Requirement: Adapter Error Handling
 
