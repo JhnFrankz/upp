@@ -21,6 +21,10 @@ type checkCase struct {
 	newAdpt func() adapters.Adapter
 	fakes   execFakes
 	setup   func(t *testing.T)
+	// goos restricts a row to one runtime.GOOS ("" = any). Needed because the
+	// owned tools (gh/docker/go) delegate to a platform-specific manager after
+	// WU2, so a given Check() result depends on the host OS.
+	goos    string
 	want    adapters.UpdateInfo
 	wantErr bool
 	// wantErrContains, when set with wantErr, requires the error message to
@@ -42,6 +46,15 @@ const (
 	nvmCurrentCmd   = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'"
 	nvmRemoteCmd    = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'"
 )
+
+// aptPolicyCmd builds the exact `apt-cache policy <pkg>` shell command that
+// AptAdapter.CheckPackage runs to extract one field (Installed / Candidate).
+// The test builds the fake key with the same format string the production
+// adapter uses, so a key mismatch is a test failure rather than a silent fake
+// miss.
+func aptPolicyCmd(pkg, field string) string {
+	return fmt.Sprintf("bash -o pipefail -c 'apt-cache policy %s 2>/dev/null | grep \"%s:\" | awk \"{print \\$2}\"'", pkg, field)
+}
 
 // exitErrFromChild runs `sh -c "exit N"` for real and returns its error — a
 // genuine *exec.ExitError — so exit-code interpretation rows exercise a real
@@ -392,62 +405,169 @@ func TestCheck(t *testing.T) {
 			wantErr: true,
 		},
 
-		// --- gh (version extraction) ---
-		{
-			name:    "gh/normal",
-			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
-			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
-			},
-			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.45.0", UpdateAvailable: false},
-		},
-		{
-			name:    "gh/empty-output",
-			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
-			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
-				cmdArgs:  map[string]fakeResult{"gh": {}},
-			},
-			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
-		},
+		// --- gh (WU2: delegated to the resolving manager's CheckPackage) ---
+		// gh is owned on every supported platform, so its Check() delegates to
+		// the resolving manager's CheckPackage(pkg) rather than reading its own
+		// version. Each row is GOOS-gated because the resolving manager (and
+		// thus the package query) differs per platform. The fake keys build the
+		// exact manager package-query command the manager adapter runs
+		// (apt-cache policy / brew outdated --json / winget upgrade), so a key
+		// mismatch is a test failure, never a silent fake miss.
 		{
 			name:    "gh/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			fakes:   execFakes{lookPath: map[string]bool{"gh": false}},
 			wantErr: true,
 		},
+		{
+			name:    "gh/linux-delegates-apt-available",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true},
+				shell: map[string]fakeResult{
+					aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
+					aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
+		},
+		{
+			name:    "gh/linux-delegates-apt-current",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true},
+				shell: map[string]fakeResult{
+					aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
+					aptPolicyCmd("gh", "Candidate"): {stdout: "2.45.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.45.0", UpdateAvailable: false},
+		},
+		{
+			name:    "gh/linux-delegates-apt-command-fails",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true},
+				shell: map[string]fakeResult{
+					aptPolicyCmd("gh", "Installed"): {err: errors.New("apt-cache: command not found")},
+					aptPolicyCmd("gh", "Candidate"): {err: errors.New("apt-cache: command not found")},
+				},
+			},
+			wantErr:         true,
+			wantErrContains: "apt check failed",
+		},
+		{
+			name:    "gh/macos-delegates-brew-available",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "darwin",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true},
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
+		},
+		{
+			name:    "gh/macos-delegates-brew-current",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "darwin",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true},
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.45.0"}]`},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.45.0", UpdateAvailable: false},
+		},
+		{
+			name:    "gh/windows-delegates-winget-available",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "windows",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true},
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade gh": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
+		},
 
-		// --- docker (version extraction) ---
-		{
-			name:    "docker/normal",
-			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
-			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
-			},
-			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.1.4", UpdateAvailable: false},
-		},
-		{
-			name:    "docker/empty-output",
-			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
-			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
-				cmdArgs:  map[string]fakeResult{"docker": {}},
-			},
-			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
-		},
+		// --- docker (WU2: delegated to the resolving manager's CheckPackage) ---
 		{
 			name:    "docker/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			fakes:   execFakes{lookPath: map[string]bool{"docker": false}},
 			wantErr: true,
 		},
-
-		// --- go (go version parsing) ---
 		{
-			name:    "go/normal",
+			name:    "docker/linux-delegates-apt-available",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true},
+				shell: map[string]fakeResult{
+					aptPolicyCmd("docker-ce", "Installed"): {stdout: "26.1.4"},
+					aptPolicyCmd("docker-ce", "Candidate"): {stdout: "26.2.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.2.0", UpdateAvailable: true},
+		},
+		{
+			name:    "docker/linux-delegates-apt-current",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true},
+				shell: map[string]fakeResult{
+					aptPolicyCmd("docker-ce", "Installed"): {stdout: "26.1.4"},
+					aptPolicyCmd("docker-ce", "Candidate"): {stdout: "26.1.4"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.1.4", UpdateAvailable: false},
+		},
+		{
+			name:    "docker/macos-delegates-brew-available",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "darwin",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true},
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json docker": {stdout: `[{"name":"docker","installed_versions":["26.1.4"],"current_version":"26.2.0"}]`},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.2.0", UpdateAvailable: true},
+		},
+		{
+			name:    "docker/windows-delegates-winget-available",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "windows",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true},
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade Docker.Docker": {stdout: "Name  Id  Version  Available  Source\n------\nDocker  Docker.Docker  26.1.4  26.2.0  winget\n"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.2.0", UpdateAvailable: true},
+		},
+
+		// --- go (WU2: delegated when owned, standalone on linux) ---
+		// go is owned only on macOS (brew) and Windows (winget); on Linux it has
+		// no resolving owner, so Check() reads its own `go version` (standalone
+		// manual binary path, matching its Update()).
+		{
+			name:    "go/not-installed-error",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"go": false}},
+			wantErr: true,
+		},
+		{
+			name:    "go/linux-standalone-normal",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
 				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
@@ -455,19 +575,28 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "1.22.0", LatestVersion: "1.22.0", UpdateAvailable: false},
 		},
 		{
-			name:    "go/empty-output",
+			name:    "go/macos-delegates-brew-available",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "darwin",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
-				cmdArgs:  map[string]fakeResult{"go": {}},
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json golang": {stdout: `[{"name":"golang","installed_versions":["1.21.0"],"current_version":"1.22.0"}]`},
+				},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
+			want: adapters.UpdateInfo{CurrentVersion: "1.21.0", LatestVersion: "1.22.0", UpdateAvailable: true},
 		},
 		{
-			name:    "go/not-installed-error",
+			name:    "go/windows-delegates-winget-available",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
-			fakes:   execFakes{lookPath: map[string]bool{"go": false}},
-			wantErr: true,
+			goos:    "windows",
+			fakes: execFakes{
+				lookPath: map[string]bool{"go": true},
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade GoLang.Go": {stdout: "Name  Id  Version  Available  Source\n------\nGo  GoLang.Go  1.21.0  1.22.0  winget\n"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "1.21.0", LatestVersion: "1.22.0", UpdateAvailable: true},
 		},
 
 		// --- opencode (version extraction) ---
@@ -712,6 +841,9 @@ func TestCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.goos != "" && tt.goos != runtime.GOOS {
+				t.Skipf("row is for %s, running on %s", tt.goos, runtime.GOOS)
+			}
 			if tt.setup != nil {
 				tt.setup(t)
 			}
@@ -762,3 +894,171 @@ var (
 	one = 1
 	two = 2
 )
+
+// checkPackageCase is one table row for CheckPackage(): fakes drive the exec
+// seam and pkg supplies the package name under the manager.
+type checkPackageCase struct {
+	name    string
+	checker adapters.PackageChecker
+	pkg     string
+	fakes   execFakes
+	want    adapters.UpdateInfo
+	wantErr bool
+	// wantErrContains, when set with wantErr, requires the error message to
+	// contain the substring (structured tool/operation failure).
+	wantErrContains string
+}
+
+// TestCheckPackage covers the WU2 manager-level package-availability check
+// (design D2): apt/brew/winget each implement CheckPackage(pkg) by querying
+// the package system for a specific owned package (apt-cache policy / brew
+// outdated --json / winget upgrade), NOT the manager's own self check. Every
+// row is hermetic — setExecFakes swaps the exec seam, no real subprocess runs.
+func TestCheckPackage(t *testing.T) {
+	tests := []checkPackageCase{
+		// --- apt: apt-cache policy <pkg> Installed vs Candidate ---
+		{
+			name:    "apt/available",
+			checker: &AptAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
+					aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
+		},
+		{
+			name:    "apt/current",
+			checker: &AptAdapter{},
+			pkg:     "docker-ce",
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					aptPolicyCmd("docker-ce", "Installed"): {stdout: "26.1.4"},
+					aptPolicyCmd("docker-ce", "Candidate"): {stdout: "26.1.4"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.1.4", UpdateAvailable: false},
+		},
+		{
+			name:    "apt/not-installed-none",
+			checker: &AptAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					aptPolicyCmd("gh", "Installed"): {stdout: "(none)"},
+					aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "2.46.0", UpdateAvailable: false},
+		},
+		{
+			name:    "apt/command-fails",
+			checker: &AptAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				shell: map[string]fakeResult{
+					aptPolicyCmd("gh", "Installed"): {err: errors.New("apt-cache: command not found")},
+					aptPolicyCmd("gh", "Candidate"): {err: errors.New("apt-cache: command not found")},
+				},
+			},
+			wantErr:         true,
+			wantErrContains: "apt check failed",
+		},
+
+		// --- brew: brew outdated --json <pkg> current vs latest ---
+		{
+			name:    "brew/available",
+			checker: &BrewAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
+		},
+		{
+			name:    "brew/current-empty",
+			checker: &BrewAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {stdout: `[]`},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
+		},
+		{
+			name:    "brew/command-fails",
+			checker: &BrewAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {err: errors.New("brew: network error")},
+				},
+			},
+			wantErr:         true,
+			wantErrContains: "brew check failed",
+		},
+
+		// --- winget: winget upgrade <pkg> own row (generalized) ---
+		{
+			name:    "winget/available",
+			checker: &WingetAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade gh": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
+		},
+		{
+			name:    "winget/current",
+			checker: &WingetAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade gh": {stdout: "Name  Id  Version  Available  Source\n------\nfoo  Baz.Corp.App  1.0.0  2.0.0  winget\n"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
+		},
+		{
+			name:    "winget/empty-output",
+			checker: &WingetAdapter{},
+			pkg:     "gh",
+			fakes: execFakes{
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade gh": {stdout: ""},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setExecFakes(t, tt.fakes)
+
+			got, err := tt.checker.CheckPackage(tt.pkg)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("CheckPackage() error = nil, want error")
+				}
+				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("CheckPackage() error = %q, want contains %q", err, tt.wantErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CheckPackage() unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("CheckPackage() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

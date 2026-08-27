@@ -50,6 +50,26 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// CheckPackage reports the installed vs available version of an owned package
+// (e.g. `gh`, `Docker.Docker`, `GoLang.Go`) under winget, so an owned tool's
+// delegated Check() and the manager-group bulk path know a real update exists
+// (design D2). It runs `winget upgrade <pkg>` (a read-only availability query
+// — NOT the mutating `winget upgrade --all`) and parses the owned package's
+// own row. Like winget.Check, a package that lists no row is reported current
+// (fail-closed: no phantom update).
+func (a *WingetAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErr("winget", "upgrade", pkg)
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	current, latest, found := parseWingetPackageUpgradeOutput(stdout, pkg)
+	return adapters.UpdateInfo{
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: found && current != latest,
+	}, nil
+}
+
 func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")

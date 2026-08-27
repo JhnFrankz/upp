@@ -52,6 +52,41 @@ func (a *AptAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// CheckPackage reports the installed vs candidate version of an owned package
+// (e.g. `gh`, `docker-ce`) under apt, so an owned tool's delegated Check() and
+// the manager-group bulk path know a real update exists (design D2). It
+// queries `apt-cache policy <pkg>` with the same bash -o pipefail pipeline
+// apt.Check uses, so a real apt-cache failure is a structured error, not a
+// silent (none) — an owned package that is absent (not installed) is
+// "unknown" and never an update.
+func (a *AptAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := shellOutputErr(fmt.Sprintf("bash -o pipefail -c 'apt-cache policy %s 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'", pkg), "apt")
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	current := strings.TrimSpace(stdout)
+	if current == "" || current == "(none)" {
+		current = "unknown"
+	}
+
+	stdout, err = shellOutputErr(fmt.Sprintf("bash -o pipefail -c 'apt-cache policy %s 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'", pkg), "apt")
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	latest := strings.TrimSpace(stdout)
+	if latest == "" {
+		latest = "unknown"
+	}
+
+	updateAvailable := current != "unknown" && latest != "unknown" && current != latest
+
+	return adapters.UpdateInfo{
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: updateAvailable,
+	}, nil
+}
+
 func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
