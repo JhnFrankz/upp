@@ -54,6 +54,48 @@ func (a *BrewAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// UpdatePackage runs the per-package update command for an owned tool under
+// brew (e.g. `brew upgrade gh`), via brew's executor. This is the manager-group
+// bulk path (design D3): it upgrades the owned FORMULA, NOT brew's self-only
+// `brew update`. brew is a non-privileged (no sudo) manager, so the group
+// update may auto-proceed (spec security-model "Non-sudo group proceeds").
+func (a *BrewAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
+	}
+
+	before := commandOutput("brew", "--version")
+	before = extractVersionFromString(before)
+
+	_, stderr, err := runCmd(fmt.Sprintf("brew upgrade %s", pkg))
+	if err != nil {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("brew upgrade failed: %w", err),
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "Error") {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("brew upgrade error: %s", truncate(stderr, 200)),
+		}, nil
+	}
+
+	after := commandOutput("brew", "--version")
+	after = extractVersionFromString(after)
+
+	return adapters.Result{
+		Success: true,
+		Before:  before,
+		After:   after,
+	}, nil
+}
+
 func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")

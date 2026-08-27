@@ -76,6 +76,19 @@ type PackageChecker interface {
 	CheckPackage(packageName string) (UpdateInfo, error)
 }
 
+// PackageUpdater is implemented by manager adapters (apt/brew/winget) that can
+// run the per-package update COMMAND for an owned tool under that manager
+// (e.g. `sudo apt install --only-upgrade gh`, `brew upgrade gh`,
+// `winget upgrade gh`). This is the manager-group bulk path's privileged
+// executor (design D3): each owned tool's package command runs through its
+// resolving manager, NOT the manager's self-only Update(). The manager's own
+// self-only row is never conflated with the owned-tool group update.
+type PackageUpdater interface {
+	// UpdatePackage runs the package update command for one owned package and
+	// returns the per-tool Result.
+	UpdatePackage(packageName string) (Result, error)
+}
+
 // UpdateInfo holds version information returned by Check().
 type UpdateInfo struct {
 	CurrentVersion  string

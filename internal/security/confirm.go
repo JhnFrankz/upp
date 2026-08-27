@@ -35,6 +35,12 @@ type ConfirmConfig struct {
 	Privileges []string
 	CI         bool
 	Reader     io.Reader // injectable for testing
+	// EnforceRisk bypasses the TrustOfficial → ConfirmAuto short-circuit so
+	// the REAL command risk decides (design D4). Default false keeps every
+	// existing decision byte-identical. Only the manager-group bulk path sets
+	// it true: an owned tool is TrustOfficial, but its package command may be
+	// sudo-heavy (apt), so High→prompt/CI-error even for official owned tools.
+	EnforceRisk bool
 }
 
 // ConfirmAction determines whether to prompt and returns the decision.
