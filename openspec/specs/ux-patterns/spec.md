@@ -92,7 +92,7 @@ Every `update` run (including `--dry-run`) MUST end with a summary showing:
 - List of tools in each category
 - Overall status message
 
-Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M skipped"). The summary MUST NOT print "All tools up to date." when any enabled tool was skipped or unchecked. A `--dry-run` summary MUST NOT print "All clean!" when any update is pending; pending updates MUST be reported explicitly. The tool list and status lines in the summary report MUST follow a 100% deterministic order matching canonical tool discovery order, unaffected by out-of-order concurrent completion during execution.
+Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M skipped"). A manager-group bulk update MUST render a group bulk summary listing each owned tool that was updated, skipped (`--skip`-ed), current, or failed within the group. The summary MUST NOT print "All tools up to date." when any enabled tool was skipped or unchecked. A `--dry-run` summary MUST NOT print "All clean!" when any update is pending; pending updates MUST be reported explicitly. The tool list and status lines in the summary report MUST follow a 100% deterministic order matching canonical tool discovery order, unaffected by out-of-order concurrent completion during execution.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -102,8 +102,20 @@ Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M s
 | Up-to-date with skips | 8 current, 2 enabled tools skipped (not installed) | `upp update --dry-run` | Summary counts skipped explicitly ("8 up to date, 2 skipped"); never "All tools up to date." |
 | Dry-run pending | 3 updates pending, 7 current | `upp update --dry-run` | Summary reports "3 would update"; never pairs "All clean!" with pending updates |
 | Concurrent deterministic order | Tools complete out-of-order across concurrent workers | `upp update --dry-run` finishes | Summary report lists tools strictly in canonical tool discovery order |
+| Group bulk summary | Linux, apt group updates gh (success), docker skipped | `upp update --manager apt --skip docker` | Group summary lists gh updated, docker skipped |
+| Group partial fail | brew group: gh updated, docker failed | `upp update --manager brew` | Group summary lists gh updated, docker failed |
+| Group dry-run | apt group, gh pending, docker current | `upp update --manager apt --dry-run` | Group summary reports gh would update, docker current |
 
-(Previously: the summary contract was anchored on `check` runs; the read-only query surface is now `update --dry-run`.)
+(Previously: the summary contract was anchored on `check` runs; the read-only query surface is now `update --dry-run`, and no manager-group bulk summary existed.)
+
+### Requirement: Opt-In Flag UX
+
+`--manager <mgr>` and `--update-group <mgr>` MUST be documented as opt-in flags on `upp update` that trigger a manager-group bulk update. The group bulk UX MUST render which owned tools are in the batch, which are excluded by `--skip`, and whether the batch is gated, before executing.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Help documents flags | `upp update --help` runs | Help shown | `--manager` and `--update-group` listed as opt-in group bulk flags |
+| Batch rendered | Linux, apt owns gh/docker | `upp update --manager apt` | Batch UX shows gh and docker; docker marked skipped if `--skip docker` |
 
 ### Requirement: `--quiet` Verbosity
 

@@ -371,6 +371,167 @@ func (r *Renderer) detailSummary(summary Summary) {
 	}
 }
 
+// --- Group bulk summary (WU5) ---
+
+// GroupBulkSummary holds the results of a manager-group bulk update (spec
+// ux-patterns Summary Report: each owned tool updated, skipped, current, or
+// failed within the group). Results MUST be in canonical discovery order —
+// the renderer never reorders by completion or groups by status category, so
+// out-of-order concurrent completion cannot reorder the report (deterministic
+// order rule).
+type GroupBulkSummary struct {
+	// Manager is the owning manager's display label for the group header.
+	Manager string
+	// DryRun indicates a --dry-run group: pending tools report "would update".
+	DryRun bool
+	// Results are the group batch outcomes in canonical discovery order.
+	Results []ToolResult
+}
+
+// GroupBulkSummary renders the group bulk summary: a manager header, then one
+// line per owned tool in canonical order describing its outcome (updated /
+// skipped / current / failed / would update). It does NOT print "All tools up
+// to date." when any tool in the batch was skipped or unchecked, and it never
+// pairs "All clean!" with a pending update (spec ux-patterns Summary Report).
+func (r *Renderer) GroupBulkSummary(summary GroupBulkSummary) {
+	_, _ = fmt.Fprintln(r.w)
+
+	if summary.Manager != "" {
+		_, _ = fmt.Fprintf(r.w, "  %s\n", r.cyan(summary.Manager))
+	}
+
+	for _, res := range summary.Results {
+		label := r.statusLabel(res.Status)
+		if res.Status == StatusAvailable && summary.DryRun {
+			label = "would update"
+		}
+		if res.Status == StatusFailed {
+			errMsg := ""
+			if res.Error != nil {
+				errMsg = " (" + res.Error.Error() + ")"
+			}
+			_, _ = fmt.Fprintf(r.w, "    %s %s %s%s\n", r.statusIcon(StatusFailed), r.red(res.Name), "failed", errMsg)
+			continue
+		}
+		version := ""
+		if res.Version != "" {
+			version = " " + r.dim(res.Version)
+		}
+		_, _ = fmt.Fprintf(r.w, "    %s %s %s%s\n", r.statusIcon(res.Status), r.cyan(res.Name), label, version)
+	}
+
+	// Deterministic aggregate line (spec ux-patterns Summary Report): counts
+	// every category explicitly; never claims "All clean!" on a dry-run.
+	updated, skipped, failed := countByStatus(summary.Results)
+	current := countByStatusType(summary.Results, StatusCurrent)
+	available := 0
+	if summary.DryRun {
+		available = countByStatusType(summary.Results, StatusAvailable)
+	}
+
+	var parts []string
+	if updated > 0 || (summary.DryRun && available > 0) {
+		label := "updated"
+		if summary.DryRun {
+			label = "would update"
+		}
+		count := updated + available
+		if summary.DryRun {
+			count = available // only the pending tools "would update" on a dry-run
+		}
+		parts = append(parts, r.green(fmt.Sprintf("%d %s", count, label)))
+	}
+	if current > 0 {
+		parts = append(parts, fmt.Sprintf("%d current", current))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
+	}
+	if failed > 0 {
+		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
+	}
+
+	if len(parts) == 0 {
+		_, _ = fmt.Fprintf(r.w, "  %s No owned tools in the group. Nothing to do.\n", r.statusIcon(StatusSkipped))
+		return
+	}
+	summaryLine := strings.Join(parts, ", ")
+	allClean := !summary.DryRun && updated == 0 && failed == 0 && skipped == 0 && current > 0
+	if failed > 0 {
+		_, _ = fmt.Fprintf(r.w, "  %s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
+	} else if allClean {
+		_, _ = fmt.Fprintf(r.w, "  %s %s, 0 failed. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
+	} else {
+		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusUpdated), summaryLine)
+	}
+}
+
+// GroupBatchTool is a single owned tool in the planned manager-group batch,
+// rendered BEFORE any update executes (spec ux-patterns Opt-In Flag UX).
+type GroupBatchTool struct {
+	// Name is the owned tool's display name.
+	Name string
+	// UpdateAvailable indicates the tool's package has an update pending (a
+	// Gated manager will update it; an AlwaysUpdate manager runs regardless).
+	UpdateAvailable bool
+	// Version is a "current → latest" display when UpdateAvailable is true.
+	Version string
+	// Skipped indicates the tool was excluded from the batch via --skip.
+	Skipped bool
+	// CheckFailed indicates the per-package availability check errored; the
+	// tool is reported "check failed", never current nor update available.
+	CheckFailed bool
+}
+
+// GroupBatchPreview is the planned manager-group bulk batch shown before
+// execution: the manager header, each owned tool and its planned state, and
+// whether the batch is gated.
+type GroupBatchPreview struct {
+	// Manager is the owning manager's display label.
+	Manager string
+	// Gated indicates the batch inherits a PolicyGated manager (apt): owned
+	// tools update only when their package has an update. An AlwaysUpdate
+	// manager (brew/winget/scoop) is ungated and runs regardless.
+	Gated bool
+	// Tools is the planned batch in canonical discovery order.
+	Tools []GroupBatchTool
+}
+
+// GroupBatchPreview renders the planned manager-group batch before execution:
+// a manager header line, one line per owned tool describing its planned state
+// (update available / current / skipped via --skip / check failed), and a
+// "Batch gated: yes|no" line. It never claims "All clean!" — this is a
+// PRE-execution plan, not a result.
+func (r *Renderer) GroupBatchPreview(preview GroupBatchPreview) {
+	_, _ = fmt.Fprintln(r.w)
+
+	if preview.Manager != "" {
+		_, _ = fmt.Fprintf(r.w, "  %s (manager)\n", r.cyan(preview.Manager))
+	}
+
+	for _, t := range preview.Tools {
+		switch {
+		case t.CheckFailed:
+			_, _ = fmt.Fprintf(r.w, "    %s %s (check failed)\n", r.statusIcon(StatusFailed), r.cyan(t.Name))
+		case t.Skipped:
+			_, _ = fmt.Fprintf(r.w, "    %s %s (skipped via --skip)\n", r.statusIcon(StatusSkipped), r.cyan(t.Name))
+		case t.UpdateAvailable:
+			_, _ = fmt.Fprintf(r.w, "    %s %s (update available)\n", r.statusIcon(StatusAvailable), r.cyan(t.Name))
+			if t.Version != "" {
+				_, _ = fmt.Fprintf(r.w, "      %s\n", r.dim(t.Version))
+			}
+		default:
+			_, _ = fmt.Fprintf(r.w, "    %s %s (current)\n", r.statusIcon(StatusCurrent), r.cyan(t.Name))
+		}
+	}
+
+	gated := "no"
+	if preview.Gated {
+		gated = "yes"
+	}
+	_, _ = fmt.Fprintf(r.w, "  %s Batch gated: %s\n", r.statusIcon(StatusSkipped), gated)
+}
+
 // --- List output ---
 
 // ListTools renders a table of detected tools, grouped by owning manager
