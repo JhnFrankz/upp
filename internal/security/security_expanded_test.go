@@ -614,6 +614,118 @@ func TestConfirmAction_DecisionMatrix(t *testing.T) {
 	}
 }
 
+// TestConfirmAction_EnforceRiskFalse_DefaultMatrix pins the DEFAULT path
+// (EnforceRisk:false, the zero value) so a future D4 change that raises the
+// default cannot silently reclassify existing decisions. This is the
+// approval test for WU4 REFACTOR: EnforceRisk:false MUST keep every decision
+// byte-identical to the pre-EnforceRisk matrix. Each row mirrors design D4.
+func TestConfirmAction_EnforceRiskFalse_DefaultMatrix(t *testing.T) {
+	tests := []struct {
+		name       string
+		trustLevel adapters.TrustLevel
+		risk       RiskLevel
+		ci         bool
+		input      string
+		want       ConfirmDecision
+	}{
+		// Official tools: TrustOfficial always auto-proceeds when EnforceRisk
+		// is false (the default) — the real command risk is NOT consulted.
+		{"official low", adapters.TrustOfficial, RiskLow, false, "", ConfirmAuto},
+		{"official medium", adapters.TrustOfficial, RiskMedium, false, "", ConfirmAuto},
+		{"official high", adapters.TrustOfficial, RiskHigh, false, "", ConfirmAuto},
+		{"official high CI", adapters.TrustOfficial, RiskHigh, true, "", ConfirmAuto},
+
+		// Custom untrusted, CI: low auto (D4), medium/high error.
+		{"untrusted CI low", adapters.TrustCustomUntrusted, RiskLow, true, "", ConfirmAuto},
+		{"untrusted CI medium", adapters.TrustCustomUntrusted, RiskMedium, true, "", ConfirmError},
+		{"untrusted CI high", adapters.TrustCustomUntrusted, RiskHigh, true, "", ConfirmError},
+
+		// Custom trusted, CI: auto if risk < high, error if high.
+		{"trusted CI low", adapters.TrustCustomTrusted, RiskLow, true, "", ConfirmAuto},
+		{"trusted CI medium", adapters.TrustCustomTrusted, RiskMedium, true, "", ConfirmAuto},
+		{"trusted CI high", adapters.TrustCustomTrusted, RiskHigh, true, "", ConfirmError},
+
+		// Custom untrusted, interactive: prompt if risk >= medium.
+		{"untrusted interactive low", adapters.TrustCustomUntrusted, RiskLow, false, "", ConfirmProceed},
+		{"untrusted interactive medium yes", adapters.TrustCustomUntrusted, RiskMedium, false, "y\n", ConfirmProceed},
+		{"untrusted interactive medium no", adapters.TrustCustomUntrusted, RiskMedium, false, "n\n", ConfirmDeny},
+		{"untrusted interactive high yes", adapters.TrustCustomUntrusted, RiskHigh, false, "y\n", ConfirmProceed},
+		{"untrusted interactive high no", adapters.TrustCustomUntrusted, RiskHigh, false, "n\n", ConfirmDeny},
+
+		// Custom trusted, interactive: prompt only if high.
+		{"trusted interactive low", adapters.TrustCustomTrusted, RiskLow, false, "", ConfirmProceed},
+		{"trusted interactive medium", adapters.TrustCustomTrusted, RiskMedium, false, "", ConfirmProceed},
+		{"trusted interactive high yes", adapters.TrustCustomTrusted, RiskHigh, false, "y\n", ConfirmProceed},
+		{"trusted interactive high no", adapters.TrustCustomTrusted, RiskHigh, false, "n\n", ConfirmDeny},
+
+		// Zero-value trust (unset): MUST resolve to least-privileged.
+		{"zero trust CI high", adapters.TrustLevel(0), RiskHigh, true, "", ConfirmError},
+		{"zero trust CI medium", adapters.TrustLevel(0), RiskMedium, true, "", ConfirmError},
+		{"zero trust interactive high yes", adapters.TrustLevel(0), RiskHigh, false, "y\n", ConfirmProceed},
+		{"zero trust interactive high no", adapters.TrustLevel(0), RiskHigh, false, "n\n", ConfirmDeny},
+
+		// Unknown trust value: behave as untrusted, never bypass the matrix.
+		{"unknown trust CI medium", adapters.TrustLevel(99), RiskMedium, true, "", ConfirmError},
+		{"unknown trust interactive high yes", adapters.TrustLevel(99), RiskHigh, false, "y\n", ConfirmProceed},
+
+		// Zero-value risk: MUST resolve to High (fail-closed).
+		{"zero risk CI untrusted", adapters.TrustCustomUntrusted, RiskLevel(0), true, "", ConfirmError},
+
+		// Unknown risk: default branch treats it as High (fail-closed).
+		{"unknown risk CI", adapters.TrustCustomUntrusted, RiskLevel(99), true, "", ConfirmError},
+		{"unknown risk interactive no", adapters.TrustCustomUntrusted, RiskLevel(99), false, "n\n", ConfirmDeny},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var reader *strings.Reader
+			if tt.input != "" {
+				reader = strings.NewReader(tt.input)
+			}
+
+			cfg := ConfirmConfig{
+				ToolName:   "mytool",
+				TrustLevel: tt.trustLevel,
+				RiskLevel:  tt.risk,
+				Command:    "mytool --update",
+				CI:         tt.ci,
+				Reader:     reader,
+				// EnforceRisk left at its ZERO value (false): the default path.
+				// This row MUST reproduce the pre-EnforceRisk decision matrix.
+			}
+
+			got := ConfirmAction(cfg)
+			if got != tt.want {
+				t.Errorf("ConfirmAction(EnforceRisk:false) = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestConfirmAction_EnforceRiskFalse_OfficialNeverPrompts guards the
+// TrustOfficial short-circuit under the default: an official tool with
+// EnforceRisk:false MUST auto-proceed even for High risk and prompt-producing
+// TrustLevel combinations — the official default never consults the reader.
+func TestConfirmAction_EnforceRiskFalse_OfficialNeverPrompts(t *testing.T) {
+	// reader is an EMPTY reader (no stdin): if ConfirmAction ever consulted
+	// the prompt for a TrustOfficial default row, it would hit EOF and return
+	// ConfirmDeny. We expect ConfirmAuto, proving no prompt path runs.
+	cfg := ConfirmConfig{
+		ToolName:    "gh",
+		TrustLevel:  adapters.TrustOfficial,
+		RiskLevel:   RiskHigh,
+		Command:     "sudo apt install --only-upgrade gh",
+		Privileges:  []string{"sudo"},
+		CI:          false,
+		EnforceRisk: false,                 // default — the D4 guard must keep ConfirmAuto
+		Reader:      strings.NewReader(""), // EOF if a prompt were attempted
+	}
+	got := ConfirmAction(cfg)
+	if got != ConfirmAuto {
+		t.Errorf("ConfirmAction(EnforceRisk:false, TrustOfficial, High) = %v, want ConfirmAuto", got)
+	}
+}
+
 func TestTrustLevel_ZeroValueIsLeastPrivileged(t *testing.T) {
 	// R4-1 invariant: the zero value of TrustLevel MUST be the least-privileged
 	// tier, so an unset TrustLevel resolves to untrusted and fails closed
