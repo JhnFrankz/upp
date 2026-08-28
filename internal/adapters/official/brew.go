@@ -35,6 +35,25 @@ func (a *BrewAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// CheckPackage reports the installed vs latest version of an owned package
+// (e.g. `gh`, `docker`, `golang`) under brew, so an owned tool's delegated
+// Check() and the manager-group bulk path know a real update exists (design
+// D2). It runs `brew outdated --json <pkg>` and parses the JSON array. brew
+// is an AlwaysUpdate manager, so this is still the real availability signal:
+// a brew formula present in the outdated JSON array has a newer version.
+func (a *BrewAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErr("brew", "outdated", "--json", pkg)
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	current, latest, found := parseBrewOutdatedJSON(stdout)
+	return adapters.UpdateInfo{
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: found,
+	}, nil
+}
+
 func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")

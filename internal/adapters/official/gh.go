@@ -22,14 +22,28 @@ func (a *GhAdapter) Check() (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("gh is not installed")
 	}
 
-	current := commandOutput("gh", "--version")
-	current = extractVersion(current)
+	// Delegated check path (WU2, spec Per-Owned-Tool Availability): an owned
+	// tool's Check() reports the real update of its package under the
+	// resolving manager, NOT the manager's own self check. gh is owned on
+	// every supported platform, so it delegates to the manager's CheckPackage
+	// for gh.ManagerPackage[platform] (e.g. `apt-cache policy gh`,
+	// `brew outdated --json gh`, `winget upgrade gh`). runtime.GOOS is
+	// translated to the platform key because the manager/package maps are
+	// keyed by PLATFORM constants, not runtime.GOOS (darwin) — the
+	// WU1-documented gotcha.
+	platform := runtimeGOOSToPlatform(runtime.GOOS)
+	if owner := ResolveOwner("gh", platform); owner != nil {
+		if checker, ok := owner.(adapters.PackageChecker); ok {
+			pkg := a.Info().ManagerPackage[platform]
+			if pkg == "" {
+				return adapters.UpdateInfo{}, fmt.Errorf("gh has no manager package on %s", runtime.GOOS)
+			}
+			return checker.CheckPackage(pkg)
+		}
+		return adapters.UpdateInfo{}, fmt.Errorf("gh's manager %s does not support per-package checks", runtime.GOOS)
+	}
 
-	return adapters.UpdateInfo{
-		CurrentVersion:  current,
-		LatestVersion:   current,
-		UpdateAvailable: false,
-	}, nil
+	return adapters.UpdateInfo{}, fmt.Errorf("gh has no resolving owner on %s", runtime.GOOS)
 }
 
 func (a *GhAdapter) Update(dryRun bool) (adapters.Result, error) {

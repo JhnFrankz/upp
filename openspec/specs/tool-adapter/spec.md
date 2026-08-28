@@ -81,6 +81,18 @@ Every owned tool adapter (gh, docker, go) MUST declare, per platform, the packag
 
 (Previously: owned tools had no per-manager package-name concept; delegated update ran the manager's self-only command, so the owned tool's package was never named.)
 
+### Requirement: Per-Owned-Tool Availability
+
+The system MUST determine a real update for an owned tool by checking the owned tool's package under its manager (e.g. `apt-cache policy gh`), NOT by the manager's self check. The owned tool's delegated `check()` MUST report `update_available=true` when the owned package has a candidate newer than installed.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Owned package update | `apt-cache policy gh` candidate > installed | `gh.check()` | `update_available=true` |
+| Owned package current | `apt-cache policy gh` installed == candidate | `gh.check()` | `update_available=false` |
+| Owned check fails | `apt-cache policy gh` exits non-zero | `gh.check()` | Structured error; not treated as current |
+
+(Previously: owned tools' `check()` always returned `update_available=false` because it reflected only the manager's self state, so owned tools could never be pending.)
+
 ### Requirement: Adapter Error Handling
 
 Adapters MUST return structured errors on failure. Errors MUST include: tool name, operation attempted, exit code (if applicable), and stderr excerpt.

@@ -63,6 +63,19 @@ type Adapter interface {
 	Info() ToolInfo
 }
 
+// PackageChecker is implemented by manager adapters (apt/brew/winget) that can
+// report whether a specific owned package has an update. It answers the
+// package-system availability question (`apt-cache policy <pkg>`,
+// `brew outdated --json <pkg>`, `winget upgrade <pkg>`) for an owned tool's
+// package under that manager — NOT the manager's own self check (design D2).
+// One helper serves both an owned tool's delegated Check() (interactive
+// pending) and the manager-group bulk path.
+type PackageChecker interface {
+	// CheckPackage reports the current vs latest version of an owned package
+	// and whether an update is available.
+	CheckPackage(packageName string) (UpdateInfo, error)
+}
+
 // UpdateInfo holds version information returned by Check().
 type UpdateInfo struct {
 	CurrentVersion  string
