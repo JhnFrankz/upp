@@ -57,8 +57,12 @@ type ConfirmConfig struct {
 //	Interactive: High → prompt (any trust); Medium → info (trusted) / prompt
 //	    (untrusted); Low → info
 func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
-	// Official tools always auto-proceed.
-	if cfg.TrustLevel == adapters.TrustOfficial {
+	// Official tools always auto-proceed — UNLESS EnforceRisk is set (design
+	// D4), where the real command risk decides even for TrustOfficial rows.
+	// This is how a sudo-heavy owned-tool group update (e.g.
+	// `sudo apt install --only-upgrade gh`) prompts despite each owned tool
+	// being TrustOfficial.
+	if cfg.TrustLevel == adapters.TrustOfficial && !cfg.EnforceRisk {
 		return ConfirmAuto
 	}
 
