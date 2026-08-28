@@ -1065,7 +1065,11 @@ func TestUpdatePackage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setExecFakes(t, tt.fakes)
 
-			res, err := tt.newAdpt().(adapters.PackageUpdater).UpdatePackage("gh")
+			updater, ok := tt.newAdpt().(adapters.PackageUpdater)
+			if !ok {
+				t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
+			}
+			res, err := updater.UpdatePackage("gh")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("UpdatePackage() error = nil, want error")
