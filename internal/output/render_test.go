@@ -943,6 +943,209 @@ func TestToolLine_QuietOverridesVerbose(t *testing.T) {
 	}
 }
 
+// --- WU5: group bulk summary rendering (spec ux-patterns Summary Report) ---
+//
+// A manager-group bulk update MUST render a group bulk summary listing each
+// owned tool that was updated, skipped (--skip-ed), current, or failed within
+// the group, in canonical discovery order (spec ux-patterns Summary Report
+// "Group bulk summary", "Group partial fail", "Group dry-run", and the
+// deterministic-order rule). The renderer never reorders by completion or
+// groups by status category — the list follows the canonical order the batch
+// was enumerated in.
+
+// TestGroupBulkSummary_UpdatedAndSkipped pins the "Group bulk summary"
+// scenario: Linux apt group updates gh (success) and skips docker
+// (--skip docker). The group summary lists gh updated and docker skipped.
+func TestGroupBulkSummary_UpdatedAndSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBulkSummary(GroupBulkSummary{
+		Manager: "APT Package Manager",
+		Results: []ToolResult{
+			{Name: "gh", Status: StatusUpdated, Version: "2.46.0"},
+			{Name: "docker", Status: StatusSkipped},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "gh updated") {
+		t.Errorf("group summary must report gh updated; got:\n%s", out)
+	}
+	if !strings.Contains(out, "docker skipped") {
+		t.Errorf("group summary must report docker skipped (--skip-ed); got:\n%s", out)
+	}
+	// Canonical discovery order: gh (updated) is listed before docker (skipped).
+	if strings.Index(out, "gh") > strings.Index(out, "docker") {
+		t.Errorf("group summary must list tools in canonical discovery order; got:\n%s", out)
+	}
+}
+
+// TestGroupBulkSummary_PartialFail pins the "Group partial fail" scenario:
+// brew group updates gh but docker failed. The group summary lists gh updated,
+// docker failed.
+func TestGroupBulkSummary_PartialFail(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBulkSummary(GroupBulkSummary{
+		Manager: "Homebrew",
+		Results: []ToolResult{
+			{Name: "gh", Status: StatusUpdated, Version: "2.46.0"},
+			{Name: "docker", Status: StatusFailed, Error: fmt.Errorf("timeout")},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "gh updated") {
+		t.Errorf("group summary must report gh updated; got:\n%s", out)
+	}
+	if !strings.Contains(out, "docker failed") {
+		t.Errorf("group summary must report docker failed; got:\n%s", out)
+	}
+}
+
+// TestGroupBulkSummary_DryRun pins the "Group dry-run" scenario: apt group
+// dry-run has gh pending, docker current. The group summary reports gh would
+// update and docker current, and never claims "All clean!".
+func TestGroupBulkSummary_DryRun(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBulkSummary(GroupBulkSummary{
+		Manager: "APT Package Manager",
+		DryRun:  true,
+		Results: []ToolResult{
+			{Name: "gh", Status: StatusAvailable, Version: "2.45.0 → 2.46.0"},
+			{Name: "docker", Status: StatusCurrent, Version: "26.1.4"},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "gh would update") {
+		t.Errorf("group dry-run summary must report gh would update; got:\n%s", out)
+	}
+	if !strings.Contains(out, "docker current") {
+		t.Errorf("group dry-run summary must report docker current; got:\n%s", out)
+	}
+}
+
+// --- Opt-In Flag UX: pre-execution batch render (spec ux-patterns "Batch
+// rendered") ---
+//
+// A manager-group bulk update MUST render which owned tools are in the batch,
+// which are excluded by --skip, and whether the batch is gated, BEFORE
+// executing (spec ux-patterns Opt-In Flag UX "Batch rendered"). The
+// pre-execution GroupBatchPreview shows the PLAN; the post-run
+// GroupBulkSummary reports the RESULT. The two are distinct: the preview never
+// claims "All clean!" because nothing has run yet.
+
+// TestGroupBatchPreview_RendersPlannedBatch pins the "Batch rendered"
+// scenario: apt owns gh/docker, gh has an update available, docker is excluded
+// by --skip. The batch UX shows gh as update-available and docker as skipped.
+func TestGroupBatchPreview_RendersPlannedBatch(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBatchPreview(GroupBatchPreview{
+		Manager: "apt",
+		Gated:   true,
+		Tools: []GroupBatchTool{
+			{Name: "gh", UpdateAvailable: true, Version: "2.45.0 → 2.46.0"},
+			{Name: "docker", Skipped: true},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "apt (manager)") {
+		t.Errorf("batch preview must show the manager header; got:\n%s", out)
+	}
+	if !strings.Contains(out, "gh (update available)") {
+		t.Errorf("batch preview must show gh as having an update available; got:\n%s", out)
+	}
+	if !strings.Contains(out, "docker (skipped via --skip)") {
+		t.Errorf("batch preview must mark docker as skipped via --skip; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Batch gated: yes") {
+		t.Errorf("batch preview must report a gated batch; got:\n%s", out)
+	}
+}
+
+// TestGroupBatchPreview_CurrentAndUngated triangulates the opposite path: a
+// tool with no package update reports "current", and an always-update
+// (ungated) manager reports "Batch gated: no".
+func TestGroupBatchPreview_CurrentAndUngated(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBatchPreview(GroupBatchPreview{
+		Manager: "brew",
+		Gated:   false,
+		Tools: []GroupBatchTool{
+			{Name: "gh", UpdateAvailable: false},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "gh (current)") {
+		t.Errorf("batch preview must report a no-update tool as current; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Batch gated: no") {
+		t.Errorf("batch preview must report an always-update batch as ungated; got:\n%s", out)
+	}
+}
+
+// TestGroupBatchPreview_CheckFailed triangulates the "check fails" preview
+// state: a tool whose CheckPackage errored is reported "check failed", not
+// current (spec bulk-update: a failed check is never current nor available).
+func TestGroupBatchPreview_CheckFailed(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBatchPreview(GroupBatchPreview{
+		Manager: "apt",
+		Gated:   true,
+		Tools: []GroupBatchTool{
+			{Name: "gh", CheckFailed: true},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "gh (check failed)") {
+		t.Errorf("batch preview must report a failed check as 'check failed'; got:\n%s", out)
+	}
+}
+
+// TestGroupBulkSummary_CanonicalOrderNotStatusOrder proves the summary list is
+// in canonical discovery order, NOT grouped by status category (spec
+// deterministic-order rule): an updated tool that is third in canonical order
+// still renders third, after an earlier current tool, and never moves to the
+// front just because it was "updated".
+func TestGroupBulkSummary_CanonicalOrderNotStatusOrder(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBulkSummary(GroupBulkSummary{
+		Manager: "Homebrew",
+		Results: []ToolResult{
+			{Name: "go", Status: StatusCurrent, Version: "1.22"},
+			{Name: "npm", Status: StatusSkipped},
+			{Name: "gh", Status: StatusUpdated, Version: "2.46.0"},
+		},
+	})
+
+	out := buf.String()
+	// Canonical order go → npm → gh, regardless of status. If the renderer
+	// grouped by status (updated/current/skipped), gh would lead — the spec
+	// forbids that.
+	goIdx := strings.Index(out, "go")
+	npmIdx := strings.Index(out, "npm")
+	ghIdx := strings.Index(out, "gh")
+	if goIdx >= npmIdx || npmIdx >= ghIdx {
+		t.Errorf("group summary must preserve canonical discovery order go→npm→gh; got:\n%s", out)
+	}
+}
+
 func TestUpdateSummary_VerboseFailureDiagnostics(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, false, false, true)
