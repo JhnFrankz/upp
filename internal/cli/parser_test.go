@@ -382,6 +382,57 @@ func TestSilenceStdout_Error(t *testing.T) {
 	}
 }
 
+// TestUpdateCommand_ManagerFlags pins task 3.1 (spec command-interface Opt-in
+// flags): `upp update` registers BOTH `--manager <mgr>` and its alias
+// `--update-group <mgr>`, and either binds UpdateFlags.Manager.
+func TestUpdateCommand_ManagerFlags(t *testing.T) {
+	cmd := NewUpdateCommand(&GlobalFlags{})
+
+	managerFlag := cmd.Flags().Lookup("manager")
+	if managerFlag == nil {
+		t.Fatal("update command must register --manager flag")
+	}
+	aliasFlag := cmd.Flags().Lookup("update-group")
+	if aliasFlag == nil {
+		t.Fatal("update command must register --update-group alias")
+	}
+
+	if err := cmd.ParseFlags([]string{"--manager", "apt"}); err != nil {
+		t.Fatalf("ParseFlags --manager error: %v", err)
+	}
+	if v, _ := cmd.Flags().GetString("manager"); v != "apt" {
+		t.Errorf("--manager must bind Manager='apt', got %q", v)
+	}
+}
+
+// TestUpdateCommand_ManagerAlias proves --update-group is a working alias for
+// --manager (same bound field).
+func TestUpdateCommand_ManagerAlias(t *testing.T) {
+	cmd := NewUpdateCommand(&GlobalFlags{})
+
+	if err := cmd.ParseFlags([]string{"--update-group", "brew"}); err != nil {
+		t.Fatalf("ParseFlags --update-group error: %v", err)
+	}
+	if v, _ := cmd.Flags().GetString("manager"); v != "brew" {
+		t.Errorf("--update-group must bind Manager='brew', got %q", v)
+	}
+}
+
+// TestUpdateCommand_ManagerDefaultEmpty proves a bare `upp update` (no
+// --manager / --update-group) leaves UpdateFlags.Manager empty — the default
+// path must NOT become a group bulk update (spec bulk-update "Default
+// unchanged").
+func TestUpdateCommand_ManagerDefaultEmpty(t *testing.T) {
+	cmd := NewUpdateCommand(&GlobalFlags{})
+
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags error: %v", err)
+	}
+	if v, _ := cmd.Flags().GetString("manager"); v != "" {
+		t.Errorf("bare upp update must leave Manager empty, got %q", v)
+	}
+}
+
 // --- Self-update command registration and flag semantics ---
 
 func TestSelfUpdateCommand_Short(t *testing.T) {
