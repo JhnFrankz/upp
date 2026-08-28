@@ -50,6 +50,74 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// CheckPackage reports the installed vs available version of an owned package
+// (e.g. `gh`, `Docker.Docker`, `GoLang.Go`) under winget, so an owned tool's
+// delegated Check() and the manager-group bulk path know a real update exists
+// (design D2). It runs `winget upgrade <pkg>` (a read-only availability query
+// — NOT the mutating `winget upgrade --all`) and parses the owned package's
+// own row. Like winget.Check, a package that lists no row is reported current
+// (fail-closed: no phantom update).
+func (a *WingetAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErr("winget", "upgrade", pkg)
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	current, latest, found := parseWingetPackageUpgradeOutput(stdout, pkg)
+	return adapters.UpdateInfo{
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: found && current != latest,
+	}, nil
+}
+
+// UpdatePackage runs the per-package update command for an owned tool under
+// winget (e.g. `winget upgrade gh`), via winget's executor. This is the
+// manager-group bulk path (design D3): it upgrades the owned PACKAGE, NOT
+// winget's self-only `winget upgrade winget`. winget is a non-privileged
+// manager, so the group update may auto-proceed.
+func (a *WingetAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
+	}
+
+	before := commandOutput("winget", "--version")
+	before = extractVersionFromString(before)
+	if before == "" {
+		before = "unknown"
+	}
+
+	_, stderr, err := runCmd(fmt.Sprintf("winget upgrade %s", pkg))
+	if err != nil {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("winget upgrade failed: %w", err),
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "Error") {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
+		}, nil
+	}
+
+	after := commandOutput("winget", "--version")
+	after = extractVersionFromString(after)
+	if after == "" {
+		after = "unknown"
+	}
+
+	return adapters.Result{
+		Success: true,
+		Before:  before,
+		After:   after,
+	}, nil
+}
+
 func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")

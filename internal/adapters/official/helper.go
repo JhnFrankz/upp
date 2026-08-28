@@ -3,6 +3,7 @@ package official
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -220,6 +221,66 @@ func formatUpdateCmd(cmd string) string {
 // on (the display label is field 0 and the Source column shares the same
 // string), so the manifest Id is the unambiguous key.
 const wingetSelfID = "Microsoft.AppInstaller"
+
+// brewOutdatedEntry is one element of `brew outdated --json <pkg>` output.
+type brewOutdatedEntry struct {
+	Name              string   `json:"name"`
+	InstalledVersions []string `json:"installed_versions"`
+	CurrentVersion    string   `json:"current_version"`
+}
+
+// parseBrewOutdatedJSON is a PURE, fail-closed function that parses the JSON
+// array produced by `brew outdated --json <pkg>`. brew emits an empty array
+// `[]` when the formula is current (or not installed), so found=false and both
+// versions empty means "no update". When the formula IS outdated, the single
+// element carries the oldest installed version and the newest current_version.
+// Malformed JSON yields the empty fail-closed tuple (no error), matching the
+// fail-closed helper convention — the caller distinguishes that from a real
+// subprocess failure via commandOutputErr.
+func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
+	var entries []brewOutdatedEntry
+	if err := json.Unmarshal([]byte(out), &entries); err != nil {
+		return "", "", false
+	}
+	if len(entries) == 0 {
+		return "", "", false
+	}
+	e := entries[0]
+	current = ""
+	if len(e.InstalledVersions) > 0 {
+		current = e.InstalledVersions[0]
+	}
+	return current, e.CurrentVersion, true
+}
+
+// parseWingetPackageUpgradeOutput scans `winget upgrade <pkg>` output for the
+// row whose manifest Id matches pkgID and returns (current, latest, found). It
+// is a PURE, fail-closed generalization of parseWingetUpgradeOutput: instead
+// of anchoring on winget's self Id, it anchors on the supplied package Id, so
+// CheckPackage can find any owned package's row (e.g. gh, GoLang.Go). An
+// absent or unparseable row yields found=false (current, no update).
+func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string, found bool) {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		// Locate the Id field; the two fields after it are Current and
+		// Latest. Anchor on the manifest Id so a wrong key at the display
+		// Name or Source column cannot mis-align the version positions.
+		for i := 0; i < len(fields); i++ {
+			if !strings.EqualFold(fields[i], pkgID) {
+				continue
+			}
+			// Id, Current, Latest must all be present in the row.
+			if i+2 < len(fields) {
+				return fields[i+1], fields[i+2], true
+			}
+			return "", "", false
+		}
+	}
+	return "", "", false
+}
 
 // parseWingetUpgradeOutput scans `winget upgrade` (no args) output for the
 // winget self row and returns (current, latest, found). It is a PURE,

@@ -39,10 +39,22 @@ A manager adapter MUST report the set and count of tools it owns on the current 
 
 ### Requirement: Resolved Owner Update Delegation
 
-Given a tool and platform, the system MUST resolve the owning manager; the owned tool's update MUST delegate to the resolved manager's `update()`. A tool with no resolving owner MUST use its own adapter's update path.
+Given a tool and platform, the system MUST resolve the owning manager; the owned tool's update MUST delegate to the resolved manager's `update()` for the owned tool's package under that manager (per the per-manager package-name mapping). A tool with no resolving owner MUST use its own adapter's update path.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| gh delegates on Linux | Platform Linux, gh enabled | `gh.update()` | Delegates to `apt.update()` (owns gh on Linux) |
+| gh delegates on Linux | Platform Linux, gh enabled, owned by apt | `gh.update()` | Delegates to `apt.update()` for package `gh` |
 | go standalone on Linux | Platform Linux, go enabled | `go.update()` | Uses go adapter (no owner on Linux) |
-| docker delegates on macOS | Platform macOS, docker enabled | `docker.update()` | Delegates to `brew.update()` (owns docker on macOS) |
+| docker delegates on macOS | Platform macOS, docker enabled, owned by brew | `docker.update()` | Delegates to `brew.update()` for package `docker` |
+
+(Previously: the delegated `update()` ran the manager's self-only command; the owned tool's package under the manager was never named, so the owned tool was never actually upgraded.)
+
+### Requirement: Resolved-Owner Group Bulk Update
+
+Given a manager and platform, the system MUST be able to update that manager's resolving owned set as one group. The group update MUST enumerate the manager's owned tools (from owner declarations), MUST exclude any owned tool named by `--skip`, MUST check each owned tool's package availability, and MUST run each owned tool's per-manager package command. The manager's own self-only row MUST remain distinct from the group.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| brew group on macOS | Platform macOS, brew owns gh, docker, go | Group update for brew | Runs brew's package commands for gh, docker, go |
+| apt group skip | Platform Linux, apt owns gh, docker | `--skip docker` group update for apt | Group updates only gh; docker excluded |
+| Manager self distinct | Platform Linux, apt group update | Group update for apt | Owned tools updated via package commands; apt self handled separately |

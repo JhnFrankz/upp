@@ -23,6 +23,27 @@ func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("go is not installed")
 	}
 
+	// Delegated check path (WU2, spec Per-Owned-Tool Availability): go is
+	// owned by brew on macOS and winget on Windows, so its Check() reports the
+	// real update of its package under the resolving manager (e.g.
+	// `brew outdated --json golang`, `winget upgrade GoLang.Go`) there. On
+	// Linux go has NO resolving owner (standalone manual binary replace), so
+	// ResolveOwner returns nil and the standalone `go version` path below runs
+	// — matching its Update() branch. runtime.GOOS is translated to the
+	// platform key because the manager/package maps are keyed by PLATFORM
+	// constants, not runtime.GOOS (darwin).
+	platform := runtimeGOOSToPlatform(runtime.GOOS)
+	if owner := ResolveOwner("go", platform); owner != nil {
+		if checker, ok := owner.(adapters.PackageChecker); ok {
+			pkg := a.Info().ManagerPackage[platform]
+			if pkg == "" {
+				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
+			}
+			return checker.CheckPackage(pkg)
+		}
+		return adapters.UpdateInfo{}, fmt.Errorf("go's manager %s does not support per-package checks", runtime.GOOS)
+	}
+
 	current := commandOutput("go", "version")
 	current = extractGoVersion(current)
 
@@ -108,13 +129,14 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *GoAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "go",
-		Name:         "Go",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindTool,
-		Manager:      map[string]string{"macos": "brew", "windows": "winget"},
+		ID:             "go",
+		Name:           "Go",
+		Platforms:      []string{"linux", "macos", "windows"},
+		Trust:          adapters.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
+		Kind:           adapters.KindTool,
+		Manager:        map[string]string{"macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"},
 	}
 }
 

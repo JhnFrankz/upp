@@ -966,6 +966,135 @@ func TestUpdateDelegation(t *testing.T) {
 	}
 }
 
+// TestUpdatePackage covers the WU3 manager-group bulk privileged executor
+// (design D3): apt/brew/winget each run the per-package update COMMAND for one
+// owned package (e.g. `sudo apt install --only-upgrade gh`, `brew upgrade gh`,
+// `winget upgrade gh`). This is NOT the manager's self-only Update() — it
+// upgrades the owned package. Every row is hermetic (setExecFakes, no real
+// subprocess). The before/after version is the MANAGER's, matching the
+// delegated-owned-tool result shape.
+func TestUpdatePackage(t *testing.T) {
+	sudo := []string{"sudo"}
+
+	tests := []updateCase{
+		{
+			name:    "apt/gh-updates-owned-package",
+			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
+				shell: map[string]fakeResult{
+					aptInstalledCmd:                      {stdout: "2.4.0"},
+					"sudo apt install --only-upgrade gh": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		{
+			name:    "apt/command-fails-structurally",
+			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
+				shell: map[string]fakeResult{
+					aptInstalledCmd:                      {stdout: "2.4.0"},
+					"sudo apt install --only-upgrade gh": {err: errors.New("sudo: command not found")},
+				},
+			},
+			want: adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		{
+			name:    "apt/stderr-marker-fails",
+			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
+				shell: map[string]fakeResult{
+					aptInstalledCmd:                      {stdout: "2.4.0"},
+					"sudo apt install --only-upgrade gh": {stderr: "E: Unable to locate package gh"},
+				},
+			},
+			want: adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		{
+			name:    "apt/not-installed-error",
+			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"apt": false}},
+			wantErr: true,
+		},
+		{
+			name:    "brew/gh-updates-owned-formula",
+			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"brew": true},
+				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{"brew upgrade gh": {}},
+			},
+			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+		},
+		{
+			name:    "brew/command-fails",
+			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"brew": true},
+				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0"}},
+				shell:    map[string]fakeResult{"brew upgrade gh": {err: errors.New("brew: network error")}},
+			},
+			want: adapters.Result{Success: false, Before: "4.1.0", After: "4.1.0"},
+		},
+		{
+			name:    "winget/gh-updates-owned-package",
+			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
+				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
+				shell:    map[string]fakeResult{"winget upgrade gh": {}},
+			},
+			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
+		},
+		{
+			name:    "winget/command-fails",
+			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
+				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
+				shell:    map[string]fakeResult{"winget upgrade gh": {err: errors.New("winget: package not found")}},
+			},
+			want: adapters.Result{Success: false, Before: "v1.8.2301", After: "v1.8.2301"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setExecFakes(t, tt.fakes)
+
+			updater, ok := tt.newAdpt().(adapters.PackageUpdater)
+			if !ok {
+				t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
+			}
+			res, err := updater.UpdatePackage("gh")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("UpdatePackage() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UpdatePackage() unexpected error: %v", err)
+			}
+			if res.Success != tt.want.Success {
+				t.Errorf("Result.Success = %v, want %v", res.Success, tt.want.Success)
+			}
+			if res.Before != tt.want.Before {
+				t.Errorf("Result.Before = %q, want %q", res.Before, tt.want.Before)
+			}
+			if res.After != tt.want.After {
+				t.Errorf("Result.After = %q, want %q", res.After, tt.want.After)
+			}
+			if !equalPrivileges(res.Privileges, tt.want.Privileges) {
+				t.Errorf("Result.Privileges = %v, want %v", res.Privileges, tt.want.Privileges)
+			}
+		})
+	}
+}
+
 // TestPnpmCorruptionRecoveryMessage verifies the recovery failure path reports
 // the recovery attempt in the error, so a corrupted-store failure is
 // distinguishable from a plain update failure.

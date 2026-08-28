@@ -35,6 +35,67 @@ func (a *BrewAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// CheckPackage reports the installed vs latest version of an owned package
+// (e.g. `gh`, `docker`, `golang`) under brew, so an owned tool's delegated
+// Check() and the manager-group bulk path know a real update exists (design
+// D2). It runs `brew outdated --json <pkg>` and parses the JSON array. brew
+// is an AlwaysUpdate manager, so this is still the real availability signal:
+// a brew formula present in the outdated JSON array has a newer version.
+func (a *BrewAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErr("brew", "outdated", "--json", pkg)
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	current, latest, found := parseBrewOutdatedJSON(stdout)
+	return adapters.UpdateInfo{
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: found,
+	}, nil
+}
+
+// UpdatePackage runs the per-package update command for an owned tool under
+// brew (e.g. `brew upgrade gh`), via brew's executor. This is the manager-group
+// bulk path (design D3): it upgrades the owned FORMULA, NOT brew's self-only
+// `brew update`. brew is a non-privileged (no sudo) manager, so the group
+// update may auto-proceed (spec security-model "Non-sudo group proceeds").
+func (a *BrewAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
+	}
+
+	before := commandOutput("brew", "--version")
+	before = extractVersionFromString(before)
+
+	_, stderr, err := runCmd(fmt.Sprintf("brew upgrade %s", pkg))
+	if err != nil {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("brew upgrade failed: %w", err),
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "Error") {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("brew upgrade error: %s", truncate(stderr, 200)),
+		}, nil
+	}
+
+	after := commandOutput("brew", "--version")
+	after = extractVersionFromString(after)
+
+	return adapters.Result{
+		Success: true,
+		Before:  before,
+		After:   after,
+	}, nil
+}
+
 func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")

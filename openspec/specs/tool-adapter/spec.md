@@ -15,7 +15,7 @@ Every adapter MUST implement four operations:
 - `update() → Result` — perform the update, return success/failure + details
 - `list() → ToolInfo` — return installed tool info (name, version, source, owning manager, kind)
 
-`ToolInfo` MUST carry an owning `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` otherwise). A tool with a resolving owner on the current platform reports that manager; a tool with no owner reports no manager.
+`ToolInfo` MUST carry an owning `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` otherwise). A tool with a resolving owner on the current platform reports that manager; a tool with no owner reports no manager. A `ToolInfo` whose `Kind=KindTool` and that has a resolving owner on the current platform MUST also declare a per-manager package-name entry (see Per-Manager Package Mapping), so the owned tool's package under its manager is known.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -27,8 +27,9 @@ Every adapter MUST implement four operations:
 | Update fails | Update command exits non-zero | `update()` called | `success=false`, error message returned |
 | ToolInfo carries owner | docker installed on Linux | `list()` called | `ToolInfo` includes `Manager["linux"]="apt"`, `Kind=KindTool` |
 | Manager carries kind | apt installed on Linux | `list()` called | `ToolInfo.Kind=KindManager` |
+| Owned tool carries package | gh owned by apt on Linux | `list()` called | `ToolInfo` declares package `gh` under `Manager["linux"]="apt"` |
 
-(Previously: `list() → ToolInfo` returned only name/version/source; `ToolInfo` had no `Manager` or `Kind` field.)
+(Previously: `list() → ToolInfo` returned only name/version/source; `ToolInfo` had no `Manager` or `Kind` field, and no per-manager package-name field existed.)
 
 ### Requirement: Official Adapter Catalog
 
@@ -61,6 +62,37 @@ Each official adapter MUST use the platform-native update mechanism. An owned to
 
 (Previously: gh/docker/go ran their own hardcoded manager commands (e.g. `gh.go` ran `sudo apt update && sudo apt install -y gh`) and appeared as independent update rows duplicating manager logic.)
 
+### Requirement: Per-Manager Package Mapping
+
+Every owned tool adapter (gh, docker, go) MUST declare, per platform, the package name under its owning manager. The system MUST NOT infer a package name from the tool ID (the names differ). Declared minimum mapping:
+
+| Tool | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| gh | `gh` | `gh` | `gh` |
+| docker | `docker-ce` | `docker` | `Docker.Docker` |
+| go | `golang` | `golang` | `GoLang.Go` |
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| docker on apt | Platform Linux, docker owned by apt | package resolved | Package = `docker-ce` |
+| docker on winget | Platform Windows, docker owned by winget | package resolved | Package = `Docker.Docker` |
+| go on brew | Platform macOS, go owned by brew | package resolved | Package = `golang` |
+| gh on apt | Platform Linux, gh owned by apt | package resolved | Package = `gh` |
+
+(Previously: owned tools had no per-manager package-name concept; delegated update ran the manager's self-only command, so the owned tool's package was never named.)
+
+### Requirement: Per-Owned-Tool Availability
+
+The system MUST determine a real update for an owned tool by checking the owned tool's package under its manager (e.g. `apt-cache policy gh`), NOT by the manager's self check. The owned tool's delegated `check()` MUST report `update_available=true` when the owned package has a candidate newer than installed.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Owned package update | `apt-cache policy gh` candidate > installed | `gh.check()` | `update_available=true` |
+| Owned package current | `apt-cache policy gh` installed == candidate | `gh.check()` | `update_available=false` |
+| Owned check fails | `apt-cache policy gh` exits non-zero | `gh.check()` | Structured error; not treated as current |
+
+(Previously: owned tools' `check()` always returned `update_available=false` because it reflected only the manager's self state, so owned tools could never be pending.)
+
 ### Requirement: Adapter Error Handling
 
 Adapters MUST return structured errors on failure. Errors MUST include: tool name, operation attempted, exit code (if applicable), and stderr excerpt.
@@ -88,7 +120,7 @@ Adapters MUST return semver-compatible version strings when available. Adapters 
 
 ### Requirement: Update Gating
 
-Every adapter MUST declare an `UpdatePolicy` (`PolicyGated` or `PolicyAlwaysUpdate`), and the system MUST gate updates on that declaration, not on a CLI-side ID list. The system MUST run `update()` for an adapter declaring `PolicyGated` (apt, npm, pnpm, nvm) only when that adapter's `check()` reported `update_available=true`. Adapters declaring `PolicyAlwaysUpdate` MUST always run their update when requested, regardless of `check()` result: official adapters without detection (brew, bun, opencode) and custom adapters report `update_available=false` by design, while winget and scoop report real self-update availability by design. An owned tool (gh, docker, go) MUST NOT be gated independently: its update delegates to its owning manager, and the manager's `UpdatePolicy` governs whether the delegated update runs; the owned tool's own `UpdatePolicy` MUST NOT apply to the delegated path. When a `PolicyGated` adapter's `check()` fails, the system MUST report the failure for that adapter as a structured error per Adapter Error Handling and MUST NOT treat the failed check as `update_available=false` nor report the adapter as current.
+Every adapter MUST declare an `UpdatePolicy` (`PolicyGated` or `PolicyAlwaysUpdate`), and the system MUST gate updates on that declaration, not on a CLI-side ID list. The system MUST run `update()` for an adapter declaring `PolicyGated` (apt, npm, pnpm, nvm) only when that adapter's `check()` reported `update_available=true`. Adapters declaring `PolicyAlwaysUpdate` MUST always run their update when requested, regardless of `check()` result: official adapters without detection (brew, bun, opencode) and custom adapters report `update_available=false` by design, while winget and scoop report real self-update availability by design. An owned tool (gh, docker, go) MUST NOT be gated independently: its update delegates to its owning manager, and the manager's `UpdatePolicy` governs whether the delegated update runs; the owned tool's own `UpdatePolicy` MUST NOT apply to the delegated path. For a manager-group bulk update, the manager's `UpdatePolicy` gates the GROUP's availability (not the manager's own self-only row): a `PolicyGated` manager runs its group update only when any owned package reports availability; a `PolicyAlwaysUpdate` manager runs its group update when requested. When a `PolicyGated` adapter's `check()` fails, the system MUST report the failure for that adapter as a structured error per Adapter Error Handling and MUST NOT treat the failed check as `update_available=false` nor report the adapter as current.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -96,8 +128,10 @@ Every adapter MUST declare an `UpdatePolicy` (`PolicyGated` or `PolicyAlwaysUpda
 | Owned inherits always | gh owned by brew (AlwaysUpdate) on macOS | gh delegated update | `update()` runs (delegates to brew) |
 | Stub official exempt | Adapter declaring `PolicyAlwaysUpdate` without detection (brew/bun/opencode) reports `update_available=false` | Update run | `update()` still runs |
 | Gated check fails | `PolicyGated` adapter `check()` fails during update run | Update run | `update()` skipped; failure reported; adapter never reported current |
+| Gated group gates on group availability | apt (Gated) group, no owned package has an update | `upp update --manager apt` | Group skipped; no owned tool updated |
+| AlwaysUpdate group runs | brew (AlwaysUpdate) group | `upp update --manager brew` | Group update runs regardless of check result |
 
-(Previously: docker, gh, and go were independent `PolicyAlwaysUpdate` stubs whose `update()` always ran; ownership did not exist, so gating was per-adapter with no manager inheritance.)
+(Previously: docker, gh, and go were independent `PolicyAlwaysUpdate` stubs whose `update()` always ran; ownership did not exist, so gating was per-adapter with no manager inheritance and no group-level availability semantics.)
 
 ### Requirement: Manager Self-Update Semantics
 

@@ -101,6 +101,8 @@ Filtering rules for `--only` and `--skip`:
 
 In TTY runs (stdin is a TTY, and `--ci`, `--quiet`, and `--dry-run` are not set), `upp update` MUST render the interactive tool selection over the `--only`/`--skip`-filtered pending set before executing; the user's selection MUST narrow the update set further. Flag semantics MUST NOT change: `--only`/`--skip` filter exactly as before, and `--dry-run` MUST remain non-interactive (no selector rendered).
 
+`upp update` MUST also accept two OPT-IN group bulk-update flags (present but inert in this increment's default path): `--manager <mgr>` and `--update-group <mgr>`. When either is supplied, the system MUST run a manager-group bulk update for that manager's resolving owned tools (minus `--skip`-ed) instead of the standard per-tool path. A bare `upp update` with neither flag MUST NOT trigger a group bulk update (making bulk the default is a later increment). `--skip <owned-tool>` MUST exclude that owned tool from the group batch.
+
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Normal update | 5 tools enabled | `upp update` | Each tool updated, summary shown |
@@ -111,8 +113,11 @@ In TTY runs (stdin is a TTY, and `--ci`, `--quiet`, and `--dry-run` are not set)
 | Selector over filtered set | TTY, `--only brew,npm`, 2 pending | `upp update --only brew,npm` | Selector lists only brew and npm; other tools not shown |
 | Selection narrows further | TTY, selector shows 3 pre-checked | User deselects 1 tool | Only the 2 selected tools updated; summary counts match selection |
 | Dry-run non-interactive | TTY, `--dry-run`, pending updates | `upp update --dry-run` | No selector; planned actions listed, no changes |
+| Default no group | No `--manager`/`--update-group` | `upp update` | Standard path; no group bulk batch (default deferred) |
+| Manager triggers group | Linux, apt owns gh/docker | `upp update --manager apt` | apt's owned group bulk-updated |
+| Skip excludes from group | Linux, apt owns gh/docker | `upp update --manager apt --skip docker` | Only gh batch-updated; docker excluded |
 
-(Previously: `--dry-run` had no single-letter shorthand `-n`; TTY runs processed the filtered set directly with no interactive selection step.)
+(Previously: `--dry-run` had no single-letter shorthand `-n`; TTY runs processed the filtered set directly with no interactive selection step; no `--manager`/`--update-group` opt-in group bulk flags existed.)
 
 ### Requirement: Help Output Grouping
 

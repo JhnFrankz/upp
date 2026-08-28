@@ -23,6 +23,13 @@ type GlobalFlags struct {
 // UpdateFlags holds flags specific to the update command.
 type UpdateFlags struct {
 	DryRun bool
+	// Manager is the opt-in group bulk-update trigger (spec command-interface,
+	// bulk-update Opt-In Group Bulk Trigger). When non-empty, runUpdate routes
+	// to runUpdateGroup instead of the standard per-tool path. Set by either
+	// --manager <mgr> or its alias --update-group <mgr>. A bare `upp update`
+	// leaves it empty (default path unchanged — bulk default is a later
+	// increment).
+	Manager string
 }
 
 // BuildRoot creates the root cobra.Command with global flags.
