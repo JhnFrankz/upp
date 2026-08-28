@@ -97,13 +97,14 @@ const (
 
 // ToolInfo holds static metadata about a tool.
 type ToolInfo struct {
-	ID           string
-	Name         string
-	Platforms    []string
-	Trust        TrustLevel
-	UpdatePolicy UpdatePolicy
-	Kind         Kind
-	Manager      map[string]string // platform -> owning manager ID (nil for standalone)
-	Command      string            // real update command; empty for official adapters
-	Privileges   []string          // e.g., ["sudo"]
+	ID             string
+	Name           string
+	Platforms      []string
+	Trust          TrustLevel
+	UpdatePolicy   UpdatePolicy
+	Kind           Kind
+	Manager        map[string]string // platform -> owning manager ID (nil for standalone)
+	ManagerPackage map[string]string // platform -> package name under that platform's manager
+	Command        string            // real update command; empty for official adapters
+	Privileges     []string          // e.g., ["sudo"]
 }

@@ -39,10 +39,12 @@ A manager adapter MUST report the set and count of tools it owns on the current 
 
 ### Requirement: Resolved Owner Update Delegation
 
-Given a tool and platform, the system MUST resolve the owning manager; the owned tool's update MUST delegate to the resolved manager's `update()`. A tool with no resolving owner MUST use its own adapter's update path.
+Given a tool and platform, the system MUST resolve the owning manager; the owned tool's update MUST delegate to the resolved manager's `update()` for the owned tool's package under that manager (per the per-manager package-name mapping). A tool with no resolving owner MUST use its own adapter's update path.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| gh delegates on Linux | Platform Linux, gh enabled | `gh.update()` | Delegates to `apt.update()` (owns gh on Linux) |
+| gh delegates on Linux | Platform Linux, gh enabled, owned by apt | `gh.update()` | Delegates to `apt.update()` for package `gh` |
 | go standalone on Linux | Platform Linux, go enabled | `go.update()` | Uses go adapter (no owner on Linux) |
-| docker delegates on macOS | Platform macOS, docker enabled | `docker.update()` | Delegates to `brew.update()` (owns docker on macOS) |
+| docker delegates on macOS | Platform macOS, docker enabled, owned by brew | `docker.update()` | Delegates to `brew.update()` for package `docker` |
+
+(Previously: the delegated `update()` ran the manager's self-only command; the owned tool's package under the manager was never named, so the owned tool was never actually upgraded.)
