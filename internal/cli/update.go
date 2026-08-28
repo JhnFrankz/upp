@@ -590,6 +590,31 @@ func runUpdateGroup(gf *GlobalFlags, uf *UpdateFlags, adapterList []adapters.Ada
 	// tool-adapter "Owned inherits always").
 	managerPolicy := resolveEffectiveUpdatePolicy(manager, osName)
 
+	// Batch preview (spec ux-patterns Opt-In Flag UX 'Batch rendered'): show
+	// the planned manager-group batch BEFORE executing — each owned tool and
+	// its planned state, plus whether the batch is gated.
+	var batchTools []output.GroupBatchTool
+	for _, t := range tools {
+		info := t.adapter.Info()
+		bt := output.GroupBatchTool{Name: info.Name}
+		if t.failed {
+			bt.CheckFailed = true
+		} else if managerPolicy == adapters.PolicyGated && !t.info.UpdateAvailable {
+			// Gated manager with no package update → planned current.
+		} else if t.info.UpdateAvailable {
+			bt.UpdateAvailable = true
+			bt.Version = t.info.CurrentVersion + " → " + t.info.LatestVersion
+		}
+		batchTools = append(batchTools, bt)
+	}
+	if len(batchTools) > 0 || managerPolicy == adapters.PolicyAlwaysUpdate {
+		r.GroupBatchPreview(output.GroupBatchPreview{
+			Manager: manager.Info().Name,
+			Gated:   managerPolicy == adapters.PolicyGated,
+			Tools:   batchTools,
+		})
+	}
+
 	// Group bulk summary, built in canonical enumeration order (spec
 	// ux-patterns Group bulk summary).
 	var results []output.ToolResult
@@ -704,10 +729,11 @@ func runUpdateGroup(gf *GlobalFlags, uf *UpdateFlags, adapterList []adapters.Ada
 		}
 	}
 
-	// Render the group bulk summary per owned tool in canonical order.
-	for _, res := range results {
-		r.ToolLine(res)
-	}
+	r.GroupBulkSummary(output.GroupBulkSummary{
+		Manager: manager.Info().Name,
+		DryRun:  uf.DryRun,
+		Results: results,
+	})
 
 	// --ci: a high-risk sudo group update that needed confirmation fails
 	// non-zero (spec security-model "--ci sudo group fails").

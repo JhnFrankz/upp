@@ -249,6 +249,116 @@ func TestGroupByOwner_PerPlatformBuckets(t *testing.T) {
 	}
 }
 
+// --- WU5 refactor: deterministic canonical discovery order (task 5.3) ---
+//
+// The group bulk summary must follow the same canonical discovery order the
+// board/selector use (manager rows first in AllAdapters order, then their owned
+// tools, then standalone tools), regardless of input order. These tests pin
+// that both grouping helpers (GroupByOwner for list/summary grouping and
+// GroupOrder for the board/selector feed) agree on the deterministic canonical
+// order and preserve the selector/board feed round-trip.
+
+// TestGroupByOwner_DeterministicCanonicalOrder proves GroupByOwner emits groups
+// in the deterministic canonical discovery order when fed the canonical adapter
+// feed (buildAdapterList → AdaptersForPlatform): manager groups lead in
+// official.AllAdapters order (each manager's own row first, then its owned
+// tools in the feed order), and standalone tools follow. Every tool appears
+// exactly once. This is the order the group bulk summary mirrors so concurrent
+// completion never reorders it.
+func TestGroupByOwner_DeterministicCanonicalOrder(t *testing.T) {
+	// The canonical platform feed (mirrors buildAdapterList → AdaptersForPlatform).
+	tools := official.AdaptersForPlatform(platform.OSLinux)
+
+	groups := GroupByOwner(tools, platform.OSLinux)
+
+	// Manager group headers follow AllAdapters order: apt leads brew on Linux.
+	var gotHeaders []string
+	for _, g := range groups {
+		if g.Header != "" {
+			gotHeaders = append(gotHeaders, g.Header)
+		}
+	}
+	if !slices.Equal(gotHeaders, []string{"APT Package Manager", "Homebrew"}) {
+		t.Errorf("group headers = %v, want [APT Package Manager Homebrew]", gotHeaders)
+	}
+	// apt's group: the manager row leads, then its owned tools gh + docker.
+	var aptGroup *Group
+	for i := range groups {
+		if groups[i].Header == "APT Package Manager" {
+			aptGroup = &groups[i]
+			break
+		}
+	}
+	if aptGroup == nil {
+		t.Fatalf("no apt group found in %+v", groups)
+	}
+	ids := make([]string, len(aptGroup.Items))
+	for i, item := range aptGroup.Items {
+		ids[i] = item.ID
+	}
+	if !slices.Equal(ids, []string{"apt", "gh", "docker"}) {
+		t.Errorf("apt group items = %v, want [apt gh docker] (manager row then owned tools)", ids)
+	}
+	// Every tool is placed exactly once, no lost/duplicated rows.
+	var flat []string
+	for _, g := range groups {
+		for _, item := range g.Items {
+			flat = append(flat, item.ID)
+		}
+	}
+	if !slices.Equal(flat, groupOrderForFeed(t)) {
+		t.Errorf("GroupByOwner flat = %v, want %v (deterministic canonical group order)", flat, groupOrderForFeed(t))
+	}
+}
+
+// TestGroupByOwner_CanonicalOrderRoundTrip proves GroupByOwner's canonical
+// order matches GroupOrder's board/selector feed: every tool appears exactly
+// once, in the same canonical relative order, so the summary list and the
+// interactive board/selector never disagree on ordering (spec deterministic
+// order rule).
+func TestGroupByOwner_CanonicalOrderRoundTrip(t *testing.T) {
+	tools := official.AdaptersForPlatform(platform.OSLinux)
+
+	groupOrder := adapterNames(GroupOrder(tools, platform.OSLinux))
+
+	// Flatten GroupByOwner groups into adapter ID order.
+	var flat []string
+	for _, g := range GroupByOwner(tools, platform.OSLinux) {
+		for _, item := range g.Items {
+			flat = append(flat, item.ID)
+		}
+	}
+	// GroupByOwner includes each manager's own row at the head of its group;
+	// GroupOrder includes manager rows too. They must agree on canonical order.
+	if !slices.Equal(groupOrder, flat) {
+		t.Errorf("GroupOrder = %v, GroupByOwner flat = %v (must match canonical order)", groupOrder, flat)
+	}
+}
+
+// TestGroupOrder_DeterministicCanonicalOrder pins GroupOrder (the board and
+// selector feed) to the deterministic canonical discovery order produced from
+// the canonical adapter feed: manager groups lead in AllAdapters order (each
+// manager's own row, then its owned tools in the feed order), then standalone
+// tools last. Feeding the canonical platform set makes the order fully
+// deterministic regardless of out-of-order concurrent completion.
+func TestGroupOrder_DeterministicCanonicalOrder(t *testing.T) {
+	tools := official.AdaptersForPlatform(platform.OSLinux)
+	ordered := GroupOrder(tools, platform.OSLinux)
+	want := groupOrderForFeed(t)
+	if got := adapterNames(ordered); !slices.Equal(got, want) {
+		t.Errorf("GroupOrder = %v, want %v (deterministic canonical group order)", got, want)
+	}
+}
+
+// groupOrderForFeed returns the canonical group order the group helpers must
+// produce for the given feed on Linux: apt group (apt, gh, docker) leads
+// because apt is first in AllAdapters, then brew group (brew), then standalone
+// tools in feed order (nvm, npm, pnpm, bun, go, opencode).
+func groupOrderForFeed(t *testing.T) []string {
+	t.Helper()
+	return []string{"apt", "gh", "docker", "brew", "nvm", "npm", "pnpm", "bun", "go", "opencode"}
+}
+
 // TestGroupByOwner_CustomToolBucketedUnderManager proves GroupByOwner places a
 // custom tool with an injected manager under that manager's group, not into the
 // standalone tail (via ownerIDOf's CustomAdapter branch).
