@@ -50,19 +50,25 @@ func (a *DockerAdapter) Update(dryRun bool) (adapters.Result, error) {
 		return adapters.Result{Success: false}, fmt.Errorf("docker is not installed")
 	}
 
-	// Delegated update path (WU2, spec Official Adapter Catalog / Resolved
-	// Owner Update Delegation): an owned tool delegates to its resolving
-	// manager rather than run its own hardcoded manager command. The manager's
-	// Update() runs its self-only command — never an
-	// "apt upgrade docker-ce ..." / "brew upgrade docker" invocation.
-	// runtime.GOOS is translated to the platform key because ResolveOwner is
-	// keyed by PLATFORM constants, not runtime.GOOS (darwin).
-	if owner := ResolveOwner("docker", runtimeGOOSToPlatform(runtime.GOOS)); owner != nil {
-		return owner.Update(dryRun)
+	// Delegated update path: an owned tool delegates to its resolving manager's
+	// PackageUpdater interface to upgrade its specific package name (e.g. `docker-ce`),
+	// rather than triggering manager self-update.
+	platform := runtimeGOOSToPlatform(runtime.GOOS)
+	if owner := ResolveOwner("docker", platform); owner != nil {
+		if dryRun {
+			return adapters.Result{Success: true}, nil
+		}
+		if updater, ok := owner.(adapters.PackageUpdater); ok {
+			pkg := a.Info().ManagerPackage[platform]
+			if pkg == "" {
+				return adapters.Result{Success: false}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
+			}
+			return updater.UpdatePackage(pkg)
+		}
+		return adapters.Result{Success: false}, fmt.Errorf("docker's manager %s does not support per-package updates", runtime.GOOS)
 	}
 
-	// Unreachable in practice: docker is owned on every supported platform.
-	// Fail-closed fallback if the ownership map ever regresses.
+	// Fail-closed fallback if ownership map ever regresses.
 	return adapters.Result{
 		Success: false,
 		Error:   fmt.Errorf("docker has no resolving owner on %s", runtime.GOOS),

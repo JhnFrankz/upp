@@ -3,6 +3,7 @@ package official
 import (
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -150,6 +151,22 @@ func TestEveryManagerHasManagerPackage(t *testing.T) {
 						"a package must never exist without its owner",
 					info.ID, platform, info.ManagerPackage[platform], platform,
 				)
+			}
+		}
+	}
+}
+
+// TestManagerAdaptersImplementPackageInterfaces verifies that all active
+// manager adapters that own tools implement PackageUpdater and PackageChecker.
+func TestManagerAdaptersImplementPackageInterfaces(t *testing.T) {
+	for _, a := range AllAdapters() {
+		info := a.Info()
+		if info.Kind == adapters.KindManager && (info.ID == "apt" || info.ID == "brew" || info.ID == "winget") {
+			if _, ok := a.(adapters.PackageUpdater); !ok {
+				t.Errorf("manager adapter %q must implement adapters.PackageUpdater", info.ID)
+			}
+			if _, ok := a.(adapters.PackageChecker); !ok {
+				t.Errorf("manager adapter %q must implement adapters.PackageChecker", info.ID)
 			}
 		}
 	}
