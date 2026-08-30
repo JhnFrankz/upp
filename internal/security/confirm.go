@@ -1,7 +1,6 @@
 package security
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -127,12 +126,23 @@ func promptUser(cfg ConfirmConfig) ConfirmDecision {
 		reader = os.Stdin
 	}
 
-	scanner := bufio.NewScanner(reader)
-	if scanner.Scan() {
-		input := strings.TrimSpace(strings.ToLower(scanner.Text()))
-		if input == "y" || input == "yes" {
-			return ConfirmProceed
+	var buf []byte
+	var b [1]byte
+	for {
+		n, err := reader.Read(b[:])
+		if n > 0 {
+			if b[0] == '\n' {
+				break
+			}
+			buf = append(buf, b[0])
 		}
+		if err != nil {
+			break
+		}
+	}
+	input := strings.TrimSpace(strings.ToLower(string(buf)))
+	if input == "y" || input == "yes" {
+		return ConfirmProceed
 	}
 
 	return ConfirmDeny

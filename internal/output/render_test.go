@@ -1170,3 +1170,64 @@ func TestUpdateSummary_VerboseFailureDiagnostics(t *testing.T) {
 		t.Errorf("expected verbose update summary to contain stderr, got:\n%s", out)
 	}
 }
+
+// TestGroupBulkSummary_ExplicitCountsAndOrdering proves task 3.1 & 3.3:
+// GroupBulkSummary formats per-tool outcomes (updated, current, skipped, failed)
+// in canonical discovery order with explicit aggregate counts.
+func TestGroupBulkSummary_ExplicitCountsAndOrdering(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.GroupBulkSummary(GroupBulkSummary{
+		Manager: "APT Package Manager",
+		Results: []ToolResult{
+			{Name: "gh", Status: StatusUpdated, Version: "2.46.0"},
+			{Name: "docker", Status: StatusCurrent, Version: "26.1.4"},
+			{Name: "go", Status: StatusSkipped},
+			{Name: "custom", Status: StatusFailed, Error: fmt.Errorf("network failed")},
+		},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "1 updated, 1 current, 1 skipped, 1 failed. Review errors above.") {
+		t.Errorf("expected explicit counts line, got:\n%s", out)
+	}
+	// Verify canonical ordering gh -> docker -> go -> custom
+	ghIdx := strings.Index(out, "gh")
+	dockerIdx := strings.Index(out, "docker")
+	goIdx := strings.Index(out, "go")
+	customIdx := strings.Index(out, "custom")
+	if ghIdx >= dockerIdx || dockerIdx >= goIdx || goIdx >= customIdx {
+		t.Errorf("expected canonical ordering in summary lines, got:\n%s", out)
+	}
+}
+
+// TestUpdateSummary_NoMisleadingAllCleanWithPending proves spec ux-patterns:
+// UpdateSummary with pending updates in dry-run mode prints "N would update"
+// and never claims "All clean!" or "All tools up to date.".
+func TestUpdateSummary_NoMisleadingAllCleanWithPending(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	summary := Summary{
+		Results: []ToolResult{
+			{Name: "gh", Status: StatusAvailable, Version: "2.45.0 → 2.46.0"},
+			{Name: "docker", Status: StatusAvailable, Version: "26.1.4 → 27.0.0"},
+			{Name: "npm", Status: StatusCurrent, Version: "10.0.0"},
+		},
+		DryRun: true,
+	}
+
+	r.UpdateSummary(summary)
+
+	out := buf.String()
+	if !strings.Contains(out, "2 would update, 1 up to date") {
+		t.Errorf("expected dry-run summary with would-update count, got:\n%s", out)
+	}
+	if strings.Contains(out, "All clean!") {
+		t.Errorf("dry-run with pending updates must never claim 'All clean!', got:\n%s", out)
+	}
+	if strings.Contains(out, "All tools up to date.") {
+		t.Errorf("dry-run with pending updates must not claim all tools up to date, got:\n%s", out)
+	}
+}

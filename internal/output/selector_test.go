@@ -368,3 +368,43 @@ func TestSelector_NonFileReaderSkipsRaw(t *testing.T) {
 		t.Errorf("unexpected result: %+v", res)
 	}
 }
+
+// TestSelector_GranularOwnedToolTogglingUnderManagerHeaders proves task 3.1 & 3.2:
+// in CheckboxSelector, owned tools grouped under a manager header can be toggled
+// individually without affecting sibling items in the same manager group or standalone items.
+func TestSelector_GranularOwnedToolTogglingUnderManagerHeaders(t *testing.T) {
+	var buf bytes.Buffer
+	opts := []SelectOption{
+		{ID: "gh", Label: "GitHub CLI", Version: "2.45.0 → 2.46.0", Group: "APT Package Manager"},
+		{ID: "docker", Label: "Docker CE", Version: "26.1.4 → 27.0.0", Group: "APT Package Manager"},
+		{ID: "npm", Label: "npm", Version: "10.0.0 → 10.1.0"},
+	}
+
+	// Down arrow (\x1b[B), Space (deselect docker), Enter (\r)
+	sel := NewCheckboxSelector(&buf, strings.NewReader("\x1b[B \r"), opts)
+	res, err := sel.Run()
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if res.Canceled {
+		t.Fatal("Run must not report canceled")
+	}
+	wantSelected := []string{"gh", "npm"}
+	if !slices.Equal(res.Selected, wantSelected) {
+		t.Errorf("Selected = %v, want %v", res.Selected, wantSelected)
+	}
+
+	out := buf.String()
+	if n := strings.Count(out, "APT Package Manager"); n < 1 {
+		t.Errorf("expected manager header in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[x] GitHub CLI") {
+		t.Errorf("expected gh to remain checked, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[ ] Docker CE") {
+		t.Errorf("expected docker to be unchecked after space, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[x] npm") {
+		t.Errorf("expected npm to remain checked, got:\n%s", out)
+	}
+}
