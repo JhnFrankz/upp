@@ -97,27 +97,28 @@ Filtering rules for `--only` and `--skip`:
 
 ### Requirement: `upp update`
 
-`upp update` MUST process each enabled tool, execute updates, and report results. `--dry-run` (with single-letter shorthand `-n`) MUST show planned actions without executing. `--only`/`--skip` filter which tools to process.
+`upp update` MUST process each enabled tool, execute updates, and report results. By default (bare `upp update` without `--manager`/`--update-group`), the command MUST execute manager-group bulk package updates for all owned tools grouped under their resolving package managers, alongside standalone tool updates. `--dry-run` (with shorthand `-n`) MUST show planned update actions—including planned manager group package updates and standalone tool updates—without executing any changes. `--only` and `--skip` MUST filter which tools to process.
 
-In TTY runs (stdin is a TTY, and `--ci`, `--quiet`, and `--dry-run` are not set), `upp update` MUST render the interactive tool selection over the `--only`/`--skip`-filtered pending set before executing; the user's selection MUST narrow the update set further. Flag semantics MUST NOT change: `--only`/`--skip` filter exactly as before, and `--dry-run` MUST remain non-interactive (no selector rendered).
+In TTY runs (where stdin is a TTY, and `--ci`, `--quiet`, and `--dry-run` are not set), `upp update` MUST render the interactive tool selection over the `--only`/`--skip`-filtered pending set before executing; users MUST be able to toggle individual owned tools within manager groups as well as standalone tools. The user's selection MUST narrow the update set further. Flag semantics MUST NOT change: `--only`/`--skip` filter the candidate tools prior to presentation, and `--dry-run` MUST remain strictly non-interactive (no selector rendered).
 
-`upp update` MUST also accept two OPT-IN group bulk-update flags (present but inert in this increment's default path): `--manager <mgr>` and `--update-group <mgr>`. When either is supplied, the system MUST run a manager-group bulk update for that manager's resolving owned tools (minus `--skip`-ed) instead of the standard per-tool path. A bare `upp update` with neither flag MUST NOT trigger a group bulk update (making bulk the default is a later increment). `--skip <owned-tool>` MUST exclude that owned tool from the group batch.
+When `--manager <mgr>` or `--update-group <mgr>` is explicitly supplied, `upp update` MUST restrict execution exclusively to the specified manager's resolving owned tools (minus any `--skip`-ed tools). Execution across tools and manager groups MUST maintain per-tool error isolation, ensuring that failures in individual package updates or standalone adapters do not halt execution of remaining tools. In `--ci` mode, any failure or unconfirmed elevated risk MUST cause the command to exit with a non-zero status after completing all non-dependent updates.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Normal update | 5 tools enabled | `upp update` | Each tool updated, summary shown |
-| Partial failure | Tool 3 of 5 fails | `upp update` | 1-2 updated, 3 failed, 4-5 attempted |
-| `--ci` failure | Tool fails in CI | `upp update --ci` | Exit non-zero, summary shows failures |
-| Dry run full flag | 3 tools have updates | `upp update --dry-run` | Lists planned actions, no changes |
-| Dry run short flag | 3 tools have updates | `upp update -n` | Behaves identically to `--dry-run`, no changes |
-| Selector over filtered set | TTY, `--only brew,npm`, 2 pending | `upp update --only brew,npm` | Selector lists only brew and npm; other tools not shown |
-| Selection narrows further | TTY, selector shows 3 pre-checked | User deselects 1 tool | Only the 2 selected tools updated; summary counts match selection |
-| Dry-run non-interactive | TTY, `--dry-run`, pending updates | `upp update --dry-run` | No selector; planned actions listed, no changes |
-| Default no group | No `--manager`/`--update-group` | `upp update` | Standard path; no group bulk batch (default deferred) |
-| Manager triggers group | Linux, apt owns gh/docker | `upp update --manager apt` | apt's owned group bulk-updated |
-| Skip excludes from group | Linux, apt owns gh/docker | `upp update --manager apt --skip docker` | Only gh batch-updated; docker excluded |
+| Normal default update | 5 tools enabled (apt owning gh/docker, plus npm, bun, nvm) | `upp update` | gh and docker updated via apt manager-group package updates, standalone tools updated, summary shown |
+| Per-tool isolated failure | Tool 3 of 5 fails (e.g. gh in apt group) | `upp update` | Tools 1-2 updated, gh fails with isolated error, docker and standalone tools 4-5 attempted and updated |
+| `--ci` failure exit | Tool fails during update in CI | `upp update --ci` | Non-dependent tools complete, exit non-zero, summary shows failures |
+| `--ci` elevated risk fail-closed | Sudo package update required in CI | `upp update --ci` | Fails closed non-zero immediately without prompt (`EnforceRisk: true`) |
+| Dry run full flag | 3 tools have updates (2 in brew group, 1 standalone) | `upp update --dry-run` | Lists planned actions for brew group packages and standalone tools, no changes made |
+| Dry run short flag | 3 tools have updates | `upp update -n` | Behaves identically to `upp update --dry-run`, no changes made |
+| Selector over filtered set | TTY, `--only brew,gh,npm` where brew owns gh | `upp update --only brew,gh,npm` | Selector lists brew group containing gh and standalone npm; other tools excluded |
+| Granular selection in manager group | TTY, selector shows apt group with gh and docker pre-checked | User deselects docker | Only gh is updated via apt package update; docker is skipped; summary counts match selection |
+| Dry-run non-interactive | TTY, `--dry-run`, pending updates | `upp update --dry-run` | No selector rendered; planned actions listed, no changes made |
+| Explicit manager filter | Linux, apt owns gh/docker and standalone tools present | `upp update --manager apt` | apt's owned group (gh, docker) bulk-updated; standalone tools excluded |
+| Explicit update-group filter | macOS, brew owns gh/docker/go | `upp update --update-group brew` | brew's owned group bulk-updated; standalone tools excluded |
+| Skip excludes from default group | Linux, apt owns gh/docker | `upp update --skip docker` | Only gh batch-updated via apt; docker excluded |
 
-(Previously: `--dry-run` had no single-letter shorthand `-n`; TTY runs processed the filtered set directly with no interactive selection step; no `--manager`/`--update-group` opt-in group bulk flags existed.)
+(Previously: bare `upp update` executed standard per-tool adapter updates without manager-group bulk package updates; group bulk updates were strictly opt-in via `--manager` or `--update-group`.)
 
 ### Requirement: Help Output Grouping
 
