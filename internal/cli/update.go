@@ -72,13 +72,29 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 		deps.buildAdapterList = buildAdapterList
 	}
 	adapterList := deps.buildAdapterList(cfg, p.OS)
+	allAdapters := adapterList
 
-	// Opt-in group bulk path (design D3): when --manager / --update-group is
-	// set, route to runUpdateGroup and bypass the standard per-tool path
-	// entirely. A bare `upp update` leaves uf.Manager empty, so the default
-	// path is unchanged (spec bulk-update "Default unchanged").
+	// Explicit manager filter (--manager <mgr> or --update-group <mgr>)
 	if uf.Manager != "" {
-		return runUpdateGroup(gf, uf, adapterList, p.OS)
+		manager := adapterByName(allAdapters, uf.Manager)
+		if manager == nil {
+			return fmt.Errorf("manager %q not found in the current platform", uf.Manager)
+		}
+		if manager.Info().Kind != adapters.KindManager {
+			return fmt.Errorf("%q is not a manager", uf.Manager)
+		}
+		var owned []adapters.Adapter
+		for _, a := range allAdapters {
+			if a.Info().Kind != adapters.KindTool {
+				continue
+			}
+			owner := resolvingOwner(a, p.OS, allAdapters)
+			if owner == nil || owner.Name() != uf.Manager {
+				continue
+			}
+			owned = append(owned, a)
+		}
+		adapterList = owned
 	}
 
 	toolIDs := adapterIDs(adapterList)
@@ -101,27 +117,24 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 
 	// Interactive gate (design D2): selector only when stdin is a TTY and
 	// --ci, --quiet, and --dry-run are all unset. Any other combination keeps
-	// today's sequential behavior byte-identical.
+	// sequential behavior.
 	if deps.stdinIsTTY == nil {
 		deps.stdinIsTTY = stdinIsTTY
 	}
 	if deps.stdinIsTTY() && !gf.CI && !gf.Quiet && !uf.DryRun {
-		return runUpdateInteractive(gf, uf, deps, filteredAdapters, r, p.OS)
+		return runUpdateInteractive(gf, uf, deps, filteredAdapters, r, p.OS, allAdapters)
 	}
 
-	return runUpdateSequential(gf, uf, filteredAdapters, r, p.OS)
+	return runUpdateSequential(gf, uf, filteredAdapters, r, p.OS, allAdapters)
 }
 
-// runUpdateSequential is today's update loop, unchanged: per tool it runs
-// Detect, Check, ConfirmAction, policy gate, and Update, then renders the
-// summary. It is byte-identical to the pre-Phase-3 sequential behavior —
-// the interactive gate routes TTY runs away from it, and every bypass path
-// (non-TTY, --ci, --quiet, --dry-run) still lands here.
+// runUpdateSequential processes each filtered adapter: for owned tools under a
+// package manager, it checks per-package availability via PackageChecker and
+// updates via PackageUpdater (with EnforceRisk: true); for standalone tools, it
+// runs standard Check and Update. Per-tool errors are isolated.
 //
-// osName is the canonical platform key (platform.OSLinux/OSMacOS/OSWindows)
-// used to resolve an owned tool's effective UpdatePolicy from its manager on
-// the delegated path (WU2, spec Update Gating).
-func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string) error {
+// osName is the canonical platform key (platform.OSLinux/OSMacOS/OSWindows).
+func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) error {
 	var results []output.ToolResult
 	total := len(filteredAdapters)
 	hasFailure := false
@@ -143,8 +156,26 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 			r.Progress("Updating", i+1, total, info.Name)
 		}
 
+		owner := resolvingOwner(a, osName, allAdapters...)
+
 		// Check for updates
-		updateInfo, err := a.Check()
+		var updateInfo adapters.UpdateInfo
+		var err error
+		if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
+			if checker, ok := owner.(adapters.PackageChecker); ok {
+				pkg := ownedPackage(a, osName)
+				if pkg != "" {
+					updateInfo, err = checker.CheckPackage(pkg)
+				} else {
+					updateInfo, err = a.Check()
+				}
+			} else {
+				updateInfo, err = a.Check()
+			}
+		} else {
+			updateInfo, err = a.Check()
+		}
+
 		if err != nil {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
@@ -175,21 +206,46 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 			continue
 		}
 
+		// Gate: adapters declaring PolicyGated (apt, npm, pnpm, nvm)
+		// update only when check() reported an update available (design
+		// D2, spec Update Gating). Adapters declaring PolicyAlwaysUpdate
+		// (brew, bun, opencode, winget, scoop, custom) always run their
+		// update when requested. On the delegated path, the gate uses the
+		// MANAGER's effective policy: an owned tool (docker, gh, go) inherits
+		// its managing adapter's UpdatePolicy, and the owned tool's own
+		// declared policy is INERT (spec Update Gating).
+		if resolveEffectiveUpdatePolicy(a, osName, allAdapters...) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
+			results = append(results, output.ToolResult{
+				Name:    info.Name,
+				Status:  output.StatusCurrent,
+				Version: updateInfo.CurrentVersion,
+			})
+			continue
+		}
+
 		// Confirm if needed — always evaluate trust/risk, even in CI mode.
-		// In CI mode, ConfirmAction returns ConfirmError for untrusted tools.
-		riskCommand := info.Command
-		if riskCommand == "" {
-			// Official adapters don't expose a command; use the conventional one.
-			riskCommand = info.Name + " update"
+		// In CI mode, ConfirmAction returns ConfirmError for untrusted tools or elevated risk.
+		var riskCommand string
+		var enforceRisk bool
+		if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
+			pkg := ownedPackage(a, osName)
+			riskCommand = fmt.Sprintf("%s %s", updateCmdName(owner.Name()), pkg)
+			enforceRisk = true
+		} else {
+			riskCommand = info.Command
+			if riskCommand == "" {
+				riskCommand = info.Name + " update"
+			}
 		}
 		riskLevel := security.ClassifyCommand(riskCommand)
 		decision := security.ConfirmAction(security.ConfirmConfig{
-			ToolName:   info.Name,
-			TrustLevel: info.Trust,
-			RiskLevel:  riskLevel,
-			Command:    info.Command,
-			Privileges: info.Privileges,
-			CI:         gf.CI,
+			ToolName:    info.Name,
+			TrustLevel:  info.Trust,
+			RiskLevel:   riskLevel,
+			Command:     riskCommand,
+			Privileges:  info.Privileges,
+			CI:          gf.CI,
+			EnforceRisk: enforceRisk,
 		})
 
 		switch decision {
@@ -203,31 +259,30 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusFailed,
-				Error:  fmt.Errorf("CI mode: custom tool requires confirmation"),
+				Error:  fmt.Errorf("CI mode: elevated risk requires confirmation"),
 			})
 			hasFailure = true
 			continue
 		}
 
-		// Gate: adapters declaring PolicyGated (apt, npm, pnpm, nvm)
-		// update only when check() reported an update available (design
-		// D2, spec Update Gating). Adapters declaring PolicyAlwaysUpdate
-		// (brew, bun, opencode, winget, scoop, custom) always run their
-		// update when requested. On the delegated path, the gate uses the
-		// MANAGER's effective policy: an owned tool (docker, gh, go) inherits
-		// its managing adapter's UpdatePolicy, and the owned tool's own
-		// declared policy is INERT (spec Update Gating).
-		if resolveEffectiveUpdatePolicy(a, osName) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
-			results = append(results, output.ToolResult{
-				Name:    info.Name,
-				Status:  output.StatusCurrent,
-				Version: updateInfo.CurrentVersion,
-			})
-			continue
+		// Update: for owned tools with a PackageUpdater manager, delegate
+		// to updater.UpdatePackage(pkg)
+		var result adapters.Result
+		if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
+			if updater, ok := owner.(adapters.PackageUpdater); ok {
+				pkg := ownedPackage(a, osName)
+				if pkg != "" {
+					result, err = updater.UpdatePackage(pkg)
+				} else {
+					result, err = a.Update(false)
+				}
+			} else {
+				result, err = a.Update(false)
+			}
+		} else {
+			result, err = a.Update(false)
 		}
 
-		// Update
-		result, err := a.Update(false)
 		if err != nil {
 			results = append(results, output.ToolResult{
 				Name:   info.Name,
@@ -299,7 +354,7 @@ func timeoutErr(name, op string, err error) error {
 //
 // osName is the canonical platform key used to resolve an owned tool's
 // effective UpdatePolicy from its manager on the delegated path (WU2).
-func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string) error {
+func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) error {
 	// Pre-check: concurrent Detect + Check over the filtered set. The
 	// outcomes carry updateInfo so the loop below never re-calls Check()
 	// (design D4). The live CheckBoard renders the pre-check (spec
@@ -401,7 +456,7 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 			// Check() (D4). Per-tool ConfirmAction still runs for selected
 			// tools: the selector is a user-choice UI, NOT a security
 			// confirmation (spec ux-patterns).
-			hasFailure = processSelectedOutcome(gf, a, oc.updateInfo, updateIndex, updateTotal, r, &results, osName) || hasFailure
+			hasFailure = processSelectedOutcome(gf, a, oc.updateInfo, updateIndex, updateTotal, r, &results, osName, allAdapters...) || hasFailure
 		default:
 			// Skipped/Failed/Current append as-is, byte-identical to the
 			// sequential summary.
@@ -423,7 +478,7 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 // for one selected pending tool, appending its result. The updateInfo comes
 // from the carried pre-check outcome — Check() is never re-invoked (design
 // D4). It returns whether the tool failed, for the CI failure aggregation.
-func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adapters.UpdateInfo, index, total int, r *output.Renderer, results *[]output.ToolResult, osName string) bool {
+func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adapters.UpdateInfo, index, total int, r *output.Renderer, results *[]output.ToolResult, osName string, allAdapters ...[]adapters.Adapter) bool {
 	info := a.Info()
 
 	// Progress, mirroring the sequential loop (index/total over the
@@ -432,21 +487,31 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 		r.Progress("Updating", index, total, info.Name)
 	}
 
+	owner := resolvingOwner(a, osName, allAdapters...)
+
 	// Confirm if needed — always evaluate trust/risk, even in CI mode.
-	// In CI mode, ConfirmAction returns ConfirmError for untrusted tools.
-	riskCommand := info.Command
-	if riskCommand == "" {
-		// Official adapters don't expose a command; use the conventional one.
-		riskCommand = info.Name + " update"
+	// In CI mode, ConfirmAction returns ConfirmError for untrusted tools or elevated risk.
+	var riskCommand string
+	var enforceRisk bool
+	if owner != nil {
+		pkg := ownedPackage(a, osName)
+		riskCommand = fmt.Sprintf("%s %s", updateCmdName(owner.Name()), pkg)
+		enforceRisk = true
+	} else {
+		riskCommand = info.Command
+		if riskCommand == "" {
+			riskCommand = info.Name + " update"
+		}
 	}
 	riskLevel := security.ClassifyCommand(riskCommand)
 	decision := security.ConfirmAction(security.ConfirmConfig{
-		ToolName:   info.Name,
-		TrustLevel: info.Trust,
-		RiskLevel:  riskLevel,
-		Command:    info.Command,
-		Privileges: info.Privileges,
-		CI:         gf.CI,
+		ToolName:    info.Name,
+		TrustLevel:  info.Trust,
+		RiskLevel:   riskLevel,
+		Command:     riskCommand,
+		Privileges:  info.Privileges,
+		CI:          gf.CI,
+		EnforceRisk: enforceRisk,
 	})
 
 	switch decision {
@@ -460,7 +525,7 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 		*results = append(*results, output.ToolResult{
 			Name:   info.Name,
 			Status: output.StatusFailed,
-			Error:  fmt.Errorf("CI mode: custom tool requires confirmation"),
+			Error:  fmt.Errorf("CI mode: elevated risk requires confirmation"),
 		})
 		return true
 	}
@@ -473,7 +538,7 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 	// MANAGER's effective policy: an owned tool inherits its managing
 	// adapter's UpdatePolicy, and the owned tool's own declared policy is
 	// INERT (spec Update Gating).
-	if resolveEffectiveUpdatePolicy(a, osName) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
+	if resolveEffectiveUpdatePolicy(a, osName, allAdapters...) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
 		*results = append(*results, output.ToolResult{
 			Name:    info.Name,
 			Status:  output.StatusCurrent,
@@ -482,8 +547,25 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 		return false
 	}
 
-	// Update
-	result, err := a.Update(false)
+	// Update: for owned tools with a PackageUpdater manager, delegate
+	// to updater.UpdatePackage(pkg)
+	var result adapters.Result
+	var err error
+	if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
+		if updater, ok := owner.(adapters.PackageUpdater); ok {
+			pkg := ownedPackage(a, osName)
+			if pkg != "" {
+				result, err = updater.UpdatePackage(pkg)
+			} else {
+				result, err = a.Update(false)
+			}
+		} else {
+			result, err = a.Update(false)
+		}
+	} else {
+		result, err = a.Update(false)
+	}
+
 	if err != nil {
 		*results = append(*results, output.ToolResult{
 			Name:   info.Name,
@@ -817,8 +899,8 @@ func updateCmdName(manager string) string {
 // Otherwise the adapter's own declared policy applies. osName is the canonical
 // platform key (platform.OSLinux/OSMacOS/OSWindows), NOT runtime.GOOS (which
 // returns "darwin" on macOS) — the WU1-documented gotcha.
-func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string) adapters.UpdatePolicy {
-	if owner := resolvingOwner(a, osName); owner != nil {
+func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.UpdatePolicy {
+	if owner := resolvingOwner(a, osName, allAdapters...); owner != nil {
 		return owner.Info().UpdatePolicy
 	}
 	return a.Info().UpdatePolicy
@@ -828,7 +910,16 @@ func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string) adapters.Up
 // the given OS, or nil when the adapter has no resolving owner (standalone).
 // A custom tool exposes its injected manager via ManagerAdapter; an official
 // tool resolves through official.ResolveOwner (keyed by platform constant).
-func resolvingOwner(a adapters.Adapter, osName string) adapters.Adapter {
+// If allAdapters is provided, it searches allAdapters for declared manager IDs.
+func resolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
+	if len(allAdapters) > 0 && allAdapters[0] != nil {
+		if a.Info().Manager != nil && a.Info().Manager[osName] != "" {
+			ownerName := a.Info().Manager[osName]
+			if owner := adapterByName(allAdapters[0], ownerName); owner != nil {
+				return owner
+			}
+		}
+	}
 	if custom, ok := a.(*adapters.CustomAdapter); ok {
 		if m := custom.ManagerAdapter(); m != nil {
 			return m
