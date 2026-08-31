@@ -1414,8 +1414,6 @@ func runUpdateGroupWith(t *testing.T, gf *GlobalFlags, manager, osName string, s
 	return out, runErr
 }
 
-
-
 // TestRunUpdate_DefaultBulkGroupExecution proves that bare `upp update`
 // executes manager-group bulk package updates for owned tools by default
 // alongside standalone tools (spec bulk-update "Default runs group bulk updates").

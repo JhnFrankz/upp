@@ -440,7 +440,7 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                             {stdout: "2.4.0"},
+					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": failIfRun,
 				},
 			},
@@ -455,7 +455,7 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                             {stdout: "2.4.0"},
+					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {err: errors.New("apt: lock held")},
 				},
 			},
@@ -470,7 +470,7 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                             {stdout: "2.4.0"},
+					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {stderr: "E: Unable to acquire the dpkg frontend lock"},
 				},
 			},
@@ -485,7 +485,7 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                             {stdout: "2.4.0"},
+					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {},
 				},
 			},
@@ -897,7 +897,7 @@ func TestUpdateDelegation(t *testing.T) {
 				lookPath: map[string]bool{"docker": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                             {stdout: "2.4.0"},
+					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {},
 				},
 			},
