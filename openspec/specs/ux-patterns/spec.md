@@ -219,3 +219,17 @@ The brew manager row MUST render as current in interactive TTY `upp update` boar
 | brew list version | brew installed, Homebrew 4.x | `upp list` | brew row shows its own version (e.g. 4.x.y) |
 
 (Previously: manager rows were unspecified — brew conflated self + managed-package state, so no explicit current-only rendering contract existed for manager rows.)
+
+### Requirement: Uninstallation Terminal UX
+
+`upp uninstall` MUST render clean, structured terminal feedback across execution modes:
+- `--dry-run`: Renders a dry-run header followed by indented planned removals for binary, backups, configuration directory, and cache directory using standard status indicators.
+- Default Execution: Renders each successfully removed target with its target type and path (suppressed under `--quiet`). On full success, outputs "upp has been successfully uninstalled.".
+- Warnings on Failure: If any target cannot be unlinked due to OS permissions, renders a warning with the manual remediation command (`sudo rm -rf <path>`) and returns non-zero error.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Dry run output | Binary and config exist | `upp uninstall --dry-run` | Shows header "Dry run — no files will be removed" and list of candidate paths |
+| Full removal output | All targets writable | `upp uninstall` | Shows removed items and "upp has been successfully uninstalled." |
+| Quiet mode output | All targets writable | `upp uninstall -q` | Suppresses per-target removal lines; shows completion message |
+| Warning on unwritable | Root-owned binary | `upp uninstall` | Outputs warning with `sudo rm -rf /usr/local/bin/upp` and returns error |

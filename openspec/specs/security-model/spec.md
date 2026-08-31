@@ -98,3 +98,13 @@ Every update action MUST display before execution:
 |----------|-------|------|------|
 | Standard update | Updating `npm` | Action displayed | Shows: "npm (official) — `npm update -g` — no privileges" |
 | Custom update | Updating `mytool` | Action displayed | Shows: "mytool (custom) — `mytool --update` — sudo required" |
+
+### Requirement: Zero-Sudo Uninstallation Policy
+
+`upp uninstall` MUST NEVER invoke `sudo` or attempt automatic privilege escalation. If any binary, backup, configuration, or cache directory cannot be removed due to insufficient filesystem permissions, the command MUST perform best-effort removal of all accessible targets, emit actionable manual remediation commands (e.g. `sudo rm -rf <path>`), and exit with status 1.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Unwritable binary | `/usr/local/bin/upp` owned by root, user is non-root | `upp uninstall` | Deletes user config/cache, prints warning for `/usr/local/bin/upp` with manual sudo command, exits 1 |
+| Full permission | All targets writable | `upp uninstall` | Deletes all targets cleanly, exits 0 |
+| Simulation mode | Root binary and user config | `upp uninstall --dry-run` | Lists all planned target deletions without modifying disk, exits 0 |

@@ -8,7 +8,7 @@ Define CLI commands, flags, and behavior. All commands share: `--quiet` (`-q`), 
 
 ### Requirement: Command Structure
 
-The system MUST support the following core subcommands: `list`, `update`, `init`, and `self-update`. The system MUST NOT support `check`, `export`, or `import` subcommands; attempting to invoke any of them MUST result in an unknown command error and exit with status 1.
+The system MUST support the following core subcommands: `list`, `update`, `init`, `self-update`, and `uninstall`. The system MUST NOT support `check`, `export`, or `import` subcommands; attempting to invoke any of them MUST result in an unknown command error and exit with status 1.
 
 Running `upp` with no arguments (bare invocation) MUST display an informative, non-destructive dashboard and welcome screen showing version and platform information, configured tools status overview, and primary command guidance. Bare invocation MUST NOT run update checks against package managers, MUST NOT apply updates, and MUST NOT execute any destructive actions.
 
@@ -21,6 +21,7 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | `update` | Apply updates to selected tools | Yes | Yes |
 | `update -n` / `--dry-run` | Read-only query: preview pending updates without executing | No | No |
 | `self-update` | Update the upp binary itself | Yes (confirm) | Yes (replaces binary) |
+| `uninstall` | Uninstall upp and remove all binaries, configuration, and caches | No | Yes (deletes binary/config/cache) |
 | `list` | List installed/detected tools | No | No |
 
 | Scenario | GIVEN | WHEN | THEN |
@@ -32,6 +33,8 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | `update -n` | User runs `upp update -n` | Execution | Behaves identically to `upp update --dry-run`, no changes |
 | `update --ci` | User runs `upp update --ci` | Execution | Non-interactive updates, exit non-zero on failure |
 | `self-update` | User runs `upp self-update` | Execution | Checks release, verifies, prompts, replaces binary |
+| `uninstall` | User runs `upp uninstall` | Execution | Removes binary, backups, config, and cache under Zero-Sudo policy |
+| `uninstall --dry-run` | User runs `upp uninstall --dry-run` | Execution | Lists planned deletions without modifying disk |
 | Pruned `check` command | User runs `upp check` | Execution | Error: unknown command "check", exit 1 |
 | Pruned `export` command | User runs `upp export` | Execution | Error: unknown command "export", exit 1 |
 | Pruned `import` command | User runs `upp import config.toml` | Execution | Error: unknown command "import", exit 1 |
@@ -124,13 +127,13 @@ When `--manager <mgr>` or `--update-group <mgr>` is explicitly supplied, `upp up
 
 `upp --help` and `upp help` MUST group commands into exactly two labeled sections:
 1. `Commands`: `list`, `update`
-2. `Maintenance`: `init`, `self-update`
+2. `Maintenance`: `init`, `self-update`, `uninstall`
 
 The former `Config Commands` group MUST NOT exist. The cobra `completion` built-in MUST be hidden from help output.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Simplified help groups | Root command invoked | `upp --help` | Commands grouped under `Commands` (`list`, `update`) and `Maintenance` (`init`, `self-update`); `Config Commands` is absent |
+| Simplified help groups | Root command invoked | `upp --help` | Commands grouped under `Commands` (`list`, `update`) and `Maintenance` (`init`, `self-update`, `uninstall`); `Config Commands` is absent |
 | Help subcommand | Root command invoked | `upp help` | Same 2-group structure as `upp --help` |
 | Completion hidden | Root command built | `upp --help` | `completion` not listed in help output |
 | Pruned commands absent | Root command invoked | `upp --help` | Neither `check`, `export`, nor `import` appears in any group |
