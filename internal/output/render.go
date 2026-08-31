@@ -672,6 +672,31 @@ func (r *Renderer) SelfUpdateDone(current, latest string) {
 	_, _ = fmt.Fprintf(r.w, "upp updated: %s → %s\n", current, latest)
 }
 
+// --- Uninstall output ---
+
+// UninstallDryRunHeader prints the dry-run header for uninstallation.
+func (r *Renderer) UninstallDryRunHeader() {
+	_, _ = fmt.Fprintf(r.w, "%s Dry run — no files will be removed\n\n", r.statusIcon(StatusAvailable))
+}
+
+// UninstallDryRunTarget prints a planned target to be removed during dry-run.
+func (r *Renderer) UninstallDryRunTarget(targetType, path string) {
+	_, _ = fmt.Fprintf(r.w, "  %s Would remove %s: %s\n", r.statusIcon(StatusAvailable), targetType, r.cyan(path))
+}
+
+// UninstallRemoved prints a successfully removed target.
+func (r *Renderer) UninstallRemoved(targetType, path string) {
+	if r.quiet {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "  %s Removed %s: %s\n", r.statusIcon(StatusUpdated), targetType, path)
+}
+
+// UninstallDone prints the uninstallation completion message.
+func (r *Renderer) UninstallDone() {
+	_, _ = fmt.Fprintln(r.w, "upp has been successfully uninstalled.")
+}
+
 // --- Error output ---
 
 // Error prints a prefixed error message.

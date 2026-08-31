@@ -14,4 +14,5 @@ var cliDeps struct {
 	update     updateDeps
 	list       listDeps
 	selfUpdate selfUpdateDeps
+	uninstall  uninstallDeps
 }

@@ -130,8 +130,8 @@ func TestRootCommand_NoArgs(t *testing.T) {
 	}
 
 	commands := root.Commands()
-	if len(commands) != 4 {
-		t.Errorf("expected 4 subcommands, got %d", len(commands))
+	if len(commands) != 5 {
+		t.Errorf("expected 5 subcommands, got %d", len(commands))
 	}
 
 	// Bare execution in empty dir outputs no-config dashboard
