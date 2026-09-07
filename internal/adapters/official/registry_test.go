@@ -9,8 +9,8 @@ import (
 
 func TestAllAdaptersCount(t *testing.T) {
 	all := AllAdapters()
-	if len(all) != 13 {
-		t.Errorf("AllAdapters() returned %d adapters, want 13", len(all))
+	if len(all) != 14 {
+		t.Errorf("AllAdapters() returned %d adapters, want 14", len(all))
 	}
 }
 
@@ -62,8 +62,8 @@ func TestAdaptersForPlatformLinux(t *testing.T) {
 		ids[a.Name()] = true
 	}
 
-	// Linux should include: apt, brew, pacman, nvm, npm, pnpm, bun, gh, docker, go, opencode
-	expectedPresent := []string{"apt", "brew", "pacman", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"}
+	// Linux should include: apt, brew, pacman, nvm, npm, pnpm, bun, gh, docker, go, opencode, uv
+	expectedPresent := []string{"apt", "brew", "pacman", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode", "uv"}
 	for _, id := range expectedPresent {
 		if !ids[id] {
 			t.Errorf("AdaptersForPlatform(linux) missing adapter: %s", id)
@@ -87,7 +87,7 @@ func TestAdaptersForPlatformMacOS(t *testing.T) {
 		ids[a.Name()] = true
 	}
 
-	// macOS should include: brew, nvm, npm, pnpm, bun, gh, docker, go, opencode
+	// macOS should include: brew, nvm, npm, pnpm, bun, gh, docker, go, opencode, uv
 	if !ids["brew"] {
 		t.Error("AdaptersForPlatform(macos) missing brew")
 	}
@@ -96,6 +96,9 @@ func TestAdaptersForPlatformMacOS(t *testing.T) {
 	}
 	if !ids["gh"] {
 		t.Error("AdaptersForPlatform(macos) missing gh")
+	}
+	if !ids["uv"] {
+		t.Error("AdaptersForPlatform(macos) missing uv")
 	}
 
 	// macOS should NOT include: apt, winget, scoop
@@ -118,7 +121,7 @@ func TestAdaptersForPlatformWindows(t *testing.T) {
 		ids[a.Name()] = true
 	}
 
-	// Windows should include: winget, scoop, nvm, npm, pnpm, bun, gh, docker, go, opencode
+	// Windows should include: winget, scoop, nvm, npm, pnpm, bun, gh, docker, go, opencode, uv
 	if !ids["winget"] {
 		t.Error("AdaptersForPlatform(windows) missing winget")
 	}
@@ -127,6 +130,9 @@ func TestAdaptersForPlatformWindows(t *testing.T) {
 	}
 	if !ids["nvm"] {
 		t.Error("AdaptersForPlatform(windows) missing nvm")
+	}
+	if !ids["uv"] {
+		t.Error("AdaptersForPlatform(windows) missing uv")
 	}
 
 	// Windows should NOT include: apt, brew
@@ -161,6 +167,9 @@ func TestResolveOwner(t *testing.T) {
 		{"go-windows", "go", "windows", "winget", false},
 		{"go-linux-standalone", "go", "linux", "", true},
 		{"npm-standalone", "npm", "linux", "", true},
+		{"uv-linux-standalone", "uv", "linux", "", true},
+		{"uv-macos-standalone", "uv", "macos", "", true},
+		{"uv-windows-standalone", "uv", "windows", "", true},
 		{"brew-manager-no-owner", "brew", "macos", "", true},
 	}
 	for _, tt := range tests {
@@ -313,19 +322,19 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 }
 
 // TestOwnerMetadata verifies the per-Kind count the registry reports: 5
-// managers (apt, brew, pacman, winget, scoop) and 8 tools (nvm, npm, pnpm, bun, gh,
-// docker, go, opencode) out of 13 adapters. This pins the manager/tool split
+// managers (apt, brew, pacman, winget, scoop) and 9 tools (nvm, npm, pnpm, bun, gh,
+// docker, go, opencode, uv) out of 14 adapters. This pins the manager/tool split
 // so a new adapter with a wrong Kind cannot silently change the totals.
 func TestOwnerMetadata(t *testing.T) {
 	meta := OwnerMetadata()
-	if meta.Total != 13 {
-		t.Errorf("OwnerMetadata().Total = %d, want 13", meta.Total)
+	if meta.Total != 14 {
+		t.Errorf("OwnerMetadata().Total = %d, want 14", meta.Total)
 	}
 	if meta.Managers != 5 {
 		t.Errorf("OwnerMetadata().Managers = %d, want 5", meta.Managers)
 	}
-	if meta.Tools != 8 {
-		t.Errorf("OwnerMetadata().Tools = %d, want 8", meta.Tools)
+	if meta.Tools != 9 {
+		t.Errorf("OwnerMetadata().Tools = %d, want 9", meta.Tools)
 	}
 	if meta.Managers+meta.Tools != meta.Total {
 		t.Errorf("OwnerMetadata() inconsistent: managers(%d) + tools(%d) != total(%d)", meta.Managers, meta.Tools, meta.Total)
@@ -350,6 +359,7 @@ func TestAdapterByName(t *testing.T) {
 		{"docker", false},
 		{"go", false},
 		{"opencode", false},
+		{"uv", false},
 		{"nonexistent", true},
 	}
 

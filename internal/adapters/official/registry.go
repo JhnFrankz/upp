@@ -42,6 +42,7 @@ func AllAdapters() []adapters.Adapter {
 		&NpmAdapter{},
 		&PnpmAdapter{},
 		&BunAdapter{},
+		&UvAdapter{},
 		&GhAdapter{},
 		&DockerAdapter{},
 		&GoAdapter{},
