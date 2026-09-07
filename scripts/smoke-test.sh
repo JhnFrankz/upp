@@ -222,6 +222,7 @@ echo ""
 echo "9. Filter flags"
 run_test "upp update -n --only npm" "$BINARY" update -n --only npm
 run_test "upp update -n --only brew" "$BINARY" update -n --only brew
+run_test "upp update -n --only pacman" "$BINARY" update -n --only pacman
 
 # Test 10: Dry-run flag and shorthand (-n)
 echo ""

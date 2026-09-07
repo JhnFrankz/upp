@@ -1,12 +1,6 @@
-# Tool Ownership Model Specification
+# Delta for tool-ownership-model
 
-## Purpose
-
-Define how each tool adapter declares its owning manager per platform, and how a manager adapter reports the set and count of tools it owns. This lets owned tools (gh, docker, go) group under their owning manager instead of appearing as independent update rows, and delegate their update to the owning manager.
-
-## Requirements
-
-
+## MODIFIED Requirements
 
 ### Requirement: Tool Ownership Declaration
 
@@ -28,6 +22,8 @@ Manager adapters (apt, brew, pacman, winget, scoop) MUST declare `KindManager`. 
 | apt declares manager | apt adapter queried | `apt.list()` | `Kind=KindManager` |
 | pacman declares manager | pacman adapter queried | `pacman.list()` | `Kind=KindManager` |
 
+(Previously: manager adapters declaring `KindManager` were apt, brew, winget, and scoop; pacman was not included.)
+
 ### Requirement: Manager Owned-Tool Cardinality
 
 A manager adapter MUST report the set and count of tools it owns on the current platform from per-platform owner declarations. The owned set MUST be derived from owner declarations, not hardcoded per platform.
@@ -38,6 +34,8 @@ A manager adapter MUST report the set and count of tools it owns on the current 
 | apt owns two on Linux | Platform Linux | apt ownership resolved | Owns gh, docker |
 | winget owns three on Windows | Platform Windows | winget ownership resolved | Owns gh, docker, go |
 | pacman owns zero official tools on Linux | Platform Linux | pacman ownership resolved | Owns 0 official tools |
+
+(Previously: cardinality resolution scenarios covered only brew, apt, and winget; pacman was not included.)
 
 ### Requirement: Resolved Owner Update Delegation
 
@@ -54,7 +52,7 @@ Given an owned tool (`gh`, `docker`, `go`, or custom tool declaring `manager`) a
 | pacman implements PackageUpdater | Custom tool configured with `manager = "pacman"` and package `ripgrep` | `tool.Update()` | Asserts pacman implements `PackageUpdater` and delegates to `pacman.UpdatePackage("ripgrep")` |
 | pacman implements PackageChecker | Custom tool configured with `manager = "pacman"` and package `ripgrep` | `tool.Check()` | Asserts pacman implements `PackageChecker` and delegates to `pacman.CheckPackage("ripgrep")` |
 
-(Previously: the delegated `update()` ran the manager's self-only command or generic `manager.update()`; the owned tool's package under the manager was never named, so the owned tool was never actually upgraded.)
+(Previously: package manager interface implementations were specified for apt, brew, winget, and scoop; pacman was not included as an adapter implementing PackageChecker and PackageUpdater.)
 
 ### Requirement: Resolved-Owner Group Bulk Update
 
@@ -68,4 +66,6 @@ Given a manager and platform, the system MUST be able to update that manager's r
 | pacman empty group | Platform Linux, pacman owns 0 official tools, no custom pacman tools | `upp update` group update for pacman | Group update skipped without error |
 | pacman custom tools group | Platform Linux, custom tools configured with `manager = "pacman"` | Group update for pacman | Runs `pacman.UpdatePackage(pkg)` for each outdated tool; pacman self-update handled separately |
 
-(Previously: the group update excluded any owned tool named by `--skip`; the `--skip` flag is removed and the exclusion clause is dropped with it.)
+(Previously: group bulk updates were specified for brew and apt; pacman group bulk updates and empty-group handling were not defined.)
+
+## NEW Requirements (if any)

@@ -2,12 +2,12 @@
 
 Cross-platform dev environment updater. One binary to update all your development tools on Linux, macOS, and Windows.
 
-upp detects installed tools, checks for updates, and applies them safely with interactive confirmation. It ships official adapters for the most common package and runtime managers (apt, brew, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop) and lets you define custom tools in a TOML config.
+upp detects installed tools, checks for updates, and applies them safely with interactive confirmation. It ships official adapters for the most common package and runtime managers (apt, brew, pacman, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop) and lets you define custom tools in a TOML config.
 
 ## Features
 
 - **Cross-platform**: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64)
-- **Official adapters**: apt, brew, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop
+- **Official adapters**: apt, brew, pacman, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop
 - **Custom tools**: define your own update commands in `config.toml`
 - **Security**: trust levels, risk classification, and confirmation prompts for custom tools
 - **CI mode**: non-interactive, exits non-zero on failure (`--ci`)
