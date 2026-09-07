@@ -2,12 +2,12 @@
 
 Cross-platform dev environment updater. One binary to update all your development tools on Linux, macOS, and Windows.
 
-upp detects installed tools, checks for updates, and applies them safely with interactive confirmation. It ships official adapters for the most common package and runtime managers (apt, brew, pacman, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop) and lets you define custom tools in a TOML config.
+upp detects installed tools, checks for updates, and applies them safely with interactive confirmation. It ships official adapters for the most common package and runtime managers (apt, brew, pacman, npm, pnpm, nvm, bun, uv, gh, docker, go, opencode, winget, scoop) and lets you define custom tools in a TOML config.
 
 ## Features
 
 - **Cross-platform**: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64)
-- **Official adapters**: apt, brew, pacman, npm, pnpm, nvm, bun, gh, docker, go, opencode, winget, scoop
+- **Official adapters**: apt, brew, pacman, npm, pnpm, nvm, bun, uv, gh, docker, go, opencode, winget, scoop
 - **Custom tools**: define your own update commands in `config.toml`
 - **Security**: trust levels, risk classification, and confirmation prompts for custom tools
 - **CI mode**: non-interactive, exits non-zero on failure (`--ci`)
@@ -15,6 +15,25 @@ upp detects installed tools, checks for updates, and applies them safely with in
 - **Verbose diagnostics**: subprocess failure details on demand (`-v`, `--verbose`)
 - **Filtering**: `--only` to target specific tools
 - **Dotfiles-friendly**: standard TOML configuration at `~/.config/upp/config.toml`
+
+### Supported Tools
+
+| Tool | Platforms | Update Command | Policy | Privileges |
+|------|-----------|----------------|--------|------------|
+| apt | Linux | `apt install --only-upgrade apt` | Policy: Gated | Privileges: sudo |
+| brew | Linux, macOS | `brew update` | Policy: AlwaysUpdate | Privileges: None |
+| pacman | Linux | `sudo pacman -S --noconfirm pacman` | Policy: Gated | Privileges: sudo |
+| winget | Windows | `winget upgrade winget` | Policy: AlwaysUpdate | Privileges: None |
+| scoop | Windows | `scoop update scoop` | Policy: AlwaysUpdate | Privileges: None |
+| nvm | Linux, macOS, Windows | `nvm install stable` | Policy: Gated | Privileges: None |
+| npm | Linux, macOS, Windows | `npm update -g` | Policy: Gated | Privileges: None |
+| pnpm | Linux, macOS, Windows | `pnpm update -g` | Policy: Gated | Privileges: None |
+| bun | Linux, macOS, Windows | `bun upgrade` | Policy: AlwaysUpdate | Privileges: None |
+| uv | Linux, macOS, Windows | `uv self update && uv tool upgrade --all` | Policy: Gated | Privileges: None |
+| gh | Linux, macOS, Windows | `→ apt / brew / winget` | Policy: Gated | Privileges: None |
+| docker | Linux, macOS, Windows | `→ apt / brew / winget` | Policy: Gated | Privileges: None |
+| go | Linux, macOS, Windows | `manual binary replace / → brew / winget` | Policy: AlwaysUpdate | Privileges: None |
+| opencode | Linux, macOS, Windows | `curl installer` | Policy: AlwaysUpdate | Privileges: None |
 
 ## Installation
 
