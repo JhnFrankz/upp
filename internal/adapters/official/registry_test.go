@@ -9,8 +9,8 @@ import (
 
 func TestAllAdaptersCount(t *testing.T) {
 	all := AllAdapters()
-	if len(all) != 12 {
-		t.Errorf("AllAdapters() returned %d adapters, want 12", len(all))
+	if len(all) != 13 {
+		t.Errorf("AllAdapters() returned %d adapters, want 13", len(all))
 	}
 }
 
@@ -62,8 +62,8 @@ func TestAdaptersForPlatformLinux(t *testing.T) {
 		ids[a.Name()] = true
 	}
 
-	// Linux should include: apt, brew, nvm, npm, pnpm, bun, gh, docker, go, opencode
-	expectedPresent := []string{"apt", "brew", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"}
+	// Linux should include: apt, brew, pacman, nvm, npm, pnpm, bun, gh, docker, go, opencode
+	expectedPresent := []string{"apt", "brew", "pacman", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"}
 	for _, id := range expectedPresent {
 		if !ids[id] {
 			t.Errorf("AdaptersForPlatform(linux) missing adapter: %s", id)
@@ -247,10 +247,10 @@ func TestResolveOwnerViaRuntimeGOOSToPlatform(t *testing.T) {
 }
 
 // TestKindManagerConsistency pins that every KindManager adapter is the
-// documented owner set (apt, brew, winget, scoop) and every other adapter is
+// documented owner set (apt, brew, pacman, winget, scoop) and every other adapter is
 // KindTool, so the manager/tool dichotomy cannot silently drift.
 func TestKindManagerConsistency(t *testing.T) {
-	managers := map[string]bool{"apt": true, "brew": true, "winget": true, "scoop": true}
+	managers := map[string]bool{"apt": true, "brew": true, "pacman": true, "winget": true, "scoop": true}
 	for _, a := range AllAdapters() {
 		id := a.Name()
 		info := a.Info()
@@ -279,6 +279,7 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 		{"apt-linux", "apt", "linux", []string{"gh", "docker"}},
 		{"brew-macos", "brew", "macos", []string{"gh", "docker", "go"}},
 		{"winget-windows", "winget", "windows", []string{"gh", "docker", "go"}},
+		{"pacman-linux", "pacman", "linux", []string{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -311,17 +312,17 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 	}
 }
 
-// TestOwnerMetadata verifies the per-Kind count the registry reports: 4
-// managers (apt, brew, winget, scoop) and 8 tools (nvm, npm, pnpm, bun, gh,
-// docker, go, opencode) out of 12 adapters. This pins the manager/tool split
+// TestOwnerMetadata verifies the per-Kind count the registry reports: 5
+// managers (apt, brew, pacman, winget, scoop) and 8 tools (nvm, npm, pnpm, bun, gh,
+// docker, go, opencode) out of 13 adapters. This pins the manager/tool split
 // so a new adapter with a wrong Kind cannot silently change the totals.
 func TestOwnerMetadata(t *testing.T) {
 	meta := OwnerMetadata()
-	if meta.Total != 12 {
-		t.Errorf("OwnerMetadata().Total = %d, want 12", meta.Total)
+	if meta.Total != 13 {
+		t.Errorf("OwnerMetadata().Total = %d, want 13", meta.Total)
 	}
-	if meta.Managers != 4 {
-		t.Errorf("OwnerMetadata().Managers = %d, want 4", meta.Managers)
+	if meta.Managers != 5 {
+		t.Errorf("OwnerMetadata().Managers = %d, want 5", meta.Managers)
 	}
 	if meta.Tools != 8 {
 		t.Errorf("OwnerMetadata().Tools = %d, want 8", meta.Tools)
@@ -338,6 +339,7 @@ func TestAdapterByName(t *testing.T) {
 	}{
 		{"apt", false},
 		{"brew", false},
+		{"pacman", false},
 		{"winget", false},
 		{"scoop", false},
 		{"nvm", false},

@@ -35,6 +35,7 @@ func AllAdapters() []adapters.Adapter {
 	return []adapters.Adapter{
 		&AptAdapter{},
 		&BrewAdapter{},
+		&PacmanAdapter{},
 		&WingetAdapter{},
 		&ScoopAdapter{},
 		&NVMAdapter{},

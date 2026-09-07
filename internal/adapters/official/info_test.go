@@ -26,6 +26,7 @@ func TestInfo(t *testing.T) {
 	tests := []infoCase{
 		{"apt", func() adapters.Adapter { return &AptAdapter{} }, adapters.ToolInfo{ID: "apt", Name: "APT Package Manager", Platforms: []string{"linux"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindManager}},
 		{"brew", func() adapters.Adapter { return &BrewAdapter{} }, adapters.ToolInfo{ID: "brew", Name: "Homebrew", Platforms: []string{"linux", "macos"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager}},
+		{"pacman", func() adapters.Adapter { return &PacmanAdapter{} }, adapters.ToolInfo{ID: "pacman", Name: "Pacman Package Manager", Platforms: []string{"linux"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindManager}},
 		{"npm", func() adapters.Adapter { return &NpmAdapter{} }, adapters.ToolInfo{ID: "npm", Name: "npm", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindTool}},
 		{"pnpm", func() adapters.Adapter { return &PnpmAdapter{} }, adapters.ToolInfo{ID: "pnpm", Name: "pnpm", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindTool}},
 		{"bun", func() adapters.Adapter { return &BunAdapter{} }, adapters.ToolInfo{ID: "bun", Name: "Bun", Platforms: []string{"linux", "macos", "windows"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool}},

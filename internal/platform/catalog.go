@@ -23,6 +23,7 @@ type ToolEntry struct {
 var OfficialTools = []ToolEntry{
 	{ID: "apt", Name: "APT Package Manager", Platforms: []string{OSLinux}, Kind: adapters.KindManager},
 	{ID: "brew", Name: "Homebrew", Platforms: []string{OSLinux, OSMacOS}, Kind: adapters.KindManager},
+	{ID: "pacman", Name: "Pacman Package Manager", Platforms: []string{OSLinux}, Kind: adapters.KindManager},
 	{ID: "winget", Name: "Windows Package Manager", Platforms: []string{OSWindows}, Kind: adapters.KindManager},
 	{ID: "scoop", Name: "Scoop", Platforms: []string{OSWindows}, Kind: adapters.KindManager},
 	{ID: "nvm", Name: "Node Version Manager", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
