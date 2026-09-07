@@ -1,28 +1,6 @@
-# Security Model Specification
+# Delta for security-model
 
-## Purpose
-
-Trust boundaries, confirmation requirements, and safe execution for official vs custom tools.
-
-## Requirements
-
-### Requirement: Tool Trust Levels
-
-The system MUST distinguish three trust levels:
-
-- **Official**: implemented and maintained by the upp project. Shipped with the binary.
-- **CustomTrusted**: user-defined commands in config marked `trusted = true`.
-- **CustomUntrusted**: user-defined commands in config, untrusted by default.
-
-Config `trusted` MUST map to CustomTrusted and MUST NEVER map to Official. Trust level MUST NOT bypass the risk matrix.
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| Official tool | Tool is `brew` (official) | Update requested | Proceeds without extra confirmation |
-| Custom untrusted | Tool is `mytool` (custom, `trusted = false`) | Update requested | Risk matrix applies; confirmation as required |
-| Custom trusted | Tool is `mytool` (custom, `trusted = true`) | Update requested | Classified as CustomTrusted, never Official; risk matrix still applies |
-
-(Previously: two levels — Official and Custom; config `trusted` promoted custom tools to Official trust, bypassing confirmation.)
+## MODIFIED Requirements
 
 ### Requirement: Confirmation for Destructive Operations
 
@@ -46,26 +24,7 @@ Confirmation MUST be classified by the REAL privileges and risk of the command t
 | Pacman privileged update prompts | Linux, pacman self-update or package update declares `sudo` privilege | `upp update` (interactive) | Prompts for confirmation before executing `sudo pacman` command |
 | `--ci` pacman privileged fails | Linux, `--ci`, pacman update requires `sudo` | `upp update --ci` | Exits non-zero; privileged execution fails closed in non-interactive mode |
 
-(Previously: confirmation applied only to custom tool updates; owned-tool rows were `TrustOfficial` and always auto-proceeded (`ConfirmAuto`), so a sudo-heavy manager group update would run without prompting.)
-
-### Requirement: Config Trust Override
-
-Users MUST be able to mark custom tools as `trusted = true` in config to reduce confirmation friction. Trust level does NOT automatically skip all confirmations — confirmation behavior is risk-based:
-
-| Risk Level | `trusted = false` | `trusted = true` |
-|------------|-------------------|------------------|
-| Low (non-destructive, no privileges) | Proceeds with info | Proceeds silently |
-| Medium (may modify system state) | Confirmation required | Proceeds with info |
-| High (destructive, privileged, network to untrusted) | Confirmation required | Confirmation required |
-
-Trusted custom tools still display action and origin before execution. High-risk operations ALWAYS require confirmation regardless of trust level.
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| Trusted low-risk | `custom.mytool.trusted = true`, non-destructive | Update requested | Shows action, proceeds without prompt |
-| Trusted high-risk | `custom.mytool.trusted = true`, uses `sudo` | Update requested | Confirmation still required |
-| Untrusted low-risk | `custom.mytool.trusted = false`, non-destructive | Update requested | Proceeds with info |
-| Untrusted high-risk | `custom.mytool.trusted = false`, destructive | Update requested | Confirmation required |
+(Previously: confirmation scenarios explicitly cited apt for Linux sudo-heavy groups; pacman's sudo privilege requirements were not specified.)
 
 ### Requirement: Official Tool Integrity
 
@@ -93,27 +52,4 @@ Self-update integrity MUST fail closed: the replacement archive's sha256 MUST ma
 
 (Previously: official package managers listed were brew, apt, winget, scoop, nvm, npm, and pnpm; pacman was not included, and no pacman-specific command restrictions existed.)
 
-(Previously: `docker.update()` on Linux ran `apt upgrade docker-ce` and `gh.update()` ran its own hardcoded manager command; an owned tool's integrity and risk were independent of any manager.)
-
-### Requirement: Output Transparency
-
-Every update action MUST display before execution:
-
-- Tool name and trust level
-- Command to be executed
-- Required privileges (if any)
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| Standard update | Updating `npm` | Action displayed | Shows: "npm (official) — `npm update -g` — no privileges" |
-| Custom update | Updating `mytool` | Action displayed | Shows: "mytool (custom) — `mytool --update` — sudo required" |
-
-### Requirement: Zero-Sudo Uninstallation Policy
-
-`upp uninstall` MUST NEVER invoke `sudo` or attempt automatic privilege escalation. If any binary, backup, configuration, or cache directory cannot be removed due to insufficient filesystem permissions, the command MUST perform best-effort removal of all accessible targets, emit actionable manual remediation commands (e.g. `sudo rm -rf <path>`), and exit with status 1.
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| Unwritable binary | `/usr/local/bin/upp` owned by root, user is non-root | `upp uninstall` | Deletes user config/cache, prints warning for `/usr/local/bin/upp` with manual sudo command, exits 1 |
-| Full permission | All targets writable | `upp uninstall` | Deletes all targets cleanly, exits 0 |
-| Simulation mode | Root binary and user config | `upp uninstall --dry-run` | Lists all planned target deletions without modifying disk, exits 0 |
+## NEW Requirements (if any)
