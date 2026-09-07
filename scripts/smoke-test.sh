@@ -236,6 +236,12 @@ echo "11. Pruned commands error handling"
 run_test_exit_code "upp export (pruned, exit 1)" 1 "$BINARY" export
 run_test_exit_code "upp import (pruned, exit 1)" 1 "$BINARY" import "/tmp/nonexistent.toml"
 
+# Test 12: Removed flags rejected (spec command-interface / bulk-update)
+echo ""
+echo "12. Removed flags rejected"
+run_test_exit_code "upp update --manager apt (removed, exit 1)" 1 "$BINARY" update --manager apt
+run_test_exit_code "upp update --update-group brew (removed, exit 1)" 1 "$BINARY" update --update-group brew
+
 # --- Summary ---
 
 echo ""
