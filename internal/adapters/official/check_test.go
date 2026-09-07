@@ -41,10 +41,12 @@ type checkCase struct {
 }
 
 const (
-	aptInstalledCmd = "bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'"
-	aptCandidateCmd = "bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'"
-	nvmCurrentCmd   = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'"
-	nvmRemoteCmd    = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'"
+	aptInstalledCmd    = "bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'"
+	aptCandidateCmd    = "bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'"
+	pacmanInstalledCmd = "bash -o pipefail -c 'pacman -Q pacman 2>/dev/null | awk \"{print \\$2}\"'"
+	pacmanCandidateCmd = "bash -o pipefail -c 'pacman -Si pacman 2>/dev/null | grep -E \"^Version\" | head -1 | awk \"{print \\$3}\"'"
+	nvmCurrentCmd      = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'"
+	nvmRemoteCmd       = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'"
 )
 
 // aptPolicyCmd builds the exact `apt-cache policy <pkg>` shell command that
@@ -54,6 +56,14 @@ const (
 // miss.
 func aptPolicyCmd(pkg, field string) string {
 	return fmt.Sprintf("bash -o pipefail -c 'apt-cache policy %s 2>/dev/null | grep \"%s:\" | awk \"{print \\$2}\"'", pkg, field)
+}
+
+func pacmanInstalledQueryCmd(pkg string) string {
+	return fmt.Sprintf("bash -o pipefail -c 'pacman -Q %s 2>/dev/null | awk \"{print \\$2}\"'", pkg)
+}
+
+func pacmanCandidateQueryCmd(pkg string) string {
+	return fmt.Sprintf("bash -o pipefail -c 'pacman -Si %s 2>/dev/null | grep -E \"^Version\" | head -1 | awk \"{print \\$3}\"'", pkg)
 }
 
 // exitErrFromChild runs `sh -c "exit N"` for real and returns its error — a
@@ -143,6 +153,82 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
 			fakes:   execFakes{lookPath: map[string]bool{"apt": false}},
 			wantErr: true,
+		},
+
+		// --- pacman (root-free query & vercmp comparison) ---
+		{
+			name:    "pacman/update-available",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanCandidateCmd: {stdout: "7.0.0-1"},
+				},
+				cmdArgs: map[string]fakeResult{
+					"vercmp 7.0.0-1 6.1.0-1": {stdout: "1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "6.1.0-1", LatestVersion: "7.0.0-1", UpdateAvailable: true},
+		},
+		{
+			name:    "pacman/current",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "7.0.0-1"},
+					pacmanCandidateCmd: {stdout: "7.0.0-1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "7.0.0-1", LatestVersion: "7.0.0-1", UpdateAvailable: false},
+		},
+		{
+			name:    "pacman/epoch-precedence",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "1:6.1.0-1"},
+					pacmanCandidateCmd: {stdout: "7.0.0-1"},
+				},
+				cmdArgs: map[string]fakeResult{
+					"vercmp 7.0.0-1 1:6.1.0-1": {stdout: "-1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "1:6.1.0-1", LatestVersion: "7.0.0-1", UpdateAvailable: false},
+		},
+		{
+			name:    "pacman/vercmp-fallback",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": false},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanCandidateCmd: {stdout: "7.0.0-1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "6.1.0-1", LatestVersion: "7.0.0-1", UpdateAvailable: true},
+		},
+		{
+			name:    "pacman/candidate-command-fails",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanCandidateCmd: {err: errors.New("exit status 1")},
+				},
+			},
+			wantErr:         true,
+			wantErrContains: "pacman check failed",
+		},
+		{
+			name:            "pacman/not-installed-error",
+			newAdpt:         func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes:           execFakes{lookPath: map[string]bool{"pacman": false}},
+			wantErr:         true,
+			wantErrContains: "pacman is not installed",
 		},
 
 		// --- brew (version extraction) ---
@@ -1036,6 +1122,66 @@ func TestCheckPackage(t *testing.T) {
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
+		},
+
+		// --- pacman: pacman -Q vs pacman -Si Installed vs Candidate ---
+		{
+			name:    "pacman/available",
+			checker: &PacmanAdapter{},
+			pkg:     "ripgrep",
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledQueryCmd("ripgrep"): {stdout: "14.1.0-1"},
+					pacmanCandidateQueryCmd("ripgrep"): {stdout: "14.1.1-1"},
+				},
+				cmdArgs: map[string]fakeResult{
+					"vercmp 14.1.1-1 14.1.0-1": {stdout: "1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "14.1.0-1", LatestVersion: "14.1.1-1", UpdateAvailable: true},
+		},
+		{
+			name:    "pacman/current",
+			checker: &PacmanAdapter{},
+			pkg:     "ripgrep",
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledQueryCmd("ripgrep"): {stdout: "14.1.1-1"},
+					pacmanCandidateQueryCmd("ripgrep"): {stdout: "14.1.1-1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "14.1.1-1", LatestVersion: "14.1.1-1", UpdateAvailable: false},
+		},
+		{
+			name:    "pacman/not-installed",
+			checker: &PacmanAdapter{},
+			pkg:     "ripgrep",
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledQueryCmd("ripgrep"): {stdout: ""},
+					pacmanCandidateQueryCmd("ripgrep"): {stdout: "14.1.1-1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "14.1.1-1", UpdateAvailable: false},
+		},
+		{
+			name:    "pacman/multi-repo-priority",
+			checker: &PacmanAdapter{},
+			pkg:     "ripgrep",
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledQueryCmd("ripgrep"): {stdout: "14.1.0-1"},
+					pacmanCandidateQueryCmd("ripgrep"): {stdout: "14.1.2-1"},
+				},
+				cmdArgs: map[string]fakeResult{
+					"vercmp 14.1.2-1 14.1.0-1": {stdout: "1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "14.1.0-1", LatestVersion: "14.1.2-1", UpdateAvailable: true},
 		},
 	}
 
