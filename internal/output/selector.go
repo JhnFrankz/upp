@@ -11,7 +11,7 @@ import (
 
 // SelectOption describes one selectable tool in the checkbox selector.
 type SelectOption struct {
-	ID      string // tool ID (--only/--skip key)
+	ID      string // tool ID (--only key)
 	Label   string // display name
 	Version string // inline "Current → Latest"
 	Group   string // owning manager label; non-empty options render a group header line first

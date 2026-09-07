@@ -152,7 +152,7 @@ func runUpdateWith(t *testing.T, fake *fakeUpdateAdapter) string {
 // runUpdateDefault drives the default delegated path (runUpdate) over a
 // hermetic adapter list in a captured-stdout hermetic HOME — the seam pattern
 // of TestRunUpdate_DefaultBulkGroupExecution. It replaces the deleted
-// runUpdateGroupWith harness: runUpdate resolves osName via platform.Detect(),
+// opt-in group-path harness: runUpdate resolves osName via platform.Detect(),
 // so ownership fakes key their manager/managerPackage maps by osKey (pass
 // platform.Detect().OS, resolved by the caller). stdin, when non-empty, is
 // swapped into os.Stdin for the duration so a prompt can be answered. Returns
@@ -1756,6 +1756,42 @@ func TestRunUpdate_GroupNonSudoProceeds(t *testing.T) {
 	}
 	if !strings.Contains(out, "Updated: gh") {
 		t.Errorf("non-sudo run must update gh; got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_DefaultGroupSummarySkipsDeselected pins the ux-patterns
+// "Default group bulk summary" scenario at OUTCOME level (design D4): on a
+// bare default update, apt owns gh (updated) and docker (prompt-denied →
+// deselected), and the flat summary reports "Updated: gh" AND
+// "Skipped: docker" — each owned tool's outcome, no group header.
+func TestRunUpdate_DefaultGroupSummarySkipsDeselected(t *testing.T) {
+	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+	gh.manager = map[string]string{"linux": "apt"}
+	gh.managerPackage = map[string]string{"linux": "gh"}
+	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+	docker.manager = map[string]string{"linux": "apt"}
+	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
+	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
+		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
+	}
+	apt.updatePackage = func(pkg string) (adapters.Result, error) {
+		return adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"}, nil
+	}
+
+	// First prompt (gh) answered yes; the second (docker) hits EOF → denied.
+	out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "y\n", apt, gh, docker)
+	if err != nil {
+		t.Fatalf("runUpdate error: %v", err)
+	}
+	if !strings.Contains(out, "Updated: gh") {
+		t.Errorf("flat summary must report gh updated; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Skipped: docker") {
+		t.Errorf("flat summary must report prompt-denied docker as skipped; got:\n%s", out)
+	}
+	if docker.updatePackageOn || docker.updated {
+		t.Error("prompt-denied docker must NOT be updated")
 	}
 }
 

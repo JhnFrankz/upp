@@ -128,8 +128,8 @@ Every adapter MUST declare an `UpdatePolicy` (`PolicyGated` or `PolicyAlwaysUpda
 | Owned inherits always | gh owned by brew (AlwaysUpdate) on macOS | gh delegated update | `update()` runs (delegates to brew) |
 | Stub official exempt | Adapter declaring `PolicyAlwaysUpdate` without detection (brew/bun/opencode) reports `update_available=false` | Update run | `update()` still runs |
 | Gated check fails | `PolicyGated` adapter `check()` fails during update run | Update run | `update()` skipped; failure reported; adapter never reported current |
-| Gated group gates on group availability | apt (Gated) group, no owned package has an update | `upp update --manager apt` | Group skipped; no owned tool updated |
-| AlwaysUpdate group runs | brew (AlwaysUpdate) group | `upp update --manager brew` | Group update runs regardless of check result |
+| Gated group gates on group availability | apt (Gated) group, no owned package has an update | `upp update` (default run) | Group skipped; no owned tool updated |
+| AlwaysUpdate group runs | brew (AlwaysUpdate) group | `upp update` (default run) | Group update runs regardless of check result |
 
 (Previously: docker, gh, and go were independent `PolicyAlwaysUpdate` stubs whose `update()` always ran; ownership did not exist, so gating was per-adapter with no manager inheritance and no group-level availability semantics.)
 

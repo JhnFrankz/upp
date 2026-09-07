@@ -11,7 +11,7 @@ import (
 
 // adapterNames is a tiny helper that extracts the Name() of each adapter in
 // order, so grouped-order assertions compare against the identifier that
-// --only/--skip round-trip on rather than the display label.
+// --only round-trip on rather than the display label.
 func adapterNames(adapters []adapters.Adapter) []string {
 	names := make([]string, len(adapters))
 	for i, a := range adapters {
@@ -83,7 +83,7 @@ func TestGroupOrder_PerPlatformResolution(t *testing.T) {
 
 // TestGroupOrder_FilteredManagerFallsToStandalone proves a tool whose manager
 // was filtered out (apt removed from the set) does NOT produce a phantom group:
-// it falls to the standalone tail, preserving the flat --only/--skip round-trip.
+// it falls to the standalone tail, preserving the flat --only round-trip.
 func TestGroupOrder_FilteredManagerFallsToStandalone(t *testing.T) {
 	tools := []adapters.Adapter{official.AdapterByName("docker")} // linux owner apt absent
 	ordered := GroupOrder(tools, platform.OSLinux)
