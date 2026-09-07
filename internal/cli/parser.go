@@ -1,5 +1,5 @@
 // Package cli defines the Cobra command tree, global flags, and
-// the filter logic for --only/--skip.
+// the filter logic for --only.
 package cli
 
 import (
@@ -17,7 +17,6 @@ type GlobalFlags struct {
 	Verbose bool
 	CI      bool
 	Only    string
-	Skip    string
 }
 
 // UpdateFlags holds flags specific to the update command.
@@ -51,7 +50,6 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 	root.PersistentFlags().BoolVarP(&gf.Verbose, "verbose", "v", false, "enable verbose diagnostic output on failure")
 	root.PersistentFlags().BoolVar(&gf.CI, "ci", false, "non-interactive mode (exit non-zero on failure)")
 	root.PersistentFlags().StringVar(&gf.Only, "only", "", "process only these tools (comma-separated)")
-	root.PersistentFlags().StringVar(&gf.Skip, "skip", "", "skip these tools (comma-separated)")
 
 	return root, gf
 }
@@ -85,23 +83,15 @@ func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 	)
 }
 
-// ParseFilter extracts the --only and --skip lists from flags.
-// --only wins over --skip when both are provided.
-// Tool names are lowercased for case-insensitive matching.
-func ParseFilter(only, skip string) (onlyList, skipList []string) {
-	if only != "" {
-		onlyList = parseCommaList(only)
-		return onlyList, nil // --only wins, --skip ignored
-	}
-	if skip != "" {
-		skipList = parseCommaList(skip)
-	}
-	return nil, skipList
+// ParseFilter extracts the --only list from the flag value.
+// Tool names are preserved for case-insensitive matching in FilterTools.
+func ParseFilter(only string) []string {
+	return parseCommaList(only)
 }
 
-// FilterTools applies the --only/--skip filter to a list of tool IDs.
+// FilterTools applies the --only filter to a list of tool IDs.
 // It warns about unknown tool names and returns the filtered list.
-func FilterTools(tools []string, onlyList, skipList []string, stderr io.Writer) []string {
+func FilterTools(tools, onlyList []string, stderr io.Writer) []string {
 	toolSet := make(map[string]bool, len(tools))
 	for _, t := range tools {
 		toolSet[strings.ToLower(t)] = true
@@ -109,9 +99,6 @@ func FilterTools(tools []string, onlyList, skipList []string, stderr io.Writer) 
 
 	if len(onlyList) > 0 {
 		return filterOnly(tools, onlyList, toolSet, stderr)
-	}
-	if len(skipList) > 0 {
-		return filterSkip(tools, skipList, toolSet, stderr)
 	}
 	return tools
 }
@@ -132,28 +119,6 @@ func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Wri
 	var result []string
 	for _, t := range tools {
 		if onlySet[strings.ToLower(t)] {
-			result = append(result, t)
-		}
-	}
-	return result
-}
-
-func filterSkip(tools, skipList []string, toolSet map[string]bool, stderr io.Writer) []string {
-	skipSet := make(map[string]bool, len(skipList))
-	for _, name := range skipList {
-		skipSet[strings.ToLower(name)] = true
-	}
-
-	// Warn about unknown tools
-	for _, name := range skipList {
-		if !toolSet[strings.ToLower(name)] {
-			_, _ = fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", name)
-		}
-	}
-
-	var result []string
-	for _, t := range tools {
-		if !skipSet[strings.ToLower(t)] {
 			result = append(result, t)
 		}
 	}

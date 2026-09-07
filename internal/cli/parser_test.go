@@ -40,7 +40,7 @@ func writeCheckConfig(t *testing.T, settingsBody string) string {
 }
 
 func TestParseFilter_Only(t *testing.T) {
-	onlyList, skipList := ParseFilter("brew,npm", "")
+	onlyList := ParseFilter("brew,npm")
 
 	if len(onlyList) != 2 {
 		t.Fatalf("expected 2 only items, got %d", len(onlyList))
@@ -48,42 +48,10 @@ func TestParseFilter_Only(t *testing.T) {
 	if onlyList[0] != "brew" || onlyList[1] != "npm" {
 		t.Errorf("unexpected only list: %v", onlyList)
 	}
-	if len(skipList) != 0 {
-		t.Errorf("expected empty skip list when --only is set, got %v", skipList)
-	}
-}
-
-func TestParseFilter_Skip(t *testing.T) {
-	onlyList, skipList := ParseFilter("", "apt,docker")
-
-	if len(onlyList) != 0 {
-		t.Errorf("expected empty only list, got %v", onlyList)
-	}
-	if len(skipList) != 2 {
-		t.Fatalf("expected 2 skip items, got %d", len(skipList))
-	}
-	if skipList[0] != "apt" || skipList[1] != "docker" {
-		t.Errorf("unexpected skip list: %v", skipList)
-	}
-}
-
-func TestParseFilter_OnlyWinsOverSkip(t *testing.T) {
-	onlyList, skipList := ParseFilter("brew", "apt")
-
-	if len(onlyList) != 1 {
-		t.Fatalf("expected 1 only item, got %d", len(onlyList))
-	}
-	if onlyList[0] != "brew" {
-		t.Errorf("expected 'brew', got %q", onlyList[0])
-	}
-	// --only wins: --skip is ignored
-	if len(skipList) != 0 {
-		t.Errorf("expected empty skip list when --only wins, got %v", skipList)
-	}
 }
 
 func TestParseFilter_CaseInsensitive(t *testing.T) {
-	onlyList, _ := ParseFilter("Brew,NPM", "")
+	onlyList := ParseFilter("Brew,NPM")
 
 	if onlyList[0] != "Brew" {
 		t.Errorf("ParseFilter should preserve case, got %q", onlyList[0])
@@ -92,18 +60,15 @@ func TestParseFilter_CaseInsensitive(t *testing.T) {
 }
 
 func TestParseFilter_Empty(t *testing.T) {
-	onlyList, skipList := ParseFilter("", "")
+	onlyList := ParseFilter("")
 
 	if len(onlyList) != 0 {
 		t.Errorf("expected empty only list, got %v", onlyList)
 	}
-	if len(skipList) != 0 {
-		t.Errorf("expected empty skip list, got %v", skipList)
-	}
 }
 
 func TestParseFilter_TrimsSpaces(t *testing.T) {
-	onlyList, _ := ParseFilter(" brew , npm ", "")
+	onlyList := ParseFilter(" brew , npm ")
 
 	if len(onlyList) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(onlyList))
@@ -121,22 +86,7 @@ func TestFilterTools_Only(t *testing.T) {
 	onlyList := []string{"brew", "npm"}
 	var stderr bytes.Buffer
 
-	result := FilterTools(tools, onlyList, nil, &stderr)
-
-	if len(result) != 2 {
-		t.Fatalf("expected 2 filtered tools, got %d", len(result))
-	}
-	if result[0] != "brew" || result[1] != "npm" {
-		t.Errorf("unexpected result: %v", result)
-	}
-}
-
-func TestFilterTools_Skip(t *testing.T) {
-	tools := []string{"apt", "brew", "npm", "docker"}
-	skipList := []string{"apt", "docker"}
-	var stderr bytes.Buffer
-
-	result := FilterTools(tools, nil, skipList, &stderr)
+	result := FilterTools(tools, onlyList, &stderr)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 filtered tools, got %d", len(result))
@@ -151,7 +101,7 @@ func TestFilterTools_CaseInsensitive(t *testing.T) {
 	onlyList := []string{"Brew", "NPM"}
 	var stderr bytes.Buffer
 
-	result := FilterTools(tools, onlyList, nil, &stderr)
+	result := FilterTools(tools, onlyList, &stderr)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 filtered tools, got %d", len(result))
@@ -166,7 +116,7 @@ func TestFilterTools_UnknownToolWarning(t *testing.T) {
 	onlyList := []string{"brew", "nonexistent"}
 	var stderr bytes.Buffer
 
-	result := FilterTools(tools, onlyList, nil, &stderr)
+	result := FilterTools(tools, onlyList, &stderr)
 
 	// Warning should be written to stderr
 	warning := stderr.String()
@@ -180,29 +130,11 @@ func TestFilterTools_UnknownToolWarning(t *testing.T) {
 	}
 }
 
-func TestFilterTools_SkipUnknownWarning(t *testing.T) {
-	tools := []string{"apt", "brew", "npm"}
-	skipList := []string{"brew", "ghost"}
-	var stderr bytes.Buffer
-
-	result := FilterTools(tools, nil, skipList, &stderr)
-
-	warning := stderr.String()
-	if !strings.Contains(warning, "ghost") {
-		t.Errorf("expected warning about 'ghost', got: %q", warning)
-	}
-
-	// apt and npm should remain
-	if len(result) != 2 {
-		t.Fatalf("expected 2 tools, got %d", len(result))
-	}
-}
-
 func TestFilterTools_NoFilter(t *testing.T) {
 	tools := []string{"apt", "brew", "npm"}
 	var stderr bytes.Buffer
 
-	result := FilterTools(tools, nil, nil, &stderr)
+	result := FilterTools(tools, nil, &stderr)
 
 	if len(result) != 3 {
 		t.Fatalf("expected 3 tools (no filter), got %d", len(result))
@@ -236,11 +168,6 @@ func TestBuildRoot_Flags(t *testing.T) {
 	onlyFlag := root.PersistentFlags().Lookup("only")
 	if onlyFlag == nil {
 		t.Error("missing --only flag")
-	}
-
-	skipFlag := root.PersistentFlags().Lookup("skip")
-	if skipFlag == nil {
-		t.Error("missing --skip flag")
 	}
 }
 
@@ -401,6 +328,22 @@ func TestUpdateCommand_ManagerFlagsRejected(t *testing.T) {
 	}
 	if err := cmd.ParseFlags([]string{"--update-group", "brew"}); err == nil {
 		t.Error("ParseFlags(--update-group brew) must error (unknown flag rejection)")
+	}
+}
+
+// TestRootCommand_SkipFlagRejected pins the spec command-interface
+// "--skip rejected" scenario: `--skip` MUST NOT exist as a global
+// persistent flag. Lookup must miss it on the root, and ParseFlags must
+// reject it with the default cobra unknown-flag error.
+func TestRootCommand_SkipFlagRejected(t *testing.T) {
+	root, _ := BuildRoot()
+
+	if root.PersistentFlags().Lookup("skip") != nil {
+		t.Error("--skip must not exist as a global persistent flag")
+	}
+
+	if err := root.ParseFlags([]string{"--skip", "apt"}); err == nil {
+		t.Error("ParseFlags(--skip apt) must error (unknown flag rejection)")
 	}
 }
 

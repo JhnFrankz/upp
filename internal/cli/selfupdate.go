@@ -30,15 +30,15 @@ const (
 // NewSelfUpdateCommand creates the `upp self-update` command. It
 // accepts no local flags (spec flag semantics: any unknown flag gets
 // the default cobra rejection). Persistent flags: --ci denies the
-// update; --only/--skip are ignored (they filter tools for
-// update/check, not releases); --quiet never suppresses the confirm
-// prompt or the deny message.
+// update; --only is ignored (it filters tools for update/check, not
+// releases); --quiet never suppresses the confirm prompt or the deny
+// message.
 func NewSelfUpdateCommand(gf *GlobalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "self-update",
 		Short: "Update the upp binary itself",
 		Long: "Check for a newer upp release, verify its sha256 checksum, and replace the current binary after confirmation. " +
-			"--only and --skip are ignored: they filter tools for update/check, not releases.",
+			"--only is ignored: it filters tools for update/check, not releases.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSelfUpdate(gf, cmd.Root().Version, cliDeps.selfUpdate)
 		},

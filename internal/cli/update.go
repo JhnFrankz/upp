@@ -67,8 +67,8 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 	allAdapters := adapterList
 
 	toolIDs := adapterIDs(adapterList)
-	onlyList, skipList := ParseFilter(gf.Only, gf.Skip)
-	filteredIDs := FilterTools(toolIDs, onlyList, skipList, os.Stderr)
+	onlyList := ParseFilter(gf.Only)
+	filteredIDs := FilterTools(toolIDs, onlyList, os.Stderr)
 
 	adapterMap := adapterByID(adapterList)
 	var filteredAdapters []adapters.Adapter
