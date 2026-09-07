@@ -40,9 +40,9 @@ Confirmation MUST be classified by the REAL privileges and risk of the command t
 | Custom destructive | Custom tool runs `rm -rf` | Update requested | Prompt with warning, requires explicit yes |
 | `--ci` high-risk | Custom tool needs confirmation | `upp update --ci` | Exits non-zero: "requires confirmation" — trust does not waive it |
 | `--ci` trusted high-risk | `trusted = true`, uses `sudo` | `upp update --ci` | Exits non-zero; confirmation cannot be waived in non-interactive mode |
-| Sudo-heavy group prompts | Linux, apt owned tools (gh/docker) use `sudo apt install --only-upgrade` | `upp update --manager apt` | Prompts for confirmation despite TrustOfficial owned tools |
-| Non-sudo group proceeds | macOS, brew owned tools use `brew upgrade` (no sudo) | `upp update --manager brew` | Group update proceeds without confirmation |
-| `--ci` sudo group fails | Linux, `--ci`, apt group sudo package commands | `upp update --manager apt --ci` | Exits non-zero for the sudo-heavy group; group not executed |
+| Sudo-heavy group prompts | Linux, apt owned tools (gh/docker) use `sudo apt install --only-upgrade` | `upp update` (default run, apt group in selection) | Prompts for confirmation despite TrustOfficial owned tools |
+| Non-sudo group proceeds | macOS, brew owned tools use `brew upgrade` (no sudo) | `upp update` (default run, brew group in selection) | Group update proceeds without confirmation |
+| `--ci` sudo group fails | Linux, `--ci`, apt group sudo package commands | `upp update --ci` | Exits non-zero for the sudo-heavy group; group not executed |
 
 (Previously: confirmation applied only to custom tool updates; owned-tool rows were `TrustOfficial` and always auto-proceeded (`ConfirmAuto`), so a sudo-heavy manager group update would run without prompting.)
 

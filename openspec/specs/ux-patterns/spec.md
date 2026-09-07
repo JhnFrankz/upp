@@ -92,7 +92,7 @@ Every `update` run (including `--dry-run` and default manager-group runs) MUST e
 - List of tools in each category
 - Overall status message
 
-Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M skipped"). For default and filtered manager-group updates, the summary MUST render group package updates alongside standalone tools, reporting each owned tool that was updated, skipped (via `--skip` or deselection), current, or failed within its manager group. The summary MUST NOT print "All tools up to date." when any enabled tool was skipped or unchecked. A `--dry-run` summary MUST NOT print "All clean!" when any update is pending; pending updates MUST be reported explicitly. The tool list and status lines in the summary report MUST follow a 100% deterministic order matching canonical tool discovery order, unaffected by out-of-order concurrent completion during execution.
+Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M skipped"). For default manager-group updates, the summary MUST render group package updates alongside standalone tools, reporting each owned tool that was updated, skipped (via deselection), current, or failed within its manager group. The summary MUST NOT print "All tools up to date." when any enabled tool was skipped or unchecked. A `--dry-run` summary MUST NOT print "All clean!" when any update is pending; pending updates MUST be reported explicitly. The tool list and status lines in the summary report MUST follow a 100% deterministic order matching canonical tool discovery order, unaffected by out-of-order concurrent completion during execution.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -102,20 +102,13 @@ Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M s
 | Up-to-date with skips | 8 current, 2 enabled tools skipped | `upp update --dry-run` | Summary counts skipped explicitly ("8 up to date, 2 skipped"); never "All tools up to date." |
 | Dry-run pending | 3 updates pending (2 in brew group, 1 standalone), 7 current | `upp update --dry-run` | Summary reports "3 would update"; never pairs "All clean!" with pending updates |
 | Concurrent deterministic order | Tools complete out-of-order across concurrent workers | `upp update --dry-run` finishes | Summary report lists tools strictly in canonical tool discovery order |
-| Default group bulk summary | Linux, bare update with apt owning gh (updated) and docker (skipped) | `upp update --skip docker` | Group summary lists apt group with gh updated, docker skipped |
-| Filtered group partial fail | brew group: gh updated, docker failed | `upp update --manager brew` | Group summary lists gh updated, docker failed under brew |
-| Group dry-run preview | apt group, gh pending, docker current | `upp update -n` | Group summary reports gh would update, docker current under apt group preview |
+| Default group bulk summary | Linux, bare update with apt owning gh (updated) and docker (skipped) | `upp update` | Flat summary reports gh updated and docker skipped alongside standalone tools; each owned tool is reported within the flat summary |
+| Filtered group partial fail | brew group: gh updated, docker failed, `--only gh,docker` | `upp update --only gh,docker` | Flat summary reports gh updated and docker failed |
+| Group dry-run preview | apt group, gh pending, docker current | `upp update -n` | Flat summary reports gh would update and docker current |
+
+(Previously: manager-group summaries were only generated when explicitly triggered via `--manager`/`--update-group` opt-in flags; default runs did not render manager-group package updates or per-tool group outcomes. The summary is a single flat report — no dedicated group renderer exists.)
 
 (Previously: manager-group summaries were only generated when explicitly triggered via `--manager`/`--update-group` opt-in flags; default runs did not render manager-group package updates or per-tool group outcomes.)
-
-### Requirement: Opt-In Flag UX
-
-`--manager <mgr>` and `--update-group <mgr>` MUST be documented as opt-in flags on `upp update` that trigger a manager-group bulk update. The group bulk UX MUST render which owned tools are in the batch, which are excluded by `--skip`, and whether the batch is gated, before executing.
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| Help documents flags | `upp update --help` runs | Help shown | `--manager` and `--update-group` listed as opt-in group bulk flags |
-| Batch rendered | Linux, apt owns gh/docker | `upp update --manager apt` | Batch UX shows gh and docker; docker marked skipped if `--skip docker` |
 
 ### Requirement: `--quiet` Verbosity
 
@@ -180,17 +173,17 @@ For long-running operations, the system SHOULD show per-operation progress label
 
 ### Requirement: List Table Output
 
-`upp list` MUST render a table whose columns are labeled to match their data and MUST include the tool ID in its own column, and MUST group rows under their owning manager. Manager adapters render as group headers; owned tools (gh, docker, go) render as child rows beneath their resolved manager for the current platform. Owned tools MUST NOT render as standalone top-level rows. Grouping is DISPLAY-ONLY: `--only`/`--skip` filter names remain the per-tool IDs and MUST NOT change semantics.
+`upp list` MUST render a table whose columns are labeled to match their data and MUST include the tool ID in its own column, and MUST group rows under their owning manager. Manager adapters render as group headers; owned tools (gh, docker, go) render as child rows beneath their resolved manager for the current platform. Owned tools MUST NOT render as standalone top-level rows. Grouping is DISPLAY-ONLY: `--only` filter names remain the per-tool IDs and MUST NOT change semantics.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Correct columns | 10 tools detected | `upp list` | Header `ID \| Name \| Status \| Version`; each row's ID usable with `--only`/`--skip` |
+| Correct columns | 10 tools detected | `upp list` | Header `ID \| Name \| Status \| Version`; each row's ID usable with `--only` |
 | Filter round-trip | Row shows ID `gh` | `upp list --only gh` | `gh` listed (row ID matches filter name) |
 | Grouped by manager | Platform Linux, docker owned by apt | `upp list` | apt renders as header; docker renders as child row beneath it |
 | Owned tool not independent | Platform macOS, gh owned by brew | `upp list` | gh appears under brew group, not as its own top-level row |
-| Filters ignore grouping | `--only gh` and `--skip apt` on Linux | `upp list --only gh --skip apt` | gh still selected by ID regardless of being grouped under apt |
+| Filters ignore grouping | `--only gh` on Linux, gh grouped under apt | `upp list --only gh` | gh still selected by ID regardless of being grouped under apt |
 
-(Previously: `upp list` rendered a flat per-tool table with no manager grouping; owned tools appeared as independent top-level rows.)
+(Previously: `upp list` rendered a flat per-tool table with no manager grouping; owned tools appeared as independent top-level rows, and `--skip` existed as an inverse display filter.)
 
 ### Requirement: Interactive Update Tool Selection
 
