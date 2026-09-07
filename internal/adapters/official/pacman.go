@@ -41,7 +41,47 @@ func (a *PacmanAdapter) Check() (adapters.UpdateInfo, error) {
 
 // Update updates pacman itself.
 func (a *PacmanAdapter) Update(dryRun bool) (adapters.Result, error) {
-	return adapters.Result{}, nil
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("pacman is not installed")
+	}
+
+	before, _ := a.CurrentVersion()
+	if dryRun {
+		return adapters.Result{
+			Success: true,
+			Before:  before,
+			After:   before,
+		}, nil
+	}
+
+	_, stderr, err := runCmd("sudo pacman -S --noconfirm pacman")
+	if err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("pacman update failed: %w", err),
+			Privileges: []string{"sudo"},
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "error:") {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("pacman update error: %s", truncate(stderr, 200)),
+			Privileges: []string{"sudo"},
+		}, nil
+	}
+
+	after, _ := a.CurrentVersion()
+	return adapters.Result{
+		Success:    true,
+		Before:     before,
+		After:      after,
+		Privileges: []string{"sudo"},
+	}, nil
 }
 
 // CheckPackage reports the installed vs candidate version of a package under pacman.
@@ -108,5 +148,37 @@ func (a *PacmanAdapter) CurrentVersion() (string, error) {
 
 // UpdatePackage updates a single package using pacman.
 func (a *PacmanAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
-	return adapters.Result{}, nil
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("pacman is not installed")
+	}
+
+	before, _ := a.CurrentVersion()
+	_, stderr, err := runCmd(fmt.Sprintf("sudo pacman -S --noconfirm %s", pkg))
+	if err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("pacman update failed: %w", err),
+			Privileges: []string{"sudo"},
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "error:") {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("pacman update error: %s", truncate(stderr, 200)),
+			Privileges: []string{"sudo"},
+		}, nil
+	}
+
+	after, _ := a.CurrentVersion()
+	return adapters.Result{
+		Success:    true,
+		Before:     before,
+		After:      after,
+		Privileges: []string{"sudo"},
+	}, nil
 }
