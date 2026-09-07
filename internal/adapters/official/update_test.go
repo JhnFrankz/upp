@@ -15,6 +15,7 @@ import (
 // failure, never a silent fake miss.
 const (
 	aptUpdateCmd        = "sudo apt install --only-upgrade apt"
+	pacmanUpdateCmd     = "sudo pacman -S --noconfirm pacman"
 	brewUpdateCmd       = "brew update"
 	npmUpdateCmd        = "npm update -g"
 	pnpmUpdateCmd       = "pnpm update -g"
@@ -45,6 +46,7 @@ type updateCase struct {
 	setup     func(t *testing.T)
 	goos      string
 	dryRun    bool
+	pkg       string
 	want      adapters.Result
 	wantErr   bool
 	resultErr bool
@@ -127,6 +129,65 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+
+		// --- pacman (shell-based version + sudo) ---
+		{
+			name:    "pacman/not-installed-error",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"pacman": false}},
+			wantErr: true,
+		},
+		{
+			name:    "pacman/dry-run-shortcut",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanUpdateCmd:    failIfRun,
+				},
+			},
+			dryRun: true,
+			want:   adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1"},
+		},
+		{
+			name:    "pacman/update-command-error",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanUpdateCmd:    {err: errors.New("sudo: command not found")},
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			resultErr: true,
+		},
+		{
+			name:    "pacman/stderr-marker-fails",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanUpdateCmd:    {stderr: "error: failed to commit transaction"},
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			resultErr: true,
+		},
+		{
+			name:    "pacman/success",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd: {stdout: "6.1.0-1"},
+					pacmanUpdateCmd:    {stdout: "resolving dependencies...\nupgrading pacman..."},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
 		},
 
 		// --- brew (version extraction + shell update) ---
@@ -1054,6 +1115,54 @@ func TestUpdatePackage(t *testing.T) {
 			},
 			want: adapters.Result{Success: false, Before: "v1.8.2301", After: "v1.8.2301"},
 		},
+
+		// --- pacman: sudo pacman -S --noconfirm <pkg> ---
+		{
+			name:    "pacman/ripgrep-updates-owned-package",
+			pkg:     "ripgrep",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd:                   {stdout: "6.1.0-1"},
+					"sudo pacman -S --noconfirm ripgrep": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+		},
+		{
+			name:    "pacman/package-command-fails",
+			pkg:     "ripgrep",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd:                   {stdout: "6.1.0-1"},
+					"sudo pacman -S --noconfirm ripgrep": {err: errors.New("exit status 1")},
+				},
+			},
+			want: adapters.Result{Success: false, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+		},
+		{
+			name:    "pacman/stderr-marker-fails",
+			pkg:     "badpkg",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pacman": true},
+				shell: map[string]fakeResult{
+					pacmanInstalledCmd:                  {stdout: "6.1.0-1"},
+					"sudo pacman -S --noconfirm badpkg": {stderr: "error: target not found: badpkg"},
+				},
+			},
+			want: adapters.Result{Success: false, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+		},
+		{
+			name:    "pacman/not-installed-error",
+			pkg:     "ripgrep",
+			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"pacman": false}},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1064,7 +1173,11 @@ func TestUpdatePackage(t *testing.T) {
 			if !ok {
 				t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
 			}
-			res, err := updater.UpdatePackage("gh")
+			pkg := tt.pkg
+			if pkg == "" {
+				pkg = "gh"
+			}
+			res, err := updater.UpdatePackage(pkg)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("UpdatePackage() error = nil, want error")
