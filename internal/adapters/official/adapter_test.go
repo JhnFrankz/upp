@@ -21,6 +21,7 @@ func TestAdapterNames(t *testing.T) {
 	}{
 		{"apt", func() adapters.Adapter { return &AptAdapter{} }, "apt"},
 		{"brew", func() adapters.Adapter { return &BrewAdapter{} }, "brew"},
+		{"pacman", func() adapters.Adapter { return &PacmanAdapter{} }, "pacman"},
 		{"npm", func() adapters.Adapter { return &NpmAdapter{} }, "npm"},
 		{"pnpm", func() adapters.Adapter { return &PnpmAdapter{} }, "pnpm"},
 		{"bun", func() adapters.Adapter { return &BunAdapter{} }, "bun"},

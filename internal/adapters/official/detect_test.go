@@ -19,6 +19,7 @@ func TestDetect(t *testing.T) {
 	}{
 		{"apt", &AptAdapter{}, "apt"},
 		{"brew", &BrewAdapter{}, "brew"},
+		{"pacman", &PacmanAdapter{}, "pacman"},
 		{"npm", &NpmAdapter{}, "npm"},
 		{"pnpm", &PnpmAdapter{}, "pnpm"},
 		{"bun", &BunAdapter{}, "bun"},
