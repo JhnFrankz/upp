@@ -32,6 +32,7 @@ func TestAdapterNames(t *testing.T) {
 		{"winget", func() adapters.Adapter { return &WingetAdapter{} }, "winget"},
 		{"scoop", func() adapters.Adapter { return &ScoopAdapter{} }, "scoop"},
 		{"nvm", func() adapters.Adapter { return &NVMAdapter{} }, "nvm"},
+		{"uv", func() adapters.Adapter { return &UvAdapter{} }, "uv"},
 	}
 
 	for _, tt := range tests {
