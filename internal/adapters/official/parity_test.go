@@ -161,7 +161,7 @@ func TestEveryManagerHasManagerPackage(t *testing.T) {
 func TestManagerAdaptersImplementPackageInterfaces(t *testing.T) {
 	for _, a := range AllAdapters() {
 		info := a.Info()
-		if info.Kind == adapters.KindManager && (info.ID == "apt" || info.ID == "brew" || info.ID == "winget") {
+		if info.Kind == adapters.KindManager && (info.ID == "apt" || info.ID == "brew" || info.ID == "winget" || info.ID == "pacman") {
 			if _, ok := a.(adapters.PackageUpdater); !ok {
 				t.Errorf("manager adapter %q must implement adapters.PackageUpdater", info.ID)
 			}

@@ -278,8 +278,8 @@ func TestGroupByOwner_DeterministicCanonicalOrder(t *testing.T) {
 			gotHeaders = append(gotHeaders, g.Header)
 		}
 	}
-	if !slices.Equal(gotHeaders, []string{"APT Package Manager", "Homebrew"}) {
-		t.Errorf("group headers = %v, want [APT Package Manager Homebrew]", gotHeaders)
+	if !slices.Equal(gotHeaders, []string{"APT Package Manager", "Homebrew", "Pacman Package Manager"}) {
+		t.Errorf("group headers = %v, want [APT Package Manager Homebrew Pacman Package Manager]", gotHeaders)
 	}
 	// apt's group: the manager row leads, then its owned tools gh + docker.
 	var aptGroup *Group
@@ -352,11 +352,12 @@ func TestGroupOrder_DeterministicCanonicalOrder(t *testing.T) {
 
 // groupOrderForFeed returns the canonical group order the group helpers must
 // produce for the given feed on Linux: apt group (apt, gh, docker) leads
-// because apt is first in AllAdapters, then brew group (brew), then standalone
-// tools in feed order (nvm, npm, pnpm, bun, go, opencode).
+// because apt is first in AllAdapters, then brew group (brew), then pacman
+// group (pacman), then standalone tools in feed order (nvm, npm, pnpm, bun,
+// go, opencode).
 func groupOrderForFeed(t *testing.T) []string {
 	t.Helper()
-	return []string{"apt", "gh", "docker", "brew", "nvm", "npm", "pnpm", "bun", "go", "opencode"}
+	return []string{"apt", "gh", "docker", "brew", "pacman", "nvm", "npm", "pnpm", "bun", "go", "opencode"}
 }
 
 // TestGroupByOwner_CustomToolBucketedUnderManager proves GroupByOwner places a
