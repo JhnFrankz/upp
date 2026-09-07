@@ -271,10 +271,10 @@ func TestListCommand_NoConfig(t *testing.T) {
 	}
 }
 
-// TestListCommand_FilterRoundTrip_GroupingDisplayOnly proves the --only/--skip
+// TestListCommand_FilterRoundTrip_GroupingDisplayOnly proves the --only
 // filter round-trip survives the grouping change (task 3.5): runList filters
 // by per-tool ID BEFORE GroupByOwner, so a filtered ID still appears as a row
-// (usable with --only/--skip) even when its owning manager was filtered out —
+// (usable with --only) even when its owning manager was filtered out —
 // grouping is display-only and never drops or renames a row ID.
 func TestListCommand_FilterRoundTrip_GroupingDisplayOnly(t *testing.T) {
 	tmpDir := t.TempDir()

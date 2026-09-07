@@ -368,10 +368,10 @@ func TestListTools_IDColumn(t *testing.T) {
 	if strings.Contains(header, "Tool") {
 		t.Errorf("list header must not mislabel the ID column as 'Tool', got: %q", header)
 	}
-	// The ID column shows the --only/--skip filter IDs, distinct from the
+	// The ID column shows the --only filter IDs, distinct from the
 	// display name.
 	if !strings.Contains(output, "brew") || !strings.Contains(output, "npm") {
-		t.Errorf("list rows must show tool IDs usable with --only/--skip, got:\n%s", output)
+		t.Errorf("list rows must show tool IDs usable with --only, got:\n%s", output)
 	}
 }
 
@@ -488,7 +488,7 @@ func TestGroupByOwner_LinuxGroupsOwnedTools(t *testing.T) {
 // TestGroupByOwner_FilteredManagerNoPhantomHeader pins the display-only
 // grouping contract (task 3.5): when a manager is filtered out (not in the
 // input set), its owned tools fall to the standalone group rather than
-// producing a phantom manager header — the --only/--skip round-trip IDs stay
+// producing a phantom manager header — the --only round-trip IDs stay
 // usable.
 func TestGroupByOwner_FilteredManagerNoPhantomHeader(t *testing.T) {
 	// Build a set with ONLY docker (its linux owner apt filtered out).

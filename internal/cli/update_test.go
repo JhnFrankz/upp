@@ -152,7 +152,7 @@ func runUpdateWith(t *testing.T, fake *fakeUpdateAdapter) string {
 // runUpdateDefault drives the default delegated path (runUpdate) over a
 // hermetic adapter list in a captured-stdout hermetic HOME — the seam pattern
 // of TestRunUpdate_DefaultBulkGroupExecution. It replaces the deleted
-// runUpdateGroupWith harness: runUpdate resolves osName via platform.Detect(),
+// opt-in group-path harness: runUpdate resolves osName via platform.Detect(),
 // so ownership fakes key their manager/managerPackage maps by osKey (pass
 // platform.Detect().OS, resolved by the caller). stdin, when non-empty, is
 // swapped into os.Stdin for the duration so a prompt can be answered. Returns

@@ -402,7 +402,7 @@ func (r *Renderer) ListTools(groups []Group) {
 
 // ListEntry holds data for a single tool in the list output.
 type ListEntry struct {
-	ID      string // --only/--skip filter ID (e.g. "apt", "brew")
+	ID      string // --only filter ID (e.g. "apt", "brew")
 	Name    string
 	Status  Status
 	Version string
