@@ -62,13 +62,19 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 	// display-only: --only already filtered per-tool ID above, so the
 	// rendered rows round-trip with the filter names (design: display-only).
 	if len(adapterList) == 0 {
-		fmt.Println("No tools configured.")
+		if len(only) > 0 {
+			// --only named tools but none matched: say it's the filter,
+			// not an empty config (the two exits are not the same state).
+			r.NoToolsMatchFilter(gf.Only)
+			return nil
+		}
+		r.NoToolsConfigured()
 		return nil
 	}
 
 	groups := output.GroupByOwner(adapterList, p.OS)
 	if len(groups) == 0 {
-		fmt.Println("No tools configured.")
+		r.NoToolsConfigured()
 		return nil
 	}
 

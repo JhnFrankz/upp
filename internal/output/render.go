@@ -400,6 +400,26 @@ func (r *Renderer) ListTools(groups []Group) {
 	_ = w.Flush()
 }
 
+// NoToolsConfigured prints the empty-list message for `upp list` when no
+// tools are configured. Suppressed under --quiet like other list status
+// output.
+func (r *Renderer) NoToolsConfigured() {
+	if r.quiet {
+		return
+	}
+	_, _ = fmt.Fprintln(r.w, "no tools configured.")
+}
+
+// NoToolsMatchFilter prints the --only filter mismatch message for `upp
+// list`: the filter matched none of the configured tools. Suppressed under
+// --quiet like other list status output.
+func (r *Renderer) NoToolsMatchFilter(filter string) {
+	if r.quiet {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, "no tools match --only filter: %s\n", filter)
+}
+
 // ListEntry holds data for a single tool in the list output.
 type ListEntry struct {
 	ID      string // --only filter ID (e.g. "apt", "brew")
