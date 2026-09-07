@@ -923,6 +923,242 @@ func TestCheck(t *testing.T) {
 			fakes:   execFakes{},
 			wantErr: true,
 		},
+
+		// --- uv (dual-scope: self update + tool list) ---
+		{
+			name:    "uv/self-update-available",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.0 (085c7b399 2024-12-16)"},
+					"uv --version":             {stdout: "uv 0.5.0 (085c7b399 2024-12-16)"},
+					"uv self update --dry-run": {stdout: "Would update uv from 0.5.0 to 0.5.11"},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.0", LatestVersion: "0.5.0", UpdateAvailable: true},
+		},
+		{
+			name:    "uv/tools-outdated",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stdout: "ruff v0.8.0 (latest: v0.9.0)"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: true},
+		},
+		{
+			name:    "uv/tool-update-available",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stdout: "ruff v0.8.0 (latest: v0.9.0)"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: true},
+		},
+		{
+			name:    "uv/both-available",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.0 (085c7b399 2024-12-16)"},
+					"uv --version":             {stdout: "uv 0.5.0 (085c7b399 2024-12-16)"},
+					"uv self update --dry-run": {stdout: "Would update uv from 0.5.0 to 0.5.11"},
+					"uv tool list --outdated":  {stdout: "ruff v0.8.0 (latest: v0.9.0)"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.0", LatestVersion: "0.5.0", UpdateAvailable: true},
+		},
+		{
+			name:    "uv/all-clean",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: false},
+		},
+		{
+			name:    "uv/up-to-date",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: false},
+		},
+		{
+			name:    "uv/no-tools-installed",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stdout: "No tools installed"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: false},
+		},
+		{
+			name:    "uv/external-manager-bypass-no-outdated",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stderr: "error: uv was installed through an external package manager. Please use that package manager to update uv.", err: errors.New("sentinel")},
+					"uv tool list --outdated":  {stdout: "No tools installed"},
+				},
+			},
+			exitCode: &two,
+			want:     adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: false},
+		},
+		{
+			name:    "uv/external-manager-bypass-no-updates",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stderr: "error: uv was installed through an external package manager. Please use that package manager to update uv.", err: errors.New("sentinel")},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			exitCode: &two,
+			want:     adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: false},
+		},
+		{
+			name:    "uv/external-manager-bypass-with-outdated-tools",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stderr: "error: uv was installed through an external package manager. Please use that package manager to update uv.", err: errors.New("sentinel")},
+					"uv tool list --outdated":  {stdout: "black v24.1.0 (latest: v24.2.0)"},
+				},
+			},
+			exitCode: &two,
+			want:     adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: true},
+		},
+		{
+			name:    "uv/external-manager-bypass-with-tool-updates",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stderr: "error: uv was installed through an external package manager. Please use that package manager to update uv.", err: errors.New("sentinel")},
+					"uv tool list --outdated":  {stdout: "black v24.1.0 (latest: v24.2.0)"},
+				},
+			},
+			exitCode: &two,
+			want:     adapters.UpdateInfo{CurrentVersion: "0.5.11", LatestVersion: "0.5.11", UpdateAvailable: true},
+		},
+		{
+			name:    "uv/unexpected-self-update-error",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stderr: "network timeout", err: errors.New("sentinel")},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			exitCode:        &one,
+			wantErr:         true,
+			wantErrContains: "(exit 1)",
+		},
+		{
+			name:    "uv/self-update-other-nonzero-fails",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stderr: "network timeout", err: errors.New("sentinel")},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			exitCode:        &one,
+			wantErr:         true,
+			wantErrContains: "(exit 1)",
+		},
+		{
+			name:    "uv/tool-list-command-fails",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: "uv 0.5.11"},
+					"uv --version":             {stdout: "uv 0.5.11"},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stderr: "failed to parse receipts", err: errors.New("sentinel")},
+				},
+			},
+			exitCode:        &one,
+			wantErr:         true,
+			wantErrContains: "(exit 1)",
+		},
+		{
+			name:            "uv/not-installed",
+			newAdpt:         func() adapters.Adapter { return &UvAdapter{} },
+			fakes:           execFakes{lookPath: map[string]bool{"uv": false}},
+			wantErr:         true,
+			wantErrContains: "uv is not installed",
+		},
+		{
+			name:            "uv/not-installed-error",
+			newAdpt:         func() adapters.Adapter { return &UvAdapter{} },
+			fakes:           execFakes{lookPath: map[string]bool{"uv": false}},
+			wantErr:         true,
+			wantErrContains: "uv is not installed",
+		},
+		{
+			name:    "uv/empty-version-unknown",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":                       {stdout: ""},
+					"uv --version":             {stdout: ""},
+					"uv self update --dry-run": {stdout: "uv is already up to date"},
+					"uv tool list --outdated":  {stdout: "No outdated tools"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "unknown", UpdateAvailable: false},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1206,5 +1442,90 @@ func TestCheckPackage(t *testing.T) {
 				t.Errorf("CheckPackage() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsExternalManagerError(t *testing.T) {
+	if isExternalManagerError(nil, "some output") {
+		t.Error("expected false for nil error")
+	}
+
+	if runtime.GOOS != "windows" {
+		exit2 := exitErrFromChild(t, 2)
+		exit1 := exitErrFromChild(t, 1)
+
+		if !isExternalManagerError(exit2, "error: uv was installed through an external package manager") {
+			t.Error("expected true for exit 2 with external package manager message")
+		}
+		if isExternalManagerError(exit1, "error: uv was installed through an external package manager") {
+			t.Error("expected false for exit 1 even with external package manager message")
+		}
+		if isExternalManagerError(exit2, "some other error occurred") {
+			t.Error("expected false for exit 2 without external package manager message")
+		}
+	}
+
+	if !isExternalManagerError(errors.New("exit status 2"), "installed through an external package manager") {
+		t.Error("expected true for exit status 2 error string with message")
+	}
+	if isExternalManagerError(errors.New("other error"), "installed through an external package manager") {
+		t.Error("expected false for non-exit-2 error string with message")
+	}
+}
+
+func TestParseUvSelfUpdateOutput(t *testing.T) {
+	tests := []struct {
+		output string
+		want   bool
+	}{
+		{"Would update uv from 0.5.0 to 0.5.11", true},
+		{"uv is already up to date", false},
+		{"", false},
+		{"   ", false},
+		{"new version available", true},
+		{"updating uv...", true},
+	}
+	for _, tt := range tests {
+		if got := parseUvSelfUpdateOutput(tt.output); got != tt.want {
+			t.Errorf("parseUvSelfUpdateOutput(%q) = %v, want %v", tt.output, got, tt.want)
+		}
+	}
+}
+
+func TestParseUvToolListOutdatedOutput(t *testing.T) {
+	tests := []struct {
+		output string
+		want   bool
+	}{
+		{"ruff v0.8.0 (latest: v0.9.0)", true},
+		{"black v24.1.0 (latest: v24.2.0)\nruff v0.8.0 (latest: v0.9.0)", true},
+		{"No tools installed", false},
+		{"No outdated tools", false},
+		{"", false},
+		{"   ", false},
+	}
+	for _, tt := range tests {
+		if got := parseUvToolListOutdatedOutput(tt.output); got != tt.want {
+			t.Errorf("parseUvToolListOutdatedOutput(%q) = %v, want %v", tt.output, got, tt.want)
+		}
+	}
+}
+
+func TestExtractUvVersion(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want string
+	}{
+		{"uv 0.12.10 (c294fb8e9 2024-08-20)", "0.12.10"},
+		{"uv 0.5.0 (085c7b399 2024-12-16)", "0.5.0"},
+		{"uv 0.5.11", "0.5.11"},
+		{"0.5.11", "0.5.11"},
+		{"", ""},
+		{"   ", ""},
+	}
+	for _, tt := range tests {
+		if got := extractUvVersion(tt.raw); got != tt.want {
+			t.Errorf("extractUvVersion(%q) = %q, want %q", tt.raw, got, tt.want)
+		}
 	}
 }
