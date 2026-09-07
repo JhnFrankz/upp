@@ -110,5 +110,53 @@ func parseUvToolListOutdatedOutput(output string) bool {
 }
 
 func (a *UvAdapter) Update(dryRun bool) (adapters.Result, error) {
-	return adapters.Result{}, nil
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("uv is not installed")
+	}
+
+	before := extractUvVersion(commandOutput("uv", "--version"))
+	if before == "" {
+		before = "unknown"
+	}
+
+	if dryRun {
+		return adapters.Result{
+			Success: true,
+			Before:  before,
+			After:   before,
+		}, nil
+	}
+
+	stdout, stderr, err := runCmd("uv self update")
+	if err != nil {
+		if !isExternalManagerError(err, stdout+" "+stderr) {
+			return adapters.Result{
+				Success: false,
+				Before:  before,
+				After:   before,
+				Error:   fmt.Errorf("uv self update failed: %w", err),
+			}, nil
+		}
+	}
+
+	_, _, err = runCmd("uv tool upgrade --all")
+	if err != nil {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("uv tool upgrade failed: %w", err),
+		}, nil
+	}
+
+	after := extractUvVersion(commandOutput("uv", "--version"))
+	if after == "" {
+		after = before
+	}
+
+	return adapters.Result{
+		Success: true,
+		Before:  before,
+		After:   after,
+	}, nil
 }

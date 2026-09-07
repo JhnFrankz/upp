@@ -26,6 +26,8 @@ const (
 	wingetUpdateCmd     = "winget upgrade winget"
 	scoopUpdateCmd      = "scoop update scoop"
 	nvmInstallStableCmd = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
+	uvSelfUpdateCmd     = "uv self update"
+	uvToolUpgradeCmd    = "uv tool upgrade --all"
 )
 
 // failIfRun is a fake result that fails loudly: any row that keys a command
@@ -856,6 +858,148 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			want: adapters.Result{Success: true, Before: "v20.11.0", After: "v20.11.0"},
+		},
+
+		// --- uv (dual-scope: self update + tool upgrade) ---
+		{
+			name:    "uv/not-installed-error",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"uv": false}},
+			wantErr: true,
+		},
+		{
+			name:    "uv/dry-run",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  failIfRun,
+					uvToolUpgradeCmd: failIfRun,
+				},
+			},
+			dryRun: true,
+			want:   adapters.Result{Success: true, Before: "0.12.10", After: "0.12.10"},
+		},
+		{
+			name:    "uv/dry-run-shortcut",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  failIfRun,
+					uvToolUpgradeCmd: failIfRun,
+				},
+			},
+			dryRun: true,
+			want:   adapters.Result{Success: true, Before: "0.12.10", After: "0.12.10"},
+		},
+		{
+			name:    "uv/live-standalone-success",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  {},
+					uvToolUpgradeCmd: {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "0.12.10", After: "0.12.10"},
+		},
+		{
+			name:    "uv/external-manager-bypass-success",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  {stderr: "error: uv was installed through an external package manager", err: errors.New("exit status 2")},
+					uvToolUpgradeCmd: {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "0.12.10", After: "0.12.10"},
+		},
+		{
+			name:    "uv/unexpected-self-update-error",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  {stderr: "error: network failure", err: errors.New("exit status 1")},
+					uvToolUpgradeCmd: failIfRun,
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "0.12.10", After: "0.12.10"},
+			resultErr: true,
+		},
+		{
+			name:    "uv/self-update-unexpected-failure",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  {stderr: "error: network failure", err: errors.New("exit status 1")},
+					uvToolUpgradeCmd: failIfRun,
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "0.12.10", After: "0.12.10"},
+			resultErr: true,
+		},
+		{
+			name:    "uv/tool-upgrade-error",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  {},
+					uvToolUpgradeCmd: {stderr: "error: failed to upgrade tool", err: errors.New("exit status 1")},
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "0.12.10", After: "0.12.10"},
+			resultErr: true,
+		},
+		{
+			name:    "uv/tool-upgrade-failure",
+			newAdpt: func() adapters.Adapter { return &UvAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"uv": true},
+				cmdArgs: map[string]fakeResult{
+					"uv":           {stdout: "uv 0.12.10"},
+					"uv --version": {stdout: "uv 0.12.10"},
+				},
+				shell: map[string]fakeResult{
+					uvSelfUpdateCmd:  {},
+					uvToolUpgradeCmd: {stderr: "error: failed to upgrade tool", err: errors.New("exit status 1")},
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "0.12.10", After: "0.12.10"},
+			resultErr: true,
 		},
 	}
 
