@@ -75,16 +75,6 @@ func runInit(gf *GlobalFlags) error {
 		cfg.Tools[id] = config.ToolConfig{Enabled: true}
 	}
 
-	// In CI mode, skip confirmation
-	if gf.CI {
-		if err := config.Save(cfg); err != nil {
-			return fmt.Errorf("cannot save config: %w", err)
-		}
-		path, _ := config.ConfigPath()
-		r.InitConfigGenerated(path)
-		return nil
-	}
-
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("cannot save config: %w", err)
 	}
