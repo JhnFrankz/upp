@@ -97,6 +97,7 @@ In a terminal, `upp update` shows an interactive selection of pending updates be
 |---------|-------------|-------------|-----------------|
 | `upp init` | First-run wizard: detect tools, generate `~/.config/upp/config.toml` | Yes | Yes (creates config) |
 | `upp self-update` | Update the upp binary itself (checks, verifies, asks for confirmation) | Yes (confirm) | Yes (replaces binary) |
+| `upp uninstall` | Remove upp: the binary, historical backups, `~/.config/upp`, and `~/.cache/upp` (Zero-Sudo best-effort; warns with manual commands on unwritable paths) | No | Yes (deletes files) |
 
 ## Self-update
 
@@ -127,6 +128,7 @@ Available on every command:
 | Command | Flag | Shorthand | Description |
 |---------|------|-----------|-------------|
 | `update` | `--dry-run` | `-n` | Preview updates without applying |
+| `uninstall` | `--dry-run` | | List what `upp uninstall` would remove without deleting anything |
 
 ## Configuration
 
