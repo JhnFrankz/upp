@@ -149,6 +149,41 @@ func runUpdateWith(t *testing.T, fake *fakeUpdateAdapter) string {
 	return out
 }
 
+// runUpdateDefault drives the default delegated path (runUpdate) over a
+// hermetic adapter list in a captured-stdout hermetic HOME — the seam pattern
+// of TestRunUpdate_DefaultBulkGroupExecution. It replaces the deleted
+// runUpdateGroupWith harness: runUpdate resolves osName via platform.Detect(),
+// so ownership fakes key their manager/managerPackage maps by osKey (pass
+// platform.Detect().OS, resolved by the caller). stdin, when non-empty, is
+// swapped into os.Stdin for the duration so a prompt can be answered. Returns
+// the captured stdout and the runUpdate error.
+func runUpdateDefault(t *testing.T, gf *GlobalFlags, uf *UpdateFlags, stdin string, fakes ...*fakeUpdateAdapter) (string, error) {
+	t.Helper()
+	probeHome(t)
+	adapterList := make([]adapters.Adapter, 0, len(fakes))
+	for _, f := range fakes {
+		adapterList = append(adapterList, f)
+	}
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return adapterList
+		},
+		stdinIsTTY: func() bool { return false },
+	}
+	var runErr error
+	out := withCapturedStdout(func() {
+		run := func() {
+			runErr = runUpdate(gf, uf, deps)
+		}
+		if stdin != "" {
+			withStdin(t, stdin, run)
+		} else {
+			run()
+		}
+	})
+	return out, runErr
+}
+
 // TestRunUpdate_GatingMatrix proves the Update Gating requirement (spec
 // tool-adapter): update() runs for an adapter declaring PolicyGated (real
 // update detection: apt, npm, nvm, pnpm) only when check() reported
@@ -1366,54 +1401,6 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 	}
 }
 
-// --- WU3: opt-in manager-group bulk path (runUpdateGroup) ---
-
-// groupScenario wires a hermetic adapter list with a fake manager (owning the
-// given owned tools on the given OS) plus the owned fakes themselves. The
-// manager is the first adapter; owned tools follow. It returns the list for
-// the updateDeps.buildAdapterList seam.
-func groupScenario(managerID, osName string, owned ...*fakeUpdateAdapter) []adapters.Adapter {
-	manager := &fakeUpdateAdapter{
-		name:  managerID,
-		kind:  adapters.KindManager,
-		trust: adapters.TrustOfficial,
-	}
-	result := []adapters.Adapter{manager}
-	for _, o := range owned {
-		if o.kind == adapters.KindTool && o.manager == nil {
-			o.manager = map[string]string{osName: managerID}
-		}
-		if o.kind == adapters.KindTool && o.managerPackage == nil {
-			o.managerPackage = map[string]string{osName: o.name}
-		}
-		result = append(result, o)
-	}
-	return result
-}
-
-// runUpdateGroupWith runs runUpdateGroup directly over a hermetic adapter
-// list on the given osName, returning captured stdout and the error. Calling
-// runUpdateGroup (not runUpdate) lets each test pass its own osName, so a
-// brew/macos scenario is proven on any host (the ownership registry is keyed
-// by platform constant, not runtime.GOOS). stdin, when non-empty, is swapped
-// into os.Stdin for the duration so a sudo group prompt can be answered.
-func runUpdateGroupWith(t *testing.T, gf *GlobalFlags, manager, osName string, stdin string, adapterList []adapters.Adapter) (string, error) {
-	t.Helper()
-	probeHome(t)
-	var runErr error
-	out := withCapturedStdout(func() {
-		runGroup := func() {
-			runErr = runUpdateGroup(gf, &UpdateFlags{Manager: manager}, adapterList, osName)
-		}
-		if stdin != "" {
-			withStdin(t, stdin, runGroup)
-		} else {
-			runGroup()
-		}
-	})
-	return out, runErr
-}
-
 // TestRunUpdate_DefaultBulkGroupExecution proves that bare `upp update`
 // executes manager-group bulk package updates for owned tools by default
 // alongside standalone tools (spec bulk-update "Default runs group bulk updates").
@@ -1465,56 +1452,6 @@ func TestRunUpdate_DefaultBulkGroupExecution(t *testing.T) {
 	}
 	if !strings.Contains(out, "Updated: gh, docker, npm") && !strings.Contains(out, "3 updated") {
 		t.Errorf("summary must report all 3 tools updated; got:\n%s", out)
-	}
-}
-
-// TestRunUpdate_ManagerFilterRestrictsToGroup proves that --manager <mgr> and
-// --update-group <mgr> filter the execution strictly to the specified manager.
-func TestRunUpdate_ManagerFilterRestrictsToGroup(t *testing.T) {
-	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
-
-	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	docker.manager = map[string]string{"linux": "apt"}
-	docker.managerPackage = map[string]string{"linux": "docker-ce"}
-
-	npm := &fakeUpdateAdapter{name: "npm", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
-	var aptUpdatedPkgs []string
-	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
-		return adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, nil
-	}
-	apt.updatePackage = func(pkg string) (adapters.Result, error) {
-		aptUpdatedPkgs = append(aptUpdatedPkgs, pkg)
-		return adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"}, nil
-	}
-
-	adapterList := []adapters.Adapter{apt, gh, docker, npm}
-	deps := updateDeps{
-		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
-			return adapterList
-		},
-		stdinIsTTY: func() bool { return false },
-	}
-
-	out := withCapturedStdout(func() {
-		withStdin(t, "y\ny\n", func() {
-			if err := runUpdate(&GlobalFlags{}, &UpdateFlags{Manager: "apt"}, deps); err != nil {
-				t.Fatalf("runUpdate --manager apt error: %v", err)
-			}
-		})
-	})
-
-	if len(aptUpdatedPkgs) != 2 {
-		t.Errorf("apt.UpdatePackage must run for gh and docker-ce, got %v", aptUpdatedPkgs)
-	}
-	if npm.updated {
-		t.Error("npm must be excluded when --manager apt is supplied")
-	}
-	if strings.Contains(out, "npm") {
-		t.Errorf("npm must not appear in --manager apt output; got:\n%s", out)
 	}
 }
 
@@ -1655,17 +1592,18 @@ func TestRunUpdate_DryRunPlannedFlags(t *testing.T) {
 	}
 }
 
-// TestRunUpdate_GroupSkipExcludesOwnedTool proves spec bulk-update "Skip
-// excludes owned tool": `upp update --manager apt --skip docker` batches only
-// gh (docker excluded).
-func TestRunUpdate_GroupSkipExcludesOwnedTool(t *testing.T) {
+// TestRunUpdate_OnlyNarrowsGroupBatch proves spec bulk-update "Only filter
+// narrows batch" (renamed/adapted from the deleted --skip variant): the
+// existing `--only` filter narrows the default delegated batch — `upp update
+// --only gh` updates gh only, docker untouched.
+func TestRunUpdate_OnlyNarrowsGroupBatch(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+	gh.manager = map[string]string{"linux": "apt"}
+	gh.managerPackage = map[string]string{"linux": "gh"}
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	list := groupScenario("apt", "linux", gh, docker)
-	apt, ok := list[0].(*fakeUpdateAdapter)
-	if !ok {
-		t.Fatalf("list[0] is %T, want *fakeUpdateAdapter", list[0])
-	}
+	docker.manager = map[string]string{"linux": "apt"}
+	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
 	}
@@ -1673,32 +1611,36 @@ func TestRunUpdate_GroupSkipExcludesOwnedTool(t *testing.T) {
 		return adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"}, nil
 	}
 
-	gf := &GlobalFlags{Skip: "docker"}
-	out, err := runUpdateGroupWith(t, gf, "apt", "linux", "y\n", list)
+	gf := &GlobalFlags{Only: "gh"}
+	out, err := runUpdateDefault(t, gf, &UpdateFlags{}, "y\n", apt, gh, docker)
 	if err != nil {
-		t.Fatalf("runUpdate group error: %v", err)
+		t.Fatalf("runUpdate --only gh error: %v", err)
 	}
-	if !strings.Contains(out, "gh updated") {
+	if !strings.Contains(out, "Updated: gh") {
 		t.Errorf("gh must be updated; got:\n%s", out)
 	}
 	if strings.Contains(out, "docker") {
-		t.Errorf("--skip docker must exclude docker from the group batch; got:\n%s", out)
+		t.Errorf("--only gh must exclude docker from the batch; got:\n%s", out)
+	}
+	if docker.updatePackageOn || docker.updated {
+		t.Error("docker must remain untouched when --only gh narrows the batch")
 	}
 	if apt.lastUpdatePkg != "gh" {
-		t.Errorf("apt must only update gh (skipped docker), got %q", apt.lastUpdatePkg)
+		t.Errorf("apt must only update gh (narrowed batch), got %q", apt.lastUpdatePkg)
 	}
 }
 
 // TestRunUpdate_GroupGatedBlocksAndRuns proves design D5 / spec bulk-update
-// "Group Gate Inheritance (Gated)": a PolicyGated manager (apt) gates the
-// whole group on group availability (any owned package has an update) — blocked
-// when none available, runs when at least one is available.
+// "Group Gate Inheritance (Gated)" on the default delegated path: a
+// PolicyGated manager (apt) gates its owned tools on availability — blocked
+// when none available, runs when at least one is available; an
+// PolicyAlwaysUpdate manager (brew) runs regardless of the check result.
 func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 	newApt := func(policy adapters.UpdatePolicy, avail bool) (*fakeUpdateAdapter, *fakeUpdateAdapter) {
 		gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 		gh.manager = map[string]string{"linux": "apt"}
 		gh.managerPackage = map[string]string{"linux": "gh"}
-		apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: policy, trust: adapters.TrustOfficial}
+		apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: policy, trust: adapters.TrustOfficial, noDetect: true}
 		apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: avail}, nil
 		}
@@ -1710,67 +1652,67 @@ func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 
 	t.Run("gated group blocks when no owned package has an update", func(t *testing.T) {
 		apt, gh := newApt(adapters.PolicyGated, false)
-		out, err := runUpdateGroupWith(t, &GlobalFlags{}, "apt", "linux", "", []adapters.Adapter{apt, gh})
+		out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "", apt, gh)
 		if err != nil {
 			t.Fatalf("gated block error: %v", err)
 		}
 		if gh.updatePackageOn {
 			t.Error("gated group with no availability must NOT run any package update")
 		}
-		if !strings.Contains(out, "gh current") {
+		if !strings.Contains(out, "Up to date: gh") {
 			t.Errorf("gated block must report owned tool current; got:\n%s", out)
 		}
 	})
 
 	t.Run("gated group runs when gh has an update", func(t *testing.T) {
 		apt, gh := newApt(adapters.PolicyGated, true)
-		// sudo apt group command is RiskHigh → prompt; answer yes so it proceeds.
-		out, err := runUpdateGroupWith(t, &GlobalFlags{}, "apt", "linux", "y\n", []adapters.Adapter{apt, gh})
+		// sudo apt package command is RiskHigh → prompt; answer yes so it proceeds.
+		out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "y\n", apt, gh)
 		if err != nil {
 			t.Fatalf("gated run error: %v", err)
 		}
 		if apt.lastUpdatePkg != "gh" {
 			t.Error("gated group with an available package must run the apt UpdatePackage for gh")
 		}
-		if !strings.Contains(out, "gh updated") {
+		if !strings.Contains(out, "Updated: gh") {
 			t.Errorf("gated run must update gh; got:\n%s", out)
 		}
 	})
 
 	t.Run("always-update group runs regardless of check", func(t *testing.T) {
-		brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+		brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true}
 		gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-		gh.manager = map[string]string{"macos": "brew"}
-		gh.managerPackage = map[string]string{"macos": "gh"}
-		// brew AlwaysUpdate: group runs even though gh reports NO availability.
+		gh.manager = map[string]string{"linux": "brew"}
+		gh.managerPackage = map[string]string{"linux": "gh"}
+		// brew AlwaysUpdate: runs even though gh reports NO availability.
 		brew.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.45.0", UpdateAvailable: false}, nil
 		}
 		brew.updatePackage = func(pkg string) (adapters.Result, error) {
 			return adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"}, nil
 		}
-		out, err := runUpdateGroupWith(t, &GlobalFlags{}, "brew", "macos", "", []adapters.Adapter{brew, gh})
+		out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "", brew, gh)
 		if err != nil {
 			t.Fatalf("always group error: %v", err)
 		}
 		if brew.lastUpdatePkg != "gh" {
-			t.Error("AlwaysUpdate group must run its package update regardless of check result")
+			t.Error("AlwaysUpdate manager must run its package update regardless of check result")
 		}
-		if !strings.Contains(out, "gh updated") {
+		if !strings.Contains(out, "Updated: gh") {
 			t.Errorf("always group must update gh; got:\n%s", out)
 		}
 	})
 }
 
-// TestRunUpdate_GroupCheckFailed proves spec bulk-update "Check fails": when the
-// manager's CheckPackage returns an error for an owned tool, the group reports
-// that tool as "check failed" (never current nor update available), does NOT
-// run its UpdatePackage, and the group continues (does not abort).
+// TestRunUpdate_GroupCheckFailed proves spec bulk-update "Check fails" on the
+// default delegated path: when the manager's CheckPackage returns an error for
+// an owned tool, that tool is reported failed (never current nor updated), its
+// UpdatePackage does NOT run, and the run continues (does not abort).
 func TestRunUpdate_GroupCheckFailed(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	gh.manager = map[string]string{"linux": "apt"}
 	gh.managerPackage = map[string]string{"linux": "gh"}
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, errors.New("apt-cache policy failed")
 	}
@@ -1778,51 +1720,26 @@ func TestRunUpdate_GroupCheckFailed(t *testing.T) {
 		return adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"}, nil
 	}
 
-	out, err := runUpdateGroupWith(t, &GlobalFlags{}, "apt", "linux", "", []adapters.Adapter{apt, gh})
+	out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "", gh, apt)
 	if err != nil {
-		t.Fatalf("group check-failed error: %v", err)
+		t.Fatalf("check-failed error: %v", err)
 	}
 	if gh.updatePackageOn {
 		t.Error("a failed CheckPackage must NOT run the owned tool's UpdatePackage")
 	}
-	if !strings.Contains(out, "gh (check failed)") {
-		t.Errorf("group must report a failed check as 'check failed'; got:\n%s", out)
-	}
-}
-
-// TestRunUpdate_GroupCISudoFails proves spec security-model "--ci sudo group
-// fails" / bulk-update: a sudo-heavy apt group package command is RiskHigh and,
-// with EnforceRisk=true, --ci fails the group non-zero despite each owned tool
-// being TrustOfficial.
-func TestRunUpdate_GroupCISudoFails(t *testing.T) {
-	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
-	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
-		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
-	}
-	apt.updatePackage = func(pkg string) (adapters.Result, error) {
-		return adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"}, nil
-	}
-
-	_, err := runUpdateGroupWith(t, &GlobalFlags{CI: true}, "apt", "linux", "", []adapters.Adapter{apt, gh})
-	if err == nil {
-		t.Fatal("--ci sudo apt group must fail non-zero (high risk needs confirmation)")
-	}
-	if gh.updatePackageOn {
-		t.Error("--ci must NOT execute the sudo package command for the group")
+	if !strings.Contains(out, "Failed: gh") {
+		t.Errorf("flat summary must report a failed check as failed; got:\n%s", out)
 	}
 }
 
 // TestRunUpdate_GroupNonSudoProceeds proves spec security-model "Non-sudo
-// group proceeds": a brew group (brew upgrade gh, no sudo) risk is LOW, so it
-// proceeds in non-CI mode without a prompt.
+// group proceeds" on the default delegated path: a brew-owned package command
+// (`brew upgrade gh`, no sudo) risk is LOW, so it proceeds without a prompt.
 func TestRunUpdate_GroupNonSudoProceeds(t *testing.T) {
-	brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+	brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true}
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"macos": "brew"}
-	gh.managerPackage = map[string]string{"macos": "gh"}
+	gh.manager = map[string]string{"linux": "brew"}
+	gh.managerPackage = map[string]string{"linux": "gh"}
 	brew.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
 	}
@@ -1830,50 +1747,15 @@ func TestRunUpdate_GroupNonSudoProceeds(t *testing.T) {
 		return adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"}, nil
 	}
 
-	out, err := runUpdateGroupWith(t, &GlobalFlags{}, "brew", "macos", "", []adapters.Adapter{brew, gh})
+	out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "", brew, gh)
 	if err != nil {
-		t.Fatalf("non-sudo group error: %v", err)
+		t.Fatalf("non-sudo run error: %v", err)
 	}
 	if brew.lastUpdatePkg != "gh" {
-		t.Error("non-sudo brew group must proceed and update gh")
+		t.Error("non-sudo brew package update must proceed and update gh")
 	}
-	if !strings.Contains(out, "gh updated") {
-		t.Errorf("non-sudo group must update gh; got:\n%s", out)
-	}
-}
-
-// TestRunUpdate_GroupDryRunPlansWithoutExecuting proves spec ux-patterns
-// "Group dry-run": `upp update --manager apt --dry-run` reports a pending
-// owned tool as "would update" WITHOUT running the mutating package command.
-func TestRunUpdate_GroupDryRunPlansWithoutExecuting(t *testing.T) {
-	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
-	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
-		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
-	}
-	apt.updatePackage = func(pkg string) (adapters.Result, error) {
-		return adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"}, nil
-	}
-
-	// Drive through runUpdate with DryRun set; it must plan, never execute.
-	deps := updateDeps{
-		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
-			return []adapters.Adapter{apt, gh}
-		},
-		stdinIsTTY: func() bool { return false },
-	}
-	out := withCapturedStdout(func() {
-		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{Manager: "apt", DryRun: true}, deps); err != nil {
-			t.Errorf("group dry-run error: %v", err)
-		}
-	})
-	if !strings.Contains(out, "would update") {
-		t.Errorf("group dry-run must report the pending owned tool as 'would update'; got:\n%s", out)
-	}
-	if apt.updatePkgCount != 0 {
-		t.Errorf("group dry-run must NEVER execute the package command; apt.UpdatePackage ran %d times", apt.updatePkgCount)
+	if !strings.Contains(out, "Updated: gh") {
+		t.Errorf("non-sudo run must update gh; got:\n%s", out)
 	}
 }
 
