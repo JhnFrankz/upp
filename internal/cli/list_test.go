@@ -13,8 +13,7 @@ func runListWith(t *testing.T, gf *GlobalFlags, fakes ...*fakeUpdateAdapter) str
 	t.Helper()
 	probeHome(t)
 	deps := listDeps{buildAdapterList: fakeAdapterList(fakes...)}
-	var out string
-	out = withCapturedStdout(func() {
+	out := withCapturedStdout(func() {
 		if err := runList(gf, deps); err != nil {
 			t.Errorf("runList returned error: %v", err)
 		}
