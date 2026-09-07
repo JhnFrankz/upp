@@ -390,21 +390,21 @@ func TestSelfUpdate_QuietKeepsPrompt(t *testing.T) {
 	}
 }
 
-func TestSelfUpdate_OnlySkipIgnored(t *testing.T) {
+func TestSelfUpdate_OnlyIgnored(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var reqs atomic.Int32
 	ts := selfUpdateServer(t, "v0.1.1", nil, nil, &reqs)
 	defer ts.Close()
 
 	output := withCapturedStdout(func() {
-		err := runSelfUpdate(&GlobalFlags{Only: "brew", Skip: "apt"}, "v0.1.1", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
+		err := runSelfUpdate(&GlobalFlags{Only: "brew"}, "v0.1.1", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
 		if err != nil {
-			t.Fatalf("--only/--skip must be ignored (normal flow), got: %v", err)
+			t.Fatalf("--only must be ignored (normal flow), got: %v", err)
 		}
 	})
 
 	if !strings.Contains(output, "already up to date") {
-		t.Errorf("flow should proceed normally ignoring --only/--skip, got: %q", output)
+		t.Errorf("flow should proceed normally ignoring --only, got: %q", output)
 	}
 	if got := reqs.Load(); got != 1 {
 		t.Errorf("normal flow should make exactly one network call, got %d", got)

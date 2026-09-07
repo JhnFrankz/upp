@@ -13,7 +13,7 @@ upp detects installed tools, checks for updates, and applies them safely with in
 - **CI mode**: non-interactive, exits non-zero on failure (`--ci`)
 - **Dry run**: preview updates without applying (`-n`, `--dry-run`)
 - **Verbose diagnostics**: subprocess failure details on demand (`-v`, `--verbose`)
-- **Filtering**: `--only` and `--skip` to target specific tools
+- **Filtering**: `--only` to target specific tools
 - **Dotfiles-friendly**: standard TOML configuration at `~/.config/upp/config.toml`
 
 ## Installation
@@ -103,7 +103,7 @@ In a terminal, `upp update` shows an interactive selection of pending updates be
 `upp self-update` replaces the upp binary itself with the latest release: it checks the newest release over HTTPS, verifies the downloaded archive's SHA-256 against `checksums.txt`, and asks for confirmation before an atomic replace (with a timestamped `.backup.<ts>` of the previous binary). It never uses `sudo`; if the install directory is not writable, it tells you to make it writable or install under your home directory.
 
 - **Deny paths**: non-TTY stdin or `--ci` deny the update with a clear message and exit non-zero — never hang, auto-proceed, or silently skip. Decline at the prompt = no changes, exit 0.
-- **Flags**: `self-update` accepts no flags in v1; `--only`/`--skip` are ignored. `--quiet` does not suppress the confirmation prompt.
+- **Flags**: `self-update` accepts no flags in v1; `--only` is ignored. `--quiet` does not suppress the confirmation prompt.
 - **Limits**: development/dirty builds never claim updates (release builds only), Windows is not supported yet, and releases must ship `checksums.txt` or the update fails closed.
 
 ## Flags
@@ -117,9 +117,10 @@ Available on every command:
 | `--quiet` | `-q` | Reduce output to essential status only (summary still shown) |
 | `--verbose` | `-v` | Enable verbose diagnostic output (subprocess stderr) on failure |
 | `--ci` | | Non-interactive mode: no prompts, exit non-zero on failure |
-| `--only <tools>` | | Process only these tools (comma-separated, takes precedence over `--skip`) |
-| `--skip <tools>` | | Process all enabled tools except these (comma-separated) |
+| `--only <tools>` | | Process only these tools (comma-separated) |
 | `--version` | | Print the upp version and exit |
+
+> Former `--manager apt --skip docker` group filtering is now expressed as `--only gh`.
 
 ### Command-specific flags
 

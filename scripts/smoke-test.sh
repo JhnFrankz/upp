@@ -221,8 +221,7 @@ run_test "upp update --dry-run -v" "$BINARY" update --dry-run -v
 echo ""
 echo "9. Filter flags"
 run_test "upp update -n --only npm" "$BINARY" update -n --only npm
-run_test "upp update -n --skip npm" "$BINARY" update -n --skip npm
-run_test "upp update -n --only brew --skip npm (--only wins)" "$BINARY" update -n --only brew --skip npm
+run_test "upp update -n --only brew" "$BINARY" update -n --only brew
 
 # Test 10: Dry-run flag and shorthand (-n)
 echo ""
@@ -241,6 +240,7 @@ echo ""
 echo "12. Removed flags rejected"
 run_test_exit_code "upp update --manager apt (removed, exit 1)" 1 "$BINARY" update --manager apt
 run_test_exit_code "upp update --update-group brew (removed, exit 1)" 1 "$BINARY" update --update-group brew
+run_test_exit_code "upp update --skip apt (removed, exit 1)" 1 "$BINARY" update --skip apt
 
 # --- Summary ---
 

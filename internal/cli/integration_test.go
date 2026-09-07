@@ -55,7 +55,6 @@ func TestFilterTools_Integration(t *testing.T) {
 		name      string
 		tools     []string
 		only      string
-		skip      string
 		wantCount int
 		wantNames []string
 	}{
@@ -72,21 +71,6 @@ func TestFilterTools_Integration(t *testing.T) {
 			wantNames: []string{"brew", "npm"},
 		},
 		{
-			name:      "skip filter",
-			tools:     []string{"apt", "brew", "npm", "docker"},
-			skip:      "apt,docker",
-			wantCount: 2,
-			wantNames: []string{"brew", "npm"},
-		},
-		{
-			name:      "only wins over skip",
-			tools:     []string{"apt", "brew", "npm", "docker"},
-			only:      "brew",
-			skip:      "apt",
-			wantCount: 1,
-			wantNames: []string{"brew"},
-		},
-		{
 			name:      "empty only returns all",
 			tools:     []string{"apt", "brew"},
 			only:      "",
@@ -97,8 +81,8 @@ func TestFilterTools_Integration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stderr bytes.Buffer
-			onlyList, skipList := ParseFilter(tt.only, tt.skip)
-			result := FilterTools(tt.tools, onlyList, skipList, &stderr)
+			onlyList := ParseFilter(tt.only)
+			result := FilterTools(tt.tools, onlyList, &stderr)
 
 			if len(result) != tt.wantCount {
 				t.Errorf("expected %d tools, got %d: %v", tt.wantCount, len(result), result)
@@ -639,10 +623,10 @@ func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
 
 func TestFilter_UnknownToolWarning(t *testing.T) {
 	tools := []string{"apt", "brew", "npm"}
-	onlyList, _ := ParseFilter("brew,nonexistent", "")
+	onlyList := ParseFilter("brew,nonexistent")
 	var stderr bytes.Buffer
 
-	result := FilterTools(tools, onlyList, nil, &stderr)
+	result := FilterTools(tools, onlyList, &stderr)
 
 	warning := stderr.String()
 	if !strings.Contains(warning, "nonexistent") {
@@ -650,20 +634,6 @@ func TestFilter_UnknownToolWarning(t *testing.T) {
 	}
 	if len(result) != 1 || result[0] != "brew" {
 		t.Errorf("expected [brew], got %v", result)
-	}
-}
-
-// --- Skip All Tools ---
-
-func TestSkipAllTools(t *testing.T) {
-	tools := []string{"apt", "brew", "npm"}
-	_, skipList := ParseFilter("", "apt,brew,npm")
-	var stderr bytes.Buffer
-
-	result := FilterTools(tools, nil, skipList, &stderr)
-
-	if len(result) != 0 {
-		t.Errorf("expected 0 tools after skipping all, got %d", len(result))
 	}
 }
 
@@ -872,9 +842,6 @@ func TestBuildRoot_FlagDefaults(t *testing.T) {
 	if gf.Only != "" {
 		t.Error("only should default to empty")
 	}
-	if gf.Skip != "" {
-		t.Error("skip should default to empty")
-	}
 
 	flagTests := []struct {
 		name   string
@@ -883,7 +850,6 @@ func TestBuildRoot_FlagDefaults(t *testing.T) {
 		{"quiet", root.PersistentFlags().Lookup("quiet") != nil},
 		{"ci", root.PersistentFlags().Lookup("ci") != nil},
 		{"only", root.PersistentFlags().Lookup("only") != nil},
-		{"skip", root.PersistentFlags().Lookup("skip") != nil},
 	}
 
 	for _, ft := range flagTests {
@@ -1045,10 +1011,10 @@ func TestFilterPerformance(t *testing.T) {
 		tools[i] = fmt.Sprintf("tool%d", i)
 	}
 
-	onlyList, skipList := ParseFilter("tool10,tool50,tool90", "")
+	onlyList := ParseFilter("tool10,tool50,tool90")
 	var stderr bytes.Buffer
 
-	result := FilterTools(tools, onlyList, skipList, &stderr)
+	result := FilterTools(tools, onlyList, &stderr)
 	if len(result) != 3 {
 		t.Errorf("expected 3 filtered tools, got %d", len(result))
 	}

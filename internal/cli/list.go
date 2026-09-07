@@ -46,11 +46,11 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 	}
 	adapterList := deps.buildAdapterList(cfg, p.OS)
 
-	// Apply --only/--skip so table rows round-trip with the filter names.
-	only, skip := ParseFilter(gf.Only, gf.Skip)
+	// Apply --only so table rows round-trip with the filter names.
+	only := ParseFilter(gf.Only)
 	adapterMap := adapterByID(adapterList)
 	filtered := make([]adapters.Adapter, 0, len(adapterList))
-	for _, id := range FilterTools(adapterIDs(adapterList), only, skip, os.Stderr) {
+	for _, id := range FilterTools(adapterIDs(adapterList), only, os.Stderr) {
 		filtered = append(filtered, adapterMap[id])
 	}
 	adapterList = filtered
@@ -59,7 +59,7 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 
 	// Build the grouped rows (manager headers first, then their owned tools,
 	// then standalone tools) from the filtered adapter set. Grouping is
-	// display-only: --only/--skip already filtered per-tool ID above, so the
+	// display-only: --only already filtered per-tool ID above, so the
 	// rendered rows round-trip with the filter names (design: display-only).
 	if len(adapterList) == 0 {
 		fmt.Println("No tools configured.")
