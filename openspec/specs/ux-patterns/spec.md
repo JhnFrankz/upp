@@ -30,7 +30,7 @@ The system MUST output in English only. Output language is NOT configurable: the
 
 ### Requirement: Live Check Board
 
-In TTY interactive `upp update` runs, the pre-check board MUST render one stable line per filtered tool, laid out grouped under per-manager headers in canonical discovery order before any result arrives. Manager headers render first, then their owned tools, then standalone tools. An owned tool MUST NOT appear as a top-level line separate from its manager group. Per-tool completion flip, up-to-date visibility, failed-check ✗ behavior, atomic concurrent rendering, the settled-board gating of the selector, and non-color fallback MUST remain unchanged. Grouping MUST NOT reorder stable board lines or alter completion ordering.
+In TTY interactive `upp update` runs, the pre-check board MUST render one stable line per filtered tool, laid out grouped under per-manager headers in canonical discovery order before any result arrives. Manager headers render first, then their owned tools, then standalone tools. An owned tool MUST NOT appear as a top-level line separate from its manager group. As a standalone tool across Linux, macOS, and Windows, `uv` MUST render under the standalone tools section with its own stable line in canonical tool discovery order. Per-tool completion flip, up-to-date visibility, failed-check ✗ behavior, atomic concurrent rendering, the settled-board gating of the selector, and non-color fallback MUST remain unchanged. Grouping MUST NOT reorder stable board lines or alter completion ordering.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -40,6 +40,9 @@ In TTY interactive `upp update` runs, the pre-check board MUST render one stable
 | Settled board gates selector | Board settled, 2 of 5 tools pending | Pre-check ends | CheckboxSelector lists only the 2 pending tools; current and failed excluded |
 | Atomic concurrent rendering | Worker pool completes checks concurrently | Multiple lines update | Mutex serializes updates; no interleaved or corrupted output |
 | Non-color fallback | stdout lacks color support | Pre-check runs | One plain line per completion; no ANSI cursor control |
+| uv standalone on board | TTY, `uv` enabled on any platform | `upp update` pre-check starts | `uv` renders as a standalone tool line below manager groups |
+| uv completion flip | `uv` check completes with pending update | `uv` check completes | `uv` line flips to ✓ showing pending update version details |
+| uv current flip | `uv` check completes with no updates pending | `uv` check completes | `uv` line flips to ✓ up-to-date; excluded from settled selector |
 
 (Previously: the board rendered a flat per-tool list with no manager grouping or headers.)
 
@@ -92,7 +95,7 @@ Every `update` run (including `--dry-run` and default manager-group runs) MUST e
 - List of tools in each category
 - Overall status message
 
-Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M skipped"). For default manager-group updates, the summary MUST render group package updates alongside standalone tools, reporting each owned tool that was updated, skipped (via deselection), current, or failed within its manager group. The summary MUST NOT print "All tools up to date." when any enabled tool was skipped or unchecked. A `--dry-run` summary MUST NOT print "All clean!" when any update is pending; pending updates MUST be reported explicitly. The tool list and status lines in the summary report MUST follow a 100% deterministic order matching canonical tool discovery order, unaffected by out-of-order concurrent completion during execution.
+Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M skipped"). For default manager-group updates, the summary MUST render group package updates alongside standalone tools, reporting each owned tool that was updated, skipped (via deselection), current, or failed within its manager group. Standalone tool updates across all platforms, including `uv`, MUST be reported in the summary report reflecting their composite execution outcome (updated, current, skipped, or failed) in canonical discovery order. The summary MUST NOT print "All tools up to date." when any enabled tool was skipped or unchecked. A `--dry-run` summary MUST NOT print "All clean!" when any update is pending; pending updates MUST be reported explicitly. The tool list and status lines in the summary report MUST follow a 100% deterministic order matching canonical tool discovery order, unaffected by out-of-order concurrent completion during execution.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -105,10 +108,10 @@ Summaries MUST count up-to-date and skipped tools explicitly ("N up to date, M s
 | Default group bulk summary | Linux, bare update with apt owning gh (updated) and docker (skipped) | `upp update` | Flat summary reports gh updated and docker skipped alongside standalone tools; each owned tool is reported within the flat summary |
 | Filtered group partial fail | brew group: gh updated, docker failed, `--only gh,docker` | `upp update --only gh,docker` | Flat summary reports gh updated and docker failed |
 | Group dry-run preview | apt group, gh pending, docker current | `upp update -n` | Flat summary reports gh would update and docker current |
+| uv standalone in summary | `uv` updated successfully alongside manager groups and other standalone tools | `upp update` | Summary lists `uv` under updated tools in canonical discovery order |
+| uv dry-run summary | `uv` has pending tool updates, `--dry-run` | `upp update -n` | Summary reports `uv` would update; does not report "All clean!" |
 
 (Previously: manager-group summaries were only generated when explicitly triggered via `--manager`/`--update-group` opt-in flags; default runs did not render manager-group package updates or per-tool group outcomes. The summary is a single flat report — no dedicated group renderer exists.)
-
-(Previously: manager-group summaries were only generated when explicitly triggered via `--manager`/`--update-group` opt-in flags; default runs did not render manager-group package updates or per-tool group outcomes.)
 
 ### Requirement: `--quiet` Verbosity
 
