@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -23,6 +24,7 @@ import (
 // security-risk classification path (update.go) exactly like a real custom
 // adapter's ToolInfo.
 type fakeUpdateAdapter struct {
+	mu         sync.Mutex
 	name       string
 	policy     adapters.UpdatePolicy
 	trust      adapters.TrustLevel
@@ -60,11 +62,15 @@ func (f *fakeUpdateAdapter) Name() string { return f.name }
 func (f *fakeUpdateAdapter) Detect() bool { return !f.noDetect }
 
 func (f *fakeUpdateAdapter) Check() (adapters.UpdateInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.checkCount++
 	return f.info, f.checkErr
 }
 
 func (f *fakeUpdateAdapter) Update(dryRun bool) (adapters.Result, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.updated = true
 	return f.result, f.updateErr
 }
@@ -87,10 +93,13 @@ func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
 // current (no update) when unset — so a fake manager in a group batch reports
 // no availability unless the test declares it.
 func (f *fakeUpdateAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+	f.mu.Lock()
 	f.checkPkgCount++
 	f.lastCheckPkg = pkg
-	if f.checkPackage != nil {
-		return f.checkPackage(pkg)
+	fn := f.checkPackage
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(pkg)
 	}
 	return adapters.UpdateInfo{}, nil
 }
@@ -98,11 +107,14 @@ func (f *fakeUpdateAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error
 // UpdatePackage runs the wired per-package updater seam, or defaults to
 // success with no version change when unset.
 func (f *fakeUpdateAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+	f.mu.Lock()
 	f.updatePkgCount++
 	f.lastUpdatePkg = pkg
 	f.updatePackageOn = true
-	if f.updatePackage != nil {
-		return f.updatePackage(pkg)
+	fn := f.updatePackage
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(pkg)
 	}
 	return adapters.Result{Success: true, Before: "", After: ""}, nil
 }
