@@ -555,28 +555,6 @@ func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adap
 	return true
 }
 
-// adapterByName returns the adapter in the list with the given name, or nil.
-func adapterByName(adapterList []adapters.Adapter, name string) adapters.Adapter {
-	for _, a := range adapterList {
-		if a.Name() == name {
-			return a
-		}
-	}
-	return nil
-}
-
-// ownedPackage returns the package name under the resolving manager for an
-// owned tool on osName, or "" when none is declared.
-func ownedPackage(a adapters.Adapter, osName string) string {
-	return engine.OwnedPackage(a, osName)
-}
-
-// updateCmdName returns the package-manager command token used to build the
-// conventional risk command for a manager's owned-package command.
-func updateCmdName(manager string) string {
-	return engine.UpdateCmdName(manager)
-}
-
 // resolveEffectiveUpdatePolicy returns the UpdatePolicy that governs whether
 // an adapter's Update() runs.
 func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.UpdatePolicy {
