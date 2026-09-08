@@ -8,6 +8,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -41,19 +42,18 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 	if err != nil {
 		return fmt.Errorf("cannot detect platform: %w", err)
 	}
-	if deps.buildAdapterList == nil {
-		deps.buildAdapterList = buildAdapterList
-	}
-	adapterList := deps.buildAdapterList(cfg, p.OS)
 
-	// Apply --only so table rows round-trip with the filter names.
-	only := ParseFilter(gf.Only)
-	adapterMap := adapterByID(adapterList)
-	filtered := make([]adapters.Adapter, 0, len(adapterList))
-	for _, id := range FilterTools(adapterIDs(adapterList), only, os.Stderr) {
-		filtered = append(filtered, adapterMap[id])
+	var opts []engine.Option
+	if deps.buildAdapterList != nil {
+		opts = append(opts, engine.WithAdapters(deps.buildAdapterList(cfg, p.OS)))
 	}
-	adapterList = filtered
+	eng := engine.New(cfg, p.OS, opts...)
+
+	only := ParseFilter(gf.Only)
+	adapterList, err := eng.Resolve(engine.Filter{Only: only})
+	if err != nil {
+		return fmt.Errorf("cannot resolve tools: %w", err)
+	}
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 
