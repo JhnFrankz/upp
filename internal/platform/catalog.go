@@ -30,6 +30,7 @@ var OfficialTools = []ToolEntry{
 	{ID: "npm", Name: "npm", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
 	{ID: "pnpm", Name: "pnpm", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
 	{ID: "bun", Name: "Bun", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
+	{ID: "uv", Name: "uv", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool},
 	{ID: "gh", Name: "GitHub CLI", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool, Manager: map[string]string{OSLinux: "apt", OSMacOS: "brew", OSWindows: "winget"}, ManagerPackage: map[string]string{OSLinux: "gh", OSMacOS: "gh", OSWindows: "gh"}},
 	{ID: "docker", Name: "Docker", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool, Manager: map[string]string{OSLinux: "apt", OSMacOS: "brew", OSWindows: "winget"}, ManagerPackage: map[string]string{OSLinux: "docker-ce", OSMacOS: "docker", OSWindows: "Docker.Docker"}},
 	{ID: "go", Name: "Go", Platforms: []string{OSLinux, OSMacOS, OSWindows}, Kind: adapters.KindTool, Manager: map[string]string{OSMacOS: "brew", OSWindows: "winget"}, ManagerPackage: map[string]string{OSMacOS: "golang", OSWindows: "GoLang.Go"}},

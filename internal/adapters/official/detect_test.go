@@ -29,6 +29,7 @@ func TestDetect(t *testing.T) {
 		{"opencode", &OpenCodeAdapter{}, "opencode"},
 		{"winget", &WingetAdapter{}, "winget"},
 		{"scoop", &ScoopAdapter{}, "scoop"},
+		{"uv", &UvAdapter{}, "uv"},
 	}
 
 	for _, tt := range lookPathAdapters {
