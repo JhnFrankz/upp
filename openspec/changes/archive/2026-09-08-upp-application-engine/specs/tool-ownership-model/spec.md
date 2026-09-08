@@ -1,43 +1,6 @@
-# Tool Ownership Model Specification
+# Delta for tool-ownership-model
 
-## Purpose
-
-Define how each tool adapter declares its owning manager per platform, and how a manager adapter reports the set and count of tools it owns. This lets owned tools (gh, docker, go) group under their owning manager instead of appearing as independent update rows, and delegate their update to the owning manager.
-
-## Requirements
-
-
-
-### Requirement: Tool Ownership Declaration
-
-Every tool adapter MUST declare its owning manager per platform through `ToolInfo`. A tool's `ToolInfo` MUST carry a `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` for owned tools). Ownership is per-platform: the same tool MAY be owned by different managers on different platforms.
-
-| Tool | Linux | macOS | Windows |
-|------|-------|-------|---------|
-| gh | apt | brew | winget |
-| docker | apt | brew | winget |
-| go | (none) | brew | winget |
-
-Manager adapters (apt, brew, pacman, winget, scoop) MUST declare `KindManager`. Tools with no resolving owner on a platform (nvm, npm, pnpm, bun, opencode, go-on-Linux) MUST remain standalone (`KindTool`, no `Manager` entry).
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| gh owner per platform | Platform is macOS | `gh.list()` | `Manager["macos"]="brew"` |
-| docker owner per platform | Platform is Windows | `docker.list()` | `Manager["windows"]="winget"` |
-| go Linux standalone | Platform is Linux | `go.list()` | `Kind=KindTool`; no `Manager["linux"]` |
-| apt declares manager | apt adapter queried | `apt.list()` | `Kind=KindManager` |
-| pacman declares manager | pacman adapter queried | `pacman.list()` | `Kind=KindManager` |
-
-### Requirement: Manager Owned-Tool Cardinality
-
-A manager adapter MUST report the set and count of tools it owns on the current platform from per-platform owner declarations. The owned set MUST be derived from owner declarations, not hardcoded per platform.
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| brew owns three on macOS | Platform macOS | brew ownership resolved | Owns gh, docker, go |
-| apt owns two on Linux | Platform Linux | apt ownership resolved | Owns gh, docker |
-| winget owns three on Windows | Platform Windows | winget ownership resolved | Owns gh, docker, go |
-| pacman owns zero official tools on Linux | Platform Linux | pacman ownership resolved | Owns 0 official tools |
+## MODIFIED Requirements
 
 ### Requirement: Resolved Owner Update Delegation
 
@@ -56,6 +19,8 @@ Given an owned tool (`gh`, `docker`, `go`, or custom tool declaring `manager`) a
 | Engine centralized resolution | Owned tool evaluated during `Resolve` and `Plan` | `engine.Resolve()` / `engine.Plan()` | Owning manager and effective policies resolved centrally by the application engine |
 
 (Previously: manager resolution and effective update policy derivation were performed ad-hoc across `internal/cli` functions `buildAdapterList`, `resolvingOwner`, and `resolveEffectiveUpdatePolicy` during CLI update execution loops; resolution is now centralized within `internal/engine`.)
+
+## NEW Requirements
 
 ### Requirement: Centralized Ownership Resolution
 
@@ -76,17 +41,3 @@ The application engine MUST centralize custom tool manager binding, owner resolu
 | Owned tool inherits Gated policy current | `gh` owned by `apt` (`PolicyGated`) on Linux with candidate current | `engine.Plan(outcomes, Filter{})` | `gh` categorized into `UpdatePlan.Current` |
 | Owned tool inherits AlwaysUpdate in Plan | `gh` owned by `brew` (`PolicyAlwaysUpdate`) on macOS | `engine.Plan(outcomes, Filter{})` | `gh` planned for update unconditionally in `UpdatePlan.Updates` |
 | Owned declared policy inert | Owned tool declares `PolicyAlwaysUpdate` but manager is `PolicyGated` without updates | `engine.Plan(outcomes, Filter{})` | Manager's `PolicyGated` takes precedence; tool categorized as `Current` |
-
-### Requirement: Resolved-Owner Group Bulk Update
-
-Given a manager and platform, the system MUST be able to update that manager's resolving owned set as one group. The group update MUST enumerate the manager's owned tools (from owner declarations and configured custom tools), MUST check each owned tool's package availability via `PackageChecker`, and MUST run each owned tool's per-manager package command via `PackageUpdater`. The manager's own self-only row MUST remain distinct from the group.
-
-| Scenario | GIVEN | WHEN | THEN |
-|----------|-------|------|------|
-| brew group on macOS | Platform macOS, brew owns gh, docker, go | Group update for brew | Runs brew's package commands for gh, docker, go |
-| apt group on Linux | Platform Linux, apt owns gh, docker | Default `upp update` group update for apt | Group updates gh and docker |
-| Manager self distinct | Platform Linux, apt group update | Group update for apt | Owned tools updated via package commands; apt self handled separately |
-| pacman empty group | Platform Linux, pacman owns 0 official tools, no custom pacman tools | `upp update` group update for pacman | Group update skipped without error |
-| pacman custom tools group | Platform Linux, custom tools configured with `manager = "pacman"` | Group update for pacman | Runs `pacman.UpdatePackage(pkg)` for each outdated tool; pacman self-update handled separately |
-
-(Previously: the group update excluded any owned tool named by `--skip`; the `--skip` flag is removed and the exclusion clause is dropped with it.)
