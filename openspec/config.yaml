@@ -16,8 +16,9 @@ context: |
    Legacy Bash script (upp-legacy.sh) has been REMOVED — Go is the only stack.
    Git repo on main. 24 changes archived in openspec/changes/archive/.
    Docs: README.md.
-   Specs: 12 domains (command-interface, config-system, ci-workflow, platform-detection, security-model,
-   tool-adapter, ux-patterns, self-update, release-process, bulk-update, tool-ownership-model, uninstall).
+   Specs: 13 domains (command-interface, config-system, ci-workflow, platform-detection, security-model,
+   tool-adapter, ux-patterns, self-update, release-process, bulk-update, tool-ownership-model, uninstall,
+   application-engine).
    Commands: list, update, init, self-update, uninstall.
 
 testing:

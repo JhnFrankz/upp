@@ -99,7 +99,7 @@ Filtering rules for `--only`:
 
 ### Requirement: `upp update`
 
-`upp update` MUST process each enabled tool, execute updates, and report results. By default (bare `upp update`), the command MUST execute manager-group bulk package updates for all owned tools grouped under their resolving package managers, alongside standalone tool updates. `--dry-run` (with shorthand `-n`) MUST show planned update actions—including planned manager group package updates and standalone tool updates—without executing any changes. `--only` MUST filter which tools to process.
+`upp update` MUST process each enabled tool, execute updates, and report results. The command MUST delegate tool adapter resolution, concurrent version checking, and update plan formulation to `engine.Engine`. By default (bare `upp update`), the command MUST execute manager-group bulk package updates for all owned tools grouped under their resolving package managers, alongside standalone tool updates. `--dry-run` (with shorthand `-n`) MUST show planned update actions—including planned manager group package updates and standalone tool updates—without executing any changes. `--only` MUST filter which tools to process.
 
 In TTY runs (where stdin is a TTY, and `--ci`, `--quiet`, and `--dry-run` are not set), `upp update` MUST render the interactive tool selection over the `--only`-filtered pending set before executing; users MUST be able to toggle individual owned tools within manager groups as well as standalone tools. The user's selection MUST narrow the update set further. Flag semantics MUST NOT change: `--only` filters the candidate tools prior to presentation, and `--dry-run` MUST remain strictly non-interactive (no selector rendered).
 
@@ -118,8 +118,26 @@ Execution across tools and manager groups MUST maintain per-tool error isolation
 | Dry-run non-interactive | TTY, `--dry-run`, pending updates | `upp update --dry-run` | No selector rendered; planned actions listed, no changes made |
 | `--manager` rejected | Update running | `upp update --manager apt` | Error: unknown flag "manager", usage hint, exit non-zero |
 | `--update-group` rejected | Update running | `upp update --update-group brew` | Error: unknown flag "update-group", usage hint, exit non-zero |
+| Engine delegation seam | Update invoked | `upp update` | Resolves adapters, executes concurrent pre-checks, and builds update plan via `engine.Engine` |
 
-(Previously: bare `upp update` executed standard per-tool adapter updates without manager-group bulk package updates; group bulk updates were strictly opt-in via `--manager` or `--update-group`, and `--skip` filtered tools inversely. The default delegated path is now the only update path and all three flags are removed.)
+(Previously: `upp update` directly coordinated discovery, concurrent check execution, and planning within `internal/cli` loops; it now delegates resolution, checking, and planning to `engine.Engine`.)
+
+### Requirement: Orchestration Delegation
+
+The `list` and `update` commands MUST delegate tool adapter discovery, resolution, check dispatching, and update plan formulation to `engine.Engine`.
+
+1. `upp list` MUST invoke `engine.Resolve(filter)` to obtain active, enabled adapters for the current platform and render the resulting groups via `output.GroupByOwner`.
+2. `upp update` MUST invoke `engine.Resolve(filter)` for tool discovery, `engine.Check(ctx, adapters, onProgress)` for concurrent version checking, and `engine.Plan(outcomes, filter)` for update action formulation.
+3. The presentation layer (`internal/cli`) MUST consume pure domain models (`CheckProgress`, `CheckOutcome`, `UpdatePlan`) emitted by the engine and map them to presentation renderers (`output.CheckBoard`, `output.Renderer`, `output.CheckboxSelector`) without altering command flags (`--quiet`/`-q`, `--verbose`/`-v`, `--ci`, `--only`, `--dry-run`/`-n`), visual layouts, exit codes, or interactive selection workflows.
+4. Tool execution and security confirmation (`security.ConfirmAction`) MUST remain in the CLI presentation layer.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| List command delegation | Host platform with enabled tools | `upp list` | Invokes `engine.Resolve(filter)` to obtain active adapters and renders table via `output.GroupByOwner` |
+| Update command delegation | Host platform with enabled tools | `upp update` | Invokes `engine.Resolve()`, `engine.Check()`, and `engine.Plan()`, bridging progress to `output.CheckBoard` |
+| Flag preservation | Command passed `-q`, `-v`, `--ci`, `--only` | Command execution | Flags parsed by CLI and passed as domain `Filter` to engine; visual flags applied to CLI renderer |
+| Exit code preservation | Update encounters failed check or unconfirmed CI risk | Command execution | Command exits with non-zero status identical to previous behavior |
+| Headless engine compatibility | CLI presentation disabled or piped stdout | Command execution | Engine executes headless resolution, checking, and planning without presentation dependencies |
 
 ### Requirement: Help Output Grouping
 
