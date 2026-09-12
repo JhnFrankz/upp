@@ -14,7 +14,7 @@ context: |
   test, test-race, test-cover, vet, lint, fmt, tidy, smoke).
   Conventions: gofmt, table-driven tests, cobra subcommands.
    Legacy Bash script (upp-legacy.sh) has been REMOVED — Go is the only stack.
-   Git repo on main. 24 changes archived in openspec/changes/archive/.
+   Git repo on main. 27 changes archived in openspec/changes/archive/.
    Docs: README.md.
    Specs: 13 domains (command-interface, config-system, ci-workflow, platform-detection, security-model,
    tool-adapter, ux-patterns, self-update, release-process, bulk-update, tool-ownership-model, uninstall,
@@ -31,7 +31,7 @@ testing:
     e2e: true
   coverage: true
   quality:
-    linter: golangci-lint (falls back to go vet)
+    linter: golangci-lint (CI; Makefile falls back to go vet)
     type_checker: go vet
     formatter: gofmt -s -w
     race_detector: true
@@ -51,7 +51,7 @@ rules:
   apply:
     guidelines:
       - Follow existing Go package layout and adapter pattern
-      - Keep upp list/update/init/self-update and --ci/--dry-run (-n)/--quiet (-q)/--verbose (-v)/--only/--skip working
+      - Keep upp list/update/init/self-update and --ci/--dry-run (-n)/--quiet (-q)/--verbose (-v)/--only working
       - Add table-driven tests for any new behavior
     tdd: true
     test_command: "go test ./... -count=1"
