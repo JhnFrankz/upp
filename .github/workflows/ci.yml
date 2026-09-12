@@ -81,10 +81,11 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           # Pinned to the version used for the local lint run (golangci-lint v2
-          # migration 2026-08-18); keep in sync when bumping.
+          # migration 2026-08-18; bumped to v2.13.2 on 2026-09-11 to match the
+          # Homebrew-installed local binary); keep in sync when bumping.
           # The action already runs `golangci-lint run`; args carry only
           # the package scope (a duplicated `run` word is parsed as a dir).
-          version: v2.12.2
+          version: v2.13.2
           args: ./...
 
       - name: Shellcheck
