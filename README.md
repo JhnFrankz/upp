@@ -284,7 +284,7 @@ make smoke
 
 ### CI
 
-`.github/workflows/ci.yml` runs on every push/PR: vet, a gofmt format gate, unit and race tests, a build, and the smoke test, plus golangci-lint (v1.60.3) in a separate job. On version tags (`v*`) the release job (after `test` and `lint` pass) builds the assets and publishes the GitHub Release; a manual dispatch builds and uploads the assets as artifacts without publishing.
+`.github/workflows/ci.yml` runs on every push/PR: vet, a gofmt format gate, unit and race tests, a build, and the smoke test, plus golangci-lint (v2.13.2) in a separate job. On version tags (`v*`) the release job (after `test` and `lint` pass) builds the assets and publishes the GitHub Release; a manual dispatch builds and uploads the assets as artifacts without publishing.
 
 ### Release
 
