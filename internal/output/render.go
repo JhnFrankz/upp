@@ -22,6 +22,11 @@ const (
 	StatusFailed
 	StatusAvailable
 	StatusCurrent
+	// StatusDeselected marks a tool that was pending (planned for update) but
+	// left unselected by the user. It is distinct from StatusSkipped (not
+	// installed / confirm-deny) and from StatusCurrent, so a deselection is
+	// reported rather than silently dropped (design D4, PC2).
+	StatusDeselected
 )
 
 // ToolResult holds the result of processing a single tool.
@@ -114,6 +119,8 @@ func (r *Renderer) statusIcon(s Status) string {
 		return "⬆️ "
 	case StatusCurrent:
 		return "✔️ "
+	case StatusDeselected:
+		return "☐ "
 	default:
 		return "?"
 	}
@@ -131,6 +138,8 @@ func (r *Renderer) statusIconPlain(s Status) string {
 		return "[available]"
 	case StatusCurrent:
 		return "[current]"
+	case StatusDeselected:
+		return "[deselected]"
 	default:
 		return "[?]"
 	}
@@ -148,6 +157,8 @@ func (r *Renderer) statusLabel(s Status) string {
 		return "available"
 	case StatusCurrent:
 		return "current"
+	case StatusDeselected:
+		return "deselected"
 	default:
 		return "unknown"
 	}
@@ -215,6 +226,8 @@ func (r *Renderer) verboseToolLine(result ToolResult) {
 		} else {
 			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
 		}
+	case StatusDeselected:
+		_, _ = fmt.Fprintf(r.w, "  %s %s (deselected)\n", icon, name)
 	}
 }
 
@@ -276,6 +289,7 @@ func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
 func (r *Renderer) UpdateSummary(summary Summary) {
 	updated, skipped, failed := countByStatus(summary.Results)
 	current := countByStatusType(summary.Results, StatusCurrent)
+	deselected := countByStatusType(summary.Results, StatusDeselected)
 
 	// In dry-run mode, StatusAvailable counts as "would update"
 	available := 0
@@ -299,15 +313,18 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	if skipped > 0 {
 		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
 	}
+	if deselected > 0 {
+		parts = append(parts, fmt.Sprintf("%d deselected", deselected))
+	}
 	if failed > 0 {
 		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
 	}
 
 	_, _ = fmt.Fprintln(r.w)
 
-	// All skipped (or empty) → special message. Current tools ARE installed,
-	// so they keep this branch from firing (D6).
-	if updated == 0 && available == 0 && failed == 0 && current == 0 {
+	// All skipped (or empty) → special message. Current and deselected tools
+	// ARE installed/pending, so they keep this branch from firing (D6, PC2).
+	if updated == 0 && available == 0 && failed == 0 && current == 0 && deselected == 0 {
 		_, _ = fmt.Fprintf(r.w, "%s All tools not installed. Nothing to do.\n", r.statusIcon(StatusSkipped))
 		return
 	}
@@ -315,10 +332,10 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	summaryLine := strings.Join(parts, ", ")
 
 	// A run is only "clean" when it really updated something, nothing is
-	// pending, nothing failed, and nothing was skipped. A --dry-run with
-	// pending updates reports "N would update" and never claims "All clean!"
-	// (D3).
-	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0
+	// pending, nothing failed, and nothing was skipped or deselected. A
+	// --dry-run with pending updates reports "N would update" and never claims
+	// "All clean!" (D3); a deselected pending tool is outstanding work too.
+	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0 && deselected == 0
 
 	if failed > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
@@ -328,6 +345,10 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		_, _ = fmt.Fprintf(r.w, "%s %s, 0 failed. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
 	} else if updated > 0 || available > 0 {
 		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusUpdated), summaryLine)
+	} else if deselected > 0 {
+		// All pending work was deselected: report it under the deselected icon,
+		// never as current.
+		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusDeselected), summaryLine)
 	} else {
 		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusCurrent), summaryLine)
 	}
@@ -342,6 +363,7 @@ func (r *Renderer) detailSummary(summary Summary) {
 	updated := filterByStatus(summary.Results, StatusUpdated)
 	current := filterByStatus(summary.Results, StatusCurrent)
 	skipped := filterByStatus(summary.Results, StatusSkipped)
+	deselected := filterByStatus(summary.Results, StatusDeselected)
 	failed := filterByStatus(summary.Results, StatusFailed)
 
 	if len(updated) > 0 {
@@ -355,6 +377,10 @@ func (r *Renderer) detailSummary(summary Summary) {
 	if len(skipped) > 0 {
 		ids := toolNames(skipped)
 		_, _ = fmt.Fprintf(r.w, "  Skipped: %s\n", strings.Join(ids, ", "))
+	}
+	if len(deselected) > 0 {
+		ids := toolNames(deselected)
+		_, _ = fmt.Fprintf(r.w, "  Deselected: %s\n", strings.Join(ids, ", "))
 	}
 	if len(failed) > 0 {
 		ids := toolNames(failed)
