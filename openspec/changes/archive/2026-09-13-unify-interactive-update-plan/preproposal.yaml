@@ -1,0 +1,36 @@
+schema: gentle-ai.sdd-preproposal/v1
+revision: 2
+change: unify-interactive-update-plan
+project: upp
+updated_at: "2026-09-12"
+exploration:
+  outcome: done
+  reference: openspec/changes/unify-interactive-update-plan/exploration.md
+research:
+  request:
+    - "Q1: In established multi-package-manager updaters (topgrade, native managers), is an always-update/self-refresh command executed when the tool is current, or skipped?"
+    - "Q2: Documented behavior/cost of `brew update` (self-refresh) when nothing is outdated."
+    - "Q3: Documented convention for mapping a multi-select selector's chosen items to stable machine identifiers rather than display labels."
+  requested_classes: [documentation, open-web]
+  admission: admitted
+  observed_classes: [documentation]
+  provider_deficiency: "open-web (webfetch) declared but not reachable; no claim depends on it"
+  outcome: done
+  evidence:
+    openspec: openspec/changes/unify-interactive-update-plan/research.md
+    engram: sdd/unify-interactive-update-plan/research
+    revision: 1
+product_decisions:
+  status: confirmed
+  items:
+    - id: PC1
+      decision: confirmed
+      choice: include_always_update_current
+      question: "Should plan.Updates include PolicyAlwaysUpdate tools when UpdateAvailable == false (brew/bun in the interactive pending set)?"
+      resolution: "Include them. The interactive path MUST consume engine.Plan as the single source of truth for the pending set, matching the archived application-engine design (design.md:123,234) where PolicyAlwaysUpdate is planned unconditionally. No TTY-specific exception may be introduced."
+    - id: PC2
+      decision: confirmed
+      choice: distinct_deselected_status
+      question: "How should deselected pending tools be represented in the report (StatusSkipped vs. a new deselected status)?"
+      resolution: "Use a distinct report status for deselected pending tools, visible in the final summary and separate from the existing skipped/not-installed status. Do NOT silently drop them."
+proposal_ready: true
