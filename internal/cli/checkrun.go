@@ -119,10 +119,26 @@ func adapterIDs(adapterList []adapters.Adapter) []string {
 	return ids
 }
 
+// toolSelectionID returns the canonical stable identity of an adapter used as
+// the selector option ID and the adapter-lookup key (design D1). It is
+// adapters.ToolInfo.ID, falling back to Adapter.Name() only when the ID is
+// empty. It matches engine.CheckOutcome.ToolID, so selection, planning, and
+// execution all key on the same identity — the display label is never a key.
+func toolSelectionID(a adapters.Adapter) string {
+	if id := a.Info().ID; id != "" {
+		return id
+	}
+	return a.Name()
+}
+
+// adapterByID indexes adapters by their canonical selection identity so the
+// interactive selector's option IDs resolve back to exactly one adapter
+// (spec Canonical Tool Selection Identity). adapterIDs above keeps using
+// Adapter.Name() for the FilterTools warning contract.
 func adapterByID(adapterList []adapters.Adapter) map[string]adapters.Adapter {
 	m := make(map[string]adapters.Adapter, len(adapterList))
 	for _, a := range adapterList {
-		m[a.Name()] = a
+		m[toolSelectionID(a)] = a
 	}
 	return m
 }

@@ -214,13 +214,11 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 				continue
 			}
 
-			// Progress
-			if !gf.Quiet && total > 1 {
-				r.Progress("Updating", i+1, total, info.Name)
-			}
-
-			// Dry run: just show planned action
+			// Dry run: show the planned action only, never execute it.
 			if uf.DryRun {
+				if !gf.Quiet && total > 1 {
+					r.Progress("Updating", i+1, total, info.Name)
+				}
 				if oc.UpdateAvailable {
 					r.DryRunPlanned(fmt.Sprintf("%s (%s → %s)", info.Name, oc.CurrentVersion, oc.LatestVersion))
 					results[i] = output.ToolResult{
@@ -238,83 +236,11 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 				continue
 			}
 
-			// Confirm if needed — always evaluate trust/risk, even in CI mode.
-			riskLevel := security.ClassifyCommand(u.RiskCommand)
-			decision := security.ConfirmAction(security.ConfirmConfig{
-				ToolName:    info.Name,
-				TrustLevel:  info.Trust,
-				RiskLevel:   riskLevel,
-				Command:     u.RiskCommand,
-				Privileges:  info.Privileges,
-				CI:          gf.CI,
-				EnforceRisk: u.ManagerID != "",
-			})
-
-			switch decision {
-			case security.ConfirmDeny:
-				results[i] = output.ToolResult{
-					Name:   info.Name,
-					Status: output.StatusSkipped,
-				}
-				continue
-			case security.ConfirmError:
-				results[i] = output.ToolResult{
-					Name:   info.Name,
-					Status: output.StatusFailed,
-					Error:  fmt.Errorf("CI mode: elevated risk requires confirmation"),
-				}
-				hasFailure = true
-				continue
-			}
-
-			// Update: for owned tools with a PackageUpdater manager, delegate
-			// to updater.UpdatePackage(pkg)
-			owner := engine.ResolvingOwner(a, osName, allAdapters...)
-			var result adapters.Result
-			var updateErr error
-			if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
-				if updater, ok := owner.(adapters.PackageUpdater); ok {
-					pkg := engine.OwnedPackage(a, osName)
-					if pkg != "" {
-						result, updateErr = updater.UpdatePackage(pkg)
-					} else {
-						result, updateErr = a.Update(false)
-					}
-				} else {
-					result, updateErr = a.Update(false)
-				}
-			} else {
-				result, updateErr = a.Update(false)
-			}
-
-			if updateErr != nil {
-				results[i] = output.ToolResult{
-					Name:   info.Name,
-					Status: output.StatusFailed,
-					Error:  engine.TimeoutErr(info.Name, "update", updateErr),
-					Stderr: updateErr.Error(),
-				}
-				hasFailure = true
-				continue
-			}
-
-			if result.Success {
-				results[i] = output.ToolResult{
-					Name:    info.Name,
-					Status:  output.StatusUpdated,
-					Version: result.After,
-				}
-			} else {
-				errMsg := result.Error
-				if errMsg == nil {
-					errMsg = fmt.Errorf("update failed")
-				}
-				results[i] = output.ToolResult{
-					Name:   info.Name,
-					Status: output.StatusFailed,
-					Error:  engine.TimeoutErr(info.Name, "update", errMsg),
-					Stderr: errMsg.Error(),
-				}
+			// The shared executor owns confirm + risk + privilege parity with
+			// the interactive path (design D2/D3); the plan's PlannedUpdate is
+			// the source of policy, not a re-derivation here.
+			results[i] = executePlannedUpdate(gf, u, a, i+1, total, r, osName, allAdapters...)
+			if results[i].Status == output.StatusFailed {
 				hasFailure = true
 			}
 		}
@@ -341,8 +267,10 @@ func timeoutErr(name, op string, err error) error {
 }
 
 // runUpdateInteractive implements the TTY update flow:
-// a concurrent pre-check via eng.Check, a checkbox selector over the pending
-// (StatusAvailable) tools, and the carried-outcome loop that updates only the user's selection.
+// a concurrent pre-check via eng.Check, a checkbox selector over the
+// plan-derived pending set (engine.Plan, so PolicyAlwaysUpdate tools appear
+// even when current), and the carried-outcome loop that updates the user's
+// selection while reporting every deselected pending tool distinctly.
 func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
 	if eng == nil {
 		var opts []engine.Option
@@ -364,21 +292,38 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 	})
 	board.Finish()
 
-	// Pending = tools with an update available, in group order.
-	var pending []output.SelectOption
-	for i, oc := range outcomes {
-		if oc.Status == engine.StatusAvailable {
-			name := oc.ToolName
-			if name == "" {
-				name = oc.ToolID
-			}
-			pending = append(pending, output.SelectOption{
-				ID:      name,
-				Label:   name,
-				Version: fmt.Sprintf("%s → %s", oc.CurrentVersion, oc.LatestVersion),
-				Group:   output.OwnerGroupLabel(grouped[i], osName, grouped),
-			})
+	// The engine's plan is the single source of truth for identity, pending
+	// eligibility, and execution metadata for the interactive path (design
+	// D2/D3/D5, PC1): the pending set IS plan.Updates, so PolicyAlwaysUpdate
+	// tools (e.g. brew, bun) appear even when currently up to date. Option IDs
+	// are the canonical stable identity; labels are display-only (spec
+	// Canonical Tool Selection Identity).
+	plan, err := eng.Plan(outcomes, engine.Filter{})
+	if err != nil {
+		return err
+	}
+	planByID := make(map[string]engine.PlannedUpdate, len(plan.Updates))
+	for _, u := range plan.Updates {
+		planByID[u.ToolID] = u
+	}
+	adapterMap := adapterByID(filteredAdapters)
+
+	pending := make([]output.SelectOption, 0, len(plan.Updates))
+	for _, u := range plan.Updates {
+		label := u.ToolName
+		if label == "" {
+			label = u.ToolID
 		}
+		var group string
+		if a, ok := adapterMap[u.ToolID]; ok {
+			group = output.OwnerGroupLabel(a, osName, grouped)
+		}
+		pending = append(pending, output.SelectOption{
+			ID:      u.ToolID,
+			Label:   label,
+			Version: fmt.Sprintf("%s → %s", u.CurrentVersion, u.LatestVersion),
+			Group:   group,
+		})
 	}
 
 	// No pending updates → skip the selector, show the normal summary
@@ -413,27 +358,62 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 
 	var results []output.ToolResult
 	hasFailure := false
-	adapterMap := adapterByID(filteredAdapters)
 	updateIndex := 0
 	updateTotal := len(selected)
 	for _, oc := range outcomes {
-		name := oc.ToolName
-		if name == "" {
-			name = oc.ToolID
+		id := outcomeSelectionID(oc)
+		display := oc.ToolName
+		if display == "" {
+			display = id
 		}
-		switch oc.Status {
-		case engine.StatusAvailable:
-			if _, ok := selectedSet[name]; !ok {
-				continue // deselected: dropped, never processed
-			}
-			a, ok := adapterMap[name]
-			if !ok {
-				continue
-			}
-			updateIndex++
-			hasFailure = processSelectedOutcome(gf, a, oc.RawUpdateInfo, updateIndex, updateTotal, r, &results, osName, allAdapters...) || hasFailure
-		default:
+		p, isPending := planByID[id]
+		if !isPending {
+			// Not planned → not selectable: carry its check outcome (current,
+			// skipped, or failed) unchanged.
 			results = append(results, outcomeToToolResult(oc))
+			continue
+		}
+		if _, selectedNow := selectedSet[id]; !selectedNow {
+			// Pending but not selected: report it under the distinct deselected
+			// status, never silently drop it (spec Deselected Pending Tools
+			// Reporting, PC2).
+			results = append(results, output.ToolResult{
+				Name:   display,
+				Status: output.StatusDeselected,
+			})
+			continue
+		}
+		a, ok := adapterMap[id]
+		if !ok {
+			// An option that resolves to no adapter is an explicit failure,
+			// never a silent drop (spec Unresolvable selection).
+			results = append(results, output.ToolResult{
+				Name:   display,
+				Status: output.StatusFailed,
+				Error:  fmt.Errorf("selected tool %q could not be resolved to an adapter", id),
+			})
+			hasFailure = true
+			continue
+		}
+		updateIndex++
+		res := executePlannedUpdate(gf, p, a, updateIndex, updateTotal, r, osName, allAdapters...)
+		if res.Status == output.StatusFailed {
+			hasFailure = true
+		}
+		results = append(results, res)
+	}
+
+	// A selected ID that matched no outcome/plan is unresolvable: surface it as
+	// an explicit failure rather than silently ignoring the selection (spec
+	// Unresolvable selection).
+	for _, id := range selected {
+		if _, ok := planByID[id]; !ok {
+			results = append(results, output.ToolResult{
+				Name:   id,
+				Status: output.StatusFailed,
+				Error:  fmt.Errorf("selected tool %q could not be resolved to an adapter", id),
+			})
+			hasFailure = true
 		}
 	}
 
@@ -447,112 +427,103 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 	return nil
 }
 
-// processSelectedOutcome runs the per-tool confirm + policy gate + Update
-// for one selected pending tool, appending its result.
-func processSelectedOutcome(gf *GlobalFlags, a adapters.Adapter, updateInfo adapters.UpdateInfo, index, total int, r *output.Renderer, results *[]output.ToolResult, osName string, allAdapters ...[]adapters.Adapter) bool {
+// executePlannedUpdate is the single executor shared by the sequential and
+// interactive update paths (design D2). It runs the confirmation gate and the
+// update for one engine.PlannedUpdate, returning that tool's ToolResult. Risk
+// command, privileges, trust, and the EnforceRisk policy all come from the
+// plan — never re-derived here — so the two paths cannot diverge (design D3).
+// A non-empty ManagerID means the row is an owned-package update whose real
+// command risk must decide even for TrustOfficial tools.
+func executePlannedUpdate(gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Adapter, index, total int, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) output.ToolResult {
 	info := a.Info()
 
 	if !gf.Quiet && total > 1 {
 		r.Progress("Updating", index, total, info.Name)
 	}
 
-	owner := engine.ResolvingOwner(a, osName, allAdapters...)
-
-	var riskCommand string
-	var enforceRisk bool
-	if owner != nil {
-		pkg := engine.OwnedPackage(a, osName)
-		riskCommand = fmt.Sprintf("%s %s", engine.UpdateCmdName(owner.Name()), pkg)
-		enforceRisk = true
-	} else {
-		riskCommand = info.Command
-		if riskCommand == "" {
-			riskCommand = info.Name + " update"
-		}
-	}
-	riskLevel := security.ClassifyCommand(riskCommand)
+	riskLevel := security.ClassifyCommand(p.RiskCommand)
 	decision := security.ConfirmAction(security.ConfirmConfig{
-		ToolName:    info.Name,
-		TrustLevel:  info.Trust,
+		ToolName:    p.ToolName,
+		TrustLevel:  p.Trust,
 		RiskLevel:   riskLevel,
-		Command:     riskCommand,
-		Privileges:  info.Privileges,
+		Command:     p.RiskCommand,
+		Privileges:  p.Privileges,
 		CI:          gf.CI,
-		EnforceRisk: enforceRisk,
+		EnforceRisk: p.ManagerID != "",
 	})
 
 	switch decision {
 	case security.ConfirmDeny:
-		*results = append(*results, output.ToolResult{
-			Name:   info.Name,
+		return output.ToolResult{
+			Name:   p.ToolName,
 			Status: output.StatusSkipped,
-		})
-		return false
+		}
 	case security.ConfirmError:
-		*results = append(*results, output.ToolResult{
-			Name:   info.Name,
+		return output.ToolResult{
+			Name:   p.ToolName,
 			Status: output.StatusFailed,
 			Error:  fmt.Errorf("CI mode: elevated risk requires confirmation"),
-		})
-		return true
+		}
 	}
 
-	if engine.ResolveEffectiveUpdatePolicy(a, osName, allAdapters...) == adapters.PolicyGated && !updateInfo.UpdateAvailable {
-		*results = append(*results, output.ToolResult{
-			Name:    info.Name,
-			Status:  output.StatusCurrent,
-			Version: updateInfo.CurrentVersion,
-		})
-		return false
-	}
-
+	// Owned tools with a PackageUpdater manager delegate to
+	// updater.UpdatePackage(pkg); standalone tools run their own Update.
+	owner := engine.ResolvingOwner(a, osName, allAdapters...)
 	var result adapters.Result
-	var err error
-	if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
+	var updateErr error
+	if owner != nil && info.Manager != nil && info.Manager[osName] != "" {
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
 			pkg := engine.OwnedPackage(a, osName)
 			if pkg != "" {
-				result, err = updater.UpdatePackage(pkg)
+				result, updateErr = updater.UpdatePackage(pkg)
 			} else {
-				result, err = a.Update(false)
+				result, updateErr = a.Update(false)
 			}
 		} else {
-			result, err = a.Update(false)
+			result, updateErr = a.Update(false)
 		}
 	} else {
-		result, err = a.Update(false)
+		result, updateErr = a.Update(false)
 	}
 
-	if err != nil {
-		*results = append(*results, output.ToolResult{
-			Name:   info.Name,
+	if updateErr != nil {
+		return output.ToolResult{
+			Name:   p.ToolName,
 			Status: output.StatusFailed,
-			Error:  engine.TimeoutErr(info.Name, "update", err),
-			Stderr: err.Error(),
-		})
-		return true
+			Error:  engine.TimeoutErr(p.ToolName, "update", updateErr),
+			Stderr: updateErr.Error(),
+		}
 	}
 
 	if result.Success {
-		*results = append(*results, output.ToolResult{
-			Name:    info.Name,
+		return output.ToolResult{
+			Name:    p.ToolName,
 			Status:  output.StatusUpdated,
 			Version: result.After,
-		})
-		return false
+		}
 	}
 
 	errMsg := result.Error
 	if errMsg == nil {
 		errMsg = fmt.Errorf("update failed")
 	}
-	*results = append(*results, output.ToolResult{
-		Name:   info.Name,
+	return output.ToolResult{
+		Name:   p.ToolName,
 		Status: output.StatusFailed,
-		Error:  engine.TimeoutErr(info.Name, "update", errMsg),
+		Error:  engine.TimeoutErr(p.ToolName, "update", errMsg),
 		Stderr: errMsg.Error(),
-	})
-	return true
+	}
+}
+
+// outcomeSelectionID returns the canonical selection identity carried by a
+// check outcome. The engine sets ToolID to adapters.ToolInfo.ID, falling back
+// to Adapter.Name() — exactly toolSelectionID — so an outcome's ID resolves
+// against adapterByID's key.
+func outcomeSelectionID(oc engine.CheckOutcome) string {
+	if oc.ToolID != "" {
+		return oc.ToolID
+	}
+	return oc.ToolName
 }
 
 // resolveEffectiveUpdatePolicy returns the UpdatePolicy that governs whether

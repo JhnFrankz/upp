@@ -13,6 +13,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -26,6 +27,7 @@ import (
 type fakeUpdateAdapter struct {
 	mu         sync.Mutex
 	name       string
+	infoName   string // optional Info().Name override (canonical-identity tests)
 	policy     adapters.UpdatePolicy
 	trust      adapters.TrustLevel
 	command    string
@@ -76,9 +78,13 @@ func (f *fakeUpdateAdapter) Update(dryRun bool) (adapters.Result, error) {
 }
 
 func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
+	displayName := f.infoName
+	if displayName == "" {
+		displayName = f.name
+	}
 	return adapters.ToolInfo{
 		ID:             f.name,
-		Name:           f.name,
+		Name:           displayName,
 		Trust:          f.trust,
 		UpdatePolicy:   f.policy,
 		Command:        f.command,
@@ -129,6 +135,21 @@ func fakeAdapterList(fakes ...*fakeUpdateAdapter) func(*config.Config, string) [
 		}
 		return result
 	}
+}
+
+// emptyIDAdapter wraps a fakeUpdateAdapter so that Info().ID is empty while
+// Name() stays non-empty. It intentionally does NOT set Info().ID: the
+// canonical selection identity MUST fall back to Adapter.Name() (design D1,
+// spec command-interface "Empty ID fallback"). Every other behavior (Check,
+// Update, Detect) is promoted from the wrapped fake.
+type emptyIDAdapter struct {
+	*fakeUpdateAdapter
+}
+
+func (e *emptyIDAdapter) Info() adapters.ToolInfo {
+	info := e.fakeUpdateAdapter.Info()
+	info.ID = ""
+	return info
 }
 
 // runUpdateWithFlags runs runUpdate with the given global/update flags
@@ -735,9 +756,10 @@ func TestRunUpdate_NoPendingSkipsSelector(t *testing.T) {
 // TestRunUpdate_InteractiveSelection proves the carried-outcome loop (design
 // D4, spec command-interface "Selection narrows further"): the selected tool
 // is updated exactly once with a single Check() (the pre-check result is
-// carried — no second Check()), the deselected pending tool is dropped from
-// the summary, and ConfirmAction still runs for the selected custom tool
-// (spec ux-patterns "Not a security confirmation").
+// carried — no second Check()), each deselected pending tool is reported with
+// the distinct deselected status (PC2, never silently dropped), and
+// ConfirmAction still runs for the selected custom tool (spec ux-patterns
+// "Not a security confirmation").
 func TestRunUpdate_InteractiveSelection(t *testing.T) {
 	probeHome(t)
 	selected := &fakeUpdateAdapter{
@@ -832,10 +854,12 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 	if !custom.updated {
 		t.Error("selected custom tool must be updated")
 	}
-	// D7: current always-update tools are NOT force-updated in interactive
-	// TTY runs — only the pending selection is processed.
+	// PC1/D7 flip: the always-update current tool is now part of the
+	// plan-derived pending set, so it is presented in the selector. It stays
+	// un-updated here only because the user did not select it — and it MUST be
+	// reported distinctly as deselected, never silently dropped.
 	if current.updated {
-		t.Error("current always-update tool must not be force-updated in TTY mode (D7)")
+		t.Error("unselected always-update current tool must not be updated")
 	}
 	// No-double-check contract: exactly one Check() per tool, carried forward.
 	for _, f := range []*fakeUpdateAdapter{selected, deselected, custom, current} {
@@ -849,14 +873,15 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 		t.Errorf("expected ConfirmAction prompt for selected custom tool; got: %q", out)
 	}
 
-	// Selector options carry ID/Label/Version from the pending pre-check
-	// outcomes, in input order — only the pending (available) tools are
-	// selectable (design D9: the "Current → Latest" string; D7: no
-	// always-update tools in the list).
+	// Selector options carry ID/Label/Version from the plan's pending updates
+	// (design D9: the "Current → Latest" string). PC1: the pending set is
+	// plan.Updates, so the always-update current tool IS selectable — no
+	// always-update tool is excluded from the list.
 	wantOpts := []output.SelectOption{
 		{ID: "selected-tool", Label: "selected-tool", Version: "1.0.0 → 2.0.0"},
 		{ID: "deselected-tool", Label: "deselected-tool", Version: "1.0.0 → 2.0.0"},
 		{ID: "custom-tool", Label: "custom-tool", Version: "1.0.0 → 2.0.0"},
+		{ID: "current-tool", Label: "current-tool", Version: "1.0.0 → 1.0.0"},
 	}
 	if len(*got) != len(wantOpts) {
 		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
@@ -867,14 +892,20 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 		}
 	}
 
-	// Summary reflects executed selection: deselected pending tool dropped,
-	// both selected tools updated — counts reflect executed selection, not
-	// the pending set.
+	// Summary reflects executed selection: both deselected pending tools are
+	// reported under the distinct deselected status (PC2), both selected tools
+	// updated — counts reflect executed selection, not the pending set.
 	if !strings.Contains(out, "2 updated") {
 		t.Errorf("expected summary '2 updated'; got: %q", out)
 	}
+	if !strings.Contains(out, "2 deselected") {
+		t.Errorf("expected summary '2 deselected'; got: %q", out)
+	}
 	if !strings.Contains(out, "Updated: selected-tool, custom-tool") {
 		t.Errorf("expected detail line listing only the selected tools; got: %q", out)
+	}
+	if !strings.Contains(out, "Deselected: deselected-tool, current-tool") {
+		t.Errorf("expected detail line listing the deselected pending tools; got: %q", out)
 	}
 	if strings.Contains(out, "Updated: current-tool") {
 		t.Errorf("current always-update tool must not appear as updated; got: %q", out)
@@ -958,6 +989,12 @@ func TestRunUpdate_InteractiveSelection_OwnedToolDelegation(t *testing.T) {
 	if strings.Contains(out, "Updated: docker") {
 		t.Errorf("deselected docker must not be updated; got:\n%s", out)
 	}
+	if !strings.Contains(out, "1 deselected") {
+		t.Errorf("deselected docker must be counted under the distinct deselected status; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Deselected: docker") {
+		t.Errorf("deselected docker must appear in the deselected detail line, never dropped; got:\n%s", out)
+	}
 }
 
 // TestRunUpdate_SelectorCancel proves the cancel path (spec ux-patterns "Esc
@@ -988,7 +1025,7 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 		result: adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
 	}
 
-	sel, _ := fakeSelector(nil, true)
+	sel, got := fakeSelector(nil, true)
 	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{pending, always}, sel)
 
 	out := withCapturedStdout(func() {
@@ -1013,13 +1050,28 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 	if !strings.Contains(out, "Update canceled — no changes made.") {
 		t.Errorf("expected the fixed cancel message; got: %q", out)
 	}
-	// Nothing updated — not even always-update tools (design D7: the
-	// interactive run acts on the pending selection only).
+	// PC1/D7 flip: the always-update current tool is now part of the
+	// plan-derived pending set, so the selector presents both tools in plan
+	// order — brew is no longer excluded.
+	wantOpts := []output.SelectOption{
+		{ID: "npm", Label: "npm", Version: "1.0.0 → 2.0.0"},
+		{ID: "brew", Label: "brew", Version: "1.0.0 → 1.0.0"},
+	}
+	if len(*got) != len(wantOpts) {
+		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
+	}
+	for i, want := range wantOpts {
+		if (*got)[i] != want {
+			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
+		}
+	}
+	// Cancel: nothing is updated, including the always-update tool that is now
+	// presented in the selector.
 	if pending.updated {
 		t.Error("cancel must not update pending tools")
 	}
 	if always.updated {
-		t.Error("cancel must not update always-update tools (D7: no force-update in TTY)")
+		t.Error("cancel must not update always-update tools")
 	}
 }
 
@@ -1182,14 +1234,15 @@ func TestRunUpdate_ManagerSelfUpdateDryRun(t *testing.T) {
 	}
 }
 
-// TestRunUpdate_ManagerSelfUpdateBrewNeverSelector pins the interactive TTY
-// selector contract (spec ux-patterns "Manager Self-Update Row Rendering"):
-// brew — which reports no self-update availability by design — MUST NOT appear
-// in the pending CheckboxSelector, because self-updates run only via the
-// sequential/`--ci` PolicyAlwaysUpdate path. apt and winget, which report real
-// availability, DO appear. Brew must never force-update in a TTY run (design
-// D7).
-func TestRunUpdate_ManagerSelfUpdateBrewNeverSelector(t *testing.T) {
+// TestRunUpdate_ManagerSelfUpdateBrewInSelector pins the interactive TTY
+// selector contract (spec ux-patterns "Manager Self-Update Row Rendering" as
+// modified by this change): brew — which reports no self-update availability
+// by design (UpdateAvailable=false) — IS part of the plan-derived pending set
+// (PolicyAlwaysUpdate is planned unconditionally, PC1) and MUST appear in the
+// pending CheckboxSelector. apt and winget, which report real availability,
+// appear too. Brew stays un-updated here only because the user did not select
+// it; it is reported under the distinct deselected status (PC2).
+func TestRunUpdate_ManagerSelfUpdateBrewInSelector(t *testing.T) {
 	probeHome(t)
 	brewCurrent := &fakeUpdateAdapter{
 		name:   "brew",
@@ -1233,8 +1286,10 @@ func TestRunUpdate_ManagerSelfUpdateBrewNeverSelector(t *testing.T) {
 		}
 	})
 
-	// Selector options: only the pending managers (apt + winget); brew absent.
+	// Selector options: the plan-derived pending set includes brew (always
+	// update), apt, and winget — in plan order.
 	wantOpts := []output.SelectOption{
+		{ID: "brew", Label: "brew", Version: "4.1.0 → 4.1.0"},
 		{ID: "apt", Label: "apt", Version: "2.4.0 → 2.4.5"},
 		{ID: "winget", Label: "winget", Version: "v1.8.2301 → v1.8.2311"},
 	}
@@ -1246,9 +1301,12 @@ func TestRunUpdate_ManagerSelfUpdateBrewNeverSelector(t *testing.T) {
 			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
 		}
 	}
-	// brew must never be force-updated in a TTY interactive run (design D7).
+	// brew is presented but not selected → deselected, never force-updated.
 	if brewCurrent.updated {
-		t.Error("brew must never be force-updated in TTY mode (D7): only the pending selection is processed")
+		t.Error("unselected brew must not be updated in TTY mode")
+	}
+	if !strings.Contains(out, "Deselected: brew") {
+		t.Errorf("unselected brew must be reported as deselected; got:\n%s", out)
 	}
 	// The board should show brew current and apt/winget available.
 	if !strings.Contains(out, "brew up-to-date") {
@@ -1289,29 +1347,21 @@ func TestRunUpdate_AllSucceedSummary(t *testing.T) {
 	}
 }
 
-// TestProcessSelectedOutcome_Coverage directly exercises
-// processSelectedOutcome across its decision branches (verify SUGGESTION:
-// interactive-path coverage). Each case drives the security ConfirmAction
-// decision via trust/risk/CI configuration, the policy gate via UpdateInfo,
-// and the update outcome via the fake's Result. The interactive prompt case
-// injects stdin via withStdin so the Deny decision is deterministic.
-func TestProcessSelectedOutcome_Coverage(t *testing.T) {
-	newInfo := func(available bool) adapters.UpdateInfo {
-		return adapters.UpdateInfo{
-			CurrentVersion:  "1.0.0",
-			LatestVersion:   "2.0.0",
-			UpdateAvailable: available,
-		}
-	}
-
+// TestExecutePlannedUpdate_Coverage directly exercises executePlannedUpdate
+// across its decision branches. Each case builds an engine.PlannedUpdate —
+// the engine's single source of risk, policy, and privilege metadata (design
+// D3) — and drives the security ConfirmAction decision via that PlannedUpdate
+// plus CI configuration; the update outcome comes from the fake's Result. The
+// interactive prompt case injects stdin via withStdin so the Deny decision is
+// deterministic.
+func TestExecutePlannedUpdate_Coverage(t *testing.T) {
 	tests := []struct {
 		name        string
 		fake        *fakeUpdateAdapter
+		planned     engine.PlannedUpdate
 		gf          *GlobalFlags
-		updateInfo  adapters.UpdateInfo
 		stdin       string // non-empty → wrap the case in withStdin (prompt answer)
 		wantStatus  output.Status
-		wantFailed  bool
 		wantUpdated bool
 	}{
 		{
@@ -1322,7 +1372,12 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 				trust:  adapters.TrustOfficial,
 				result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
 			},
-			updateInfo:  newInfo(true),
+			planned: engine.PlannedUpdate{
+				ToolID:      "ok-tool",
+				ToolName:    "ok-tool",
+				RiskCommand: "ok-tool update",
+				Trust:       adapters.TrustOfficial,
+			},
 			wantStatus:  output.StatusUpdated,
 			wantUpdated: true,
 		},
@@ -1334,34 +1389,38 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 				trust:  adapters.TrustOfficial,
 				result: adapters.Result{Success: false, Error: errors.New("boom")},
 			},
-			updateInfo:  newInfo(true),
+			planned: engine.PlannedUpdate{
+				ToolID:      "fail-tool",
+				ToolName:    "fail-tool",
+				RiskCommand: "fail-tool update",
+				Trust:       adapters.TrustOfficial,
+			},
 			wantStatus:  output.StatusFailed,
-			wantFailed:  true,
 			wantUpdated: true, // Update() was invoked and failed
 		},
 		{
-			name: "policy gated without update stays current",
+			// Threat matrix: a Plan-derived sudo owned-package command must
+			// fail closed non-zero in CI. A trust=official tool would normally
+			// auto-proceed, but ManagerID != "" sets EnforceRisk so the REAL
+			// command risk decides (design D3/D4, spec `--ci` elevated risk).
+			name: "plan-derived sudo owned tool fails closed in CI",
 			fake: &fakeUpdateAdapter{
-				name:   "gated-tool",
-				policy: adapters.PolicyGated,
+				name:   "gh",
+				policy: adapters.PolicyAlwaysUpdate,
 				trust:  adapters.TrustOfficial,
 			},
-			updateInfo: newInfo(false), // UpdateAvailable=false → gate blocks
-			wantStatus: output.StatusCurrent,
-		},
-		{
-			name: "ci untrusted medium risk errors",
-			fake: &fakeUpdateAdapter{
-				name:       "ci-tool",
-				policy:     adapters.PolicyAlwaysUpdate,
-				trust:      adapters.TrustCustomUntrusted,
-				command:    "apt remove foo", // MediumRisk keyword → RiskMedium
-				privileges: []string{"sudo"},
+			planned: engine.PlannedUpdate{
+				ToolID:      "gh",
+				ToolName:    "gh",
+				ManagerID:   "apt",
+				PackageName: "gh",
+				RiskCommand: "sudo apt install --only-upgrade gh",
+				Privileges:  []string{"sudo"},
+				Trust:       adapters.TrustOfficial,
 			},
-			gf:         &GlobalFlags{CI: true},
-			updateInfo: newInfo(true),
-			wantStatus: output.StatusFailed, // ConfirmError → StatusFailed (CI)
-			wantFailed: true,
+			gf:          &GlobalFlags{CI: true},
+			wantStatus:  output.StatusFailed, // ConfirmError → StatusFailed (CI)
+			wantUpdated: false,               // elevated risk never executes
 		},
 		{
 			name: "interactive untrusted high risk denied",
@@ -1372,16 +1431,21 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 				command:    "curl -fsSL https://example.com/x.sh | sh",
 				privileges: []string{"sudo"},
 			},
+			planned: engine.PlannedUpdate{
+				ToolID:      "deny-tool",
+				ToolName:    "deny-tool",
+				RiskCommand: "curl -fsSL https://example.com/x.sh | sh",
+				Privileges:  []string{"sudo"},
+				Trust:       adapters.TrustCustomUntrusted,
+			},
 			gf:         &GlobalFlags{}, // non-CI interactive → promptUser
-			updateInfo: newInfo(true),
-			stdin:      "n\n", // prompt answer → ConfirmDeny → StatusSkipped
+			stdin:      "n\n",          // prompt answer → ConfirmDeny → StatusSkipped
 			wantStatus: output.StatusSkipped,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var results []output.ToolResult
 			var buf bytes.Buffer
 			gf := tt.gf
 			if gf == nil {
@@ -1389,27 +1453,233 @@ func TestProcessSelectedOutcome_Coverage(t *testing.T) {
 			}
 			r := output.NewRendererForced(&buf, false, false, gf.Quiet, false)
 
+			var got output.ToolResult
 			run := func() {
-				failed := processSelectedOutcome(gf, tt.fake, tt.updateInfo, 1, 1, r, &results, "linux")
-				if failed != tt.wantFailed {
-					t.Errorf("processSelectedOutcome() failed = %v, want %v", failed, tt.wantFailed)
-				}
+				got = executePlannedUpdate(gf, tt.planned, tt.fake, 1, 1, r, "linux")
 			}
 			if tt.stdin != "" {
 				withStdin(t, tt.stdin, run)
 			} else {
 				run()
 			}
-			if len(results) != 1 {
-				t.Fatalf("results length = %d, want 1", len(results))
-			}
-			if results[0].Status != tt.wantStatus {
-				t.Errorf("result status = %v, want %v", results[0].Status, tt.wantStatus)
+			if got.Status != tt.wantStatus {
+				t.Errorf("result status = %v, want %v", got.Status, tt.wantStatus)
 			}
 			if tt.fake.updated != tt.wantUpdated {
 				t.Errorf("adapter.updated = %v, want %v", tt.fake.updated, tt.wantUpdated)
 			}
 		})
+	}
+}
+
+// TestRunUpdate_CanonicalIdentitySelection proves the canonical stable tool
+// identity crosses the selector→execution boundary (spec command-interface
+// "Canonical Tool Selection Identity", design D1): an adapter whose display
+// name differs from its short identity must render the option as
+// {ID: <stable id>, Label: <display name>} and must be resolved by that same
+// stable ID at execution time — never by the display label. Before the fix the
+// adapter map keyed by Adapter.Name() while selection keyed by display name,
+// so the adapter was silently dropped.
+func TestRunUpdate_CanonicalIdentitySelection(t *testing.T) {
+	probeHome(t)
+	gh := &fakeUpdateAdapter{
+		name:     "gh",
+		infoName: "GitHub CLI",
+		policy:   adapters.PolicyAlwaysUpdate,
+		trust:    adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "2.45.0",
+			LatestVersion:   "2.46.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"},
+	}
+
+	sel, got := fakeSelector([]string{"gh"}, false)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{gh}, sel)
+
+	// gh resolves to the apt owner on Linux, so the plan derives a sudo
+	// package command (HIGH risk) and the interactive run prompts: answer yes.
+	out := withCapturedStdout(func() {
+		withStdin(t, "y\n", func() {
+			if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+				t.Fatalf("runUpdate error: %v", err)
+			}
+		})
+	})
+
+	wantOpts := []output.SelectOption{
+		{ID: "gh", Label: "GitHub CLI", Version: "2.45.0 → 2.46.0"},
+	}
+	if len(*got) != len(wantOpts) {
+		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
+	}
+	for i, want := range wantOpts {
+		if (*got)[i] != want {
+			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
+		}
+	}
+	if !gh.updated {
+		t.Error("selected gh must be updated: adapter lookup must use the canonical ID, not the display label")
+	}
+	if !strings.Contains(out, "Updated: GitHub CLI") {
+		t.Errorf("summary must report the updated tool by its display label; got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_EmptyIDFallbackSelection proves the canonical selection
+// identity falls back to Adapter.Name() when adapters.ToolInfo.ID is empty
+// (spec command-interface "Canonical Tool Selection Identity" → "Empty ID
+// fallback", design D1): the selector option ID must carry Name(), the plan's
+// ToolID must equal it, and the selected tool must resolve to its adapter and
+// execute — never be silently dropped because the lookup key mismatched.
+func TestRunUpdate_EmptyIDFallbackSelection(t *testing.T) {
+	probeHome(t)
+	fake := &fakeUpdateAdapter{
+		name:   "npm",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "10.0.0",
+			LatestVersion:   "10.1.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "10.0.0", After: "10.1.0"},
+	}
+	// Info().ID is empty by construction (the wrapper never sets it), so the
+	// only stable identity available is Name().
+	emptyID := &emptyIDAdapter{fakeUpdateAdapter: fake}
+
+	sel, got := fakeSelector([]string{"npm"}, false)
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return []adapters.Adapter{emptyID}
+		},
+		stdinIsTTY: func() bool { return true },
+		selector:   sel,
+	}
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Fatalf("runUpdate error: %v", err)
+		}
+	})
+
+	// Identity fell back to Name(): the option ID is "npm", never "".
+	wantOpts := []output.SelectOption{
+		{ID: "npm", Label: "npm", Version: "10.0.0 → 10.1.0"},
+	}
+	if len(*got) != len(wantOpts) {
+		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
+	}
+	for i, want := range wantOpts {
+		if (*got)[i] != want {
+			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
+		}
+	}
+	if !fake.updated {
+		t.Error("selected tool with empty Info().ID must resolve via the Name() fallback and execute, not be dropped")
+	}
+	if !strings.Contains(out, "Updated: npm") {
+		t.Errorf("summary must report the executed fallback-identified tool; got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_UnresolvableSelection proves a selected ID that resolves to no
+// adapter/plan entry is surfaced as an explicit failure result, never silently
+// skipped or dropped (spec command-interface "Canonical Tool Selection
+// Identity" → "Unresolvable selection", design D1). The selector seam can
+// return an ID absent from the plan-derived pending set; the interactive loop
+// must still account for it as a StatusFailed row.
+func TestRunUpdate_UnresolvableSelection(t *testing.T) {
+	probeHome(t)
+	npm := &fakeUpdateAdapter{
+		name:   "npm",
+		policy: adapters.PolicyGated,
+		trust:  adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "10.0.0",
+			LatestVersion:   "10.1.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "10.0.0", After: "10.1.0"},
+	}
+
+	// "ghost-tool" is not in the pending set, so it has no plan entry and no
+	// adapter to resolve to.
+	sel, _ := fakeSelector([]string{"ghost-tool"}, false)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{npm}, sel)
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Errorf("non-CI unresolvable selection must not hard-fail the run; got: %v", err)
+		}
+	})
+
+	// The unknown selected ID is reported explicitly — never a silent no-op.
+	if !strings.Contains(out, "Failed: ghost-tool") {
+		t.Errorf("unresolvable selected ID must surface as an explicit failure; got:\n%s", out)
+	}
+	if !strings.Contains(out, "1 failed") {
+		t.Errorf("summary must count the unresolvable selection as failed; got:\n%s", out)
+	}
+	// The pending npm was not selected: it is reported deselected, not updated,
+	// and nothing was executed.
+	if npm.updated {
+		t.Error("pending npm was not selected and must not be updated")
+	}
+	if !strings.Contains(out, "Deselected: npm") {
+		t.Errorf("unselected pending npm must be reported deselected; got:\n%s", out)
+	}
+}
+
+// TestRunUpdate_AlwaysUpdateCurrentSelectedExecutes proves PC1 end to end: an
+// always-update tool that reports no self-update availability is still planned
+// (plan.Updates), presented in the selector, and — when selected — EXECUTED.
+// Before this change it was impossible to select it in TTY mode. The fake uses
+// Name()="bun" while Info().Name="Bun" so the same test also proves the
+// canonical stable identity crosses the plan→selector→execution boundary
+// (spec Canonical Tool Selection Identity).
+func TestRunUpdate_AlwaysUpdateCurrentSelectedExecutes(t *testing.T) {
+	probeHome(t)
+	bun := &fakeUpdateAdapter{
+		name:     "bun",
+		infoName: "Bun",
+		policy:   adapters.PolicyAlwaysUpdate,
+		trust:    adapters.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.30",
+			LatestVersion:   "1.0.30",
+			UpdateAvailable: false, // bun reports no self-update availability by design
+		},
+		result: adapters.Result{Success: true, Before: "1.0.30", After: "1.0.30"},
+	}
+
+	sel, got := fakeSelector([]string{"bun"}, false)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{bun}, sel)
+
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps); err != nil {
+			t.Fatalf("runUpdate error: %v", err)
+		}
+	})
+
+	wantOpts := []output.SelectOption{
+		{ID: "bun", Label: "Bun", Version: "1.0.30 → 1.0.30"},
+	}
+	if len(*got) != len(wantOpts) {
+		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
+	}
+	for i, want := range wantOpts {
+		if (*got)[i] != want {
+			t.Errorf("selector option[%d] = %+v, want %+v", i, (*got)[i], want)
+		}
+	}
+	if !bun.updated {
+		t.Error("a selected always-update current tool must execute (PC1): it is plan-derived pending")
+	}
+	if !strings.Contains(out, "Updated: Bun") {
+		t.Errorf("summary must report the executed always-update tool; got:\n%s", out)
 	}
 }
 
