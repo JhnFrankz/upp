@@ -25,6 +25,7 @@ func TestStatusIcons_ColorMode(t *testing.T) {
 		{StatusFailed, "❌"},
 		{StatusAvailable, "⬆️ "},
 		{StatusCurrent, "✔️ "},
+		{StatusDeselected, "☐ "},
 	}
 
 	for _, tt := range tests {
@@ -47,6 +48,7 @@ func TestStatusIcons_PlainMode(t *testing.T) {
 		{StatusFailed, "[failed]"},
 		{StatusAvailable, "[available]"},
 		{StatusCurrent, "[current]"},
+		{StatusDeselected, "[deselected]"},
 	}
 
 	for _, tt := range tests {
@@ -325,6 +327,85 @@ func TestUpdateSummary_UpdatedAndCurrent(t *testing.T) {
 	}
 	if !strings.Contains(output, "Up to date: go") {
 		t.Errorf("detail summary must list current tools (D6), got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_Deselected pins the Deselected Pending Tools Reporting
+// requirement (spec command-interface): a pending-but-deselected tool gets a
+// distinct count and detail line, is never counted as skipped or updated, and
+// keeps the run from claiming "All clean!".
+func TestUpdateSummary_Deselected(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.UpdateSummary(Summary{Results: []ToolResult{
+		{Name: "brew", Status: StatusUpdated, Version: "4.2.0"},
+		{Name: "bun", Status: StatusDeselected},
+	}})
+
+	output := buf.String()
+	if !strings.Contains(output, "1 updated") {
+		t.Errorf("summary must count the executed update; got:\n%s", output)
+	}
+	if !strings.Contains(output, "1 deselected") {
+		t.Errorf("summary must count the deselected pending tool distinctly; got:\n%s", output)
+	}
+	if strings.Contains(output, "skipped") {
+		t.Errorf("a deselected tool must never be counted as skipped; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Deselected: bun") {
+		t.Errorf("detail summary must name the deselected tool; got:\n%s", output)
+	}
+	if strings.Contains(output, "All clean!") {
+		t.Errorf("a deselected pending tool must keep the run from claiming 'All clean!'; got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_OnlyDeselected proves the "All pending deselected" scenario:
+// when every result is deselected, the summary reports the deselected count and
+// must NOT fall into the "All tools not installed" branch.
+func TestUpdateSummary_OnlyDeselected(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.UpdateSummary(Summary{Results: []ToolResult{
+		{Name: "brew", Status: StatusDeselected},
+		{Name: "bun", Status: StatusDeselected},
+	}})
+
+	output := buf.String()
+	if !strings.Contains(output, "2 deselected") {
+		t.Errorf("summary must report '2 deselected'; got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools not installed") {
+		t.Errorf("deselected tools are installed — 'not installed' claim is wrong; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Deselected: brew, bun") {
+		t.Errorf("detail summary must name every deselected tool; got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_DeselectedDistinctFromSkipped proves the "Distinct from
+// skipped" scenario: a not-installed (skipped) tool and a deselected pending
+// tool are counted in separate buckets and listed separately.
+func TestUpdateSummary_DeselectedDistinctFromSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.UpdateSummary(Summary{Results: []ToolResult{
+		{Name: "missing", Status: StatusSkipped},
+		{Name: "bun", Status: StatusDeselected},
+	}})
+
+	output := buf.String()
+	if !strings.Contains(output, "1 skipped, 1 deselected") {
+		t.Errorf("summary must count skipped and deselected separately; got:\n%s", output)
+	}
+	if strings.Contains(output, "2 skipped") {
+		t.Errorf("a deselected tool must not inflate the skipped count; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Skipped: missing") || !strings.Contains(output, "Deselected: bun") {
+		t.Errorf("detail summary must list the skipped and deselected tools distinctly; got:\n%s", output)
 	}
 }
 
