@@ -9,12 +9,12 @@ context: |
   Architecture: compiled binary, package-per-layer layout under internal/:
   cli (cobra subcommands list/update/init/self-update), adapters (official
   per-tool adapters + registry + custom), config, output, platform detection,
-  security/trust model, selfupdate.
-  Build/release: Makefile (build, build-all cross-compile for linux/darwin/windows amd64+arm64,
-  test, test-race, test-cover, vet, lint, fmt, tidy, smoke).
+   security/trust model, selfupdate, engine, uninstall.
+  Build/release: Makefile (build, build-all cross-compile for linux/darwin amd64+arm64
+  and windows amd64, test, test-race, test-cover, vet, lint, fmt, tidy, smoke).
   Conventions: gofmt, table-driven tests, cobra subcommands.
    Legacy Bash script (upp-legacy.sh) has been REMOVED — Go is the only stack.
-   Git repo on main. 27 changes archived in openspec/changes/archive/.
+   Git repo on main. 28 changes archived in openspec/changes/archive/.
    Docs: README.md.
    Specs: 13 domains (command-interface, config-system, ci-workflow, platform-detection, security-model,
    tool-adapter, ux-patterns, self-update, release-process, bulk-update, tool-ownership-model, uninstall,
