@@ -36,9 +36,10 @@ type ConfirmConfig struct {
 	Reader     io.Reader // injectable for testing
 	// EnforceRisk bypasses the TrustOfficial → ConfirmAuto short-circuit so
 	// the REAL command risk decides (design D4). Default false keeps every
-	// existing decision byte-identical. Only the manager-group bulk path sets
-	// it true: an owned tool is TrustOfficial, but its package command may be
-	// sudo-heavy (apt), so High→prompt/CI-error even for official owned tools.
+	// existing decision byte-identical. The CLI sets it true from a non-empty
+	// plan ManagerID: an owned tool's package command may be sudo-heavy (apt),
+	// and a manager self-row whose Info() declares privileges (pacman) runs a
+	// sudo command — so High→prompt/CI-error even for TrustOfficial rows.
 	EnforceRisk bool
 }
 

@@ -2144,3 +2144,166 @@ const (
 	testAptPackageUpdateCommand  = "sudo apt install --only-upgrade <pkg>"
 	testBrewPackageUpdateCommand = "brew upgrade <pkg>"
 )
+
+// fakeManagerRow builds a KindManager fake declaring the real command surface
+// (self + per-package template) and privileges, mirroring an official manager.
+func fakeManagerRow(name, selfCmd, pkgCmd string, privileges []string, policy adapters.UpdatePolicy) *fakeUpdateAdapter {
+	return &fakeUpdateAdapter{
+		name:                 name,
+		policy:               policy,
+		trust:                adapters.TrustOfficial,
+		kind:                 adapters.KindManager,
+		privileges:           privileges,
+		selfUpdateCommand:    selfCmd,
+		packageUpdateCommand: pkgCmd,
+		info:                 adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "1.0.0", UpdateAvailable: false},
+		result:               adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+}
+
+// runUpdateDefaultList drives runUpdate over an explicit adapter list in a
+// hermetic HOME, optionally feeding stdin to a confirmation prompt. It is the
+// adapters.Adapter-list sibling of runUpdateDefault (which takes fakes only),
+// needed for the delegated custom-tool case.
+func runUpdateDefaultList(t *testing.T, gf *GlobalFlags, uf *UpdateFlags, stdin string, list []adapters.Adapter) (string, error) {
+	t.Helper()
+	probeHome(t)
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter { return list },
+		stdinIsTTY:       func() bool { return false },
+	}
+	var runErr error
+	out := withCapturedStdout(func() {
+		run := func() { runErr = runUpdate(gf, uf, deps) }
+		if stdin != "" {
+			withStdin(t, stdin, run)
+		} else {
+			run()
+		}
+	})
+	return out, runErr
+}
+
+func TestRunUpdate_PrivilegedManagerRowDecisions(t *testing.T) {
+	tests := []struct {
+		name        string
+		mgr         *fakeUpdateAdapter
+		stdin       string
+		wantPrompt  bool
+		wantUpdated bool
+	}{
+		{
+			name:        "pacman-like privileged manager self row prompts",
+			mgr:         fakeManagerRow("pacman", "sudo pacman -S --noconfirm pacman", "sudo pacman -S --noconfirm <pkg>", []string{"sudo"}, adapters.PolicyAlwaysUpdate),
+			stdin:       "\n",
+			wantPrompt:  true,
+			wantUpdated: false,
+		},
+		{
+			name:        "apt-like self row (no declared privileges) auto-proceeds",
+			mgr:         fakeManagerRow("apt", "sudo apt install --only-upgrade apt", "sudo apt install --only-upgrade <pkg>", nil, adapters.PolicyAlwaysUpdate),
+			wantPrompt:  false,
+			wantUpdated: true,
+		},
+		{
+			name:        "brew-like self row auto-proceeds",
+			mgr:         fakeManagerRow("brew", "brew update", "brew upgrade <pkg>", nil, adapters.PolicyAlwaysUpdate),
+			wantPrompt:  false,
+			wantUpdated: true,
+		},
+		{
+			name:        "winget-like self row auto-proceeds",
+			mgr:         fakeManagerRow("winget", "winget upgrade winget", "winget upgrade <pkg>", nil, adapters.PolicyAlwaysUpdate),
+			wantPrompt:  false,
+			wantUpdated: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, tt.stdin, tt.mgr)
+			if err != nil {
+				t.Fatalf("runUpdate error: %v", err)
+			}
+			if got := strings.Contains(out, "Proceed? [y/N]"); got != tt.wantPrompt {
+				t.Errorf("prompt shown = %v, want %v; output:\n%s", got, tt.wantPrompt, out)
+			}
+			if tt.mgr.updated != tt.wantUpdated {
+				t.Errorf("updated = %v, want %v; output:\n%s", tt.mgr.updated, tt.wantUpdated, out)
+			}
+		})
+	}
+}
+
+func TestRunUpdate_PrivilegedManagerRowCIFails(t *testing.T) {
+	mgr := fakeManagerRow("pacman", "sudo pacman -S --noconfirm pacman", "sudo pacman -S --noconfirm <pkg>", []string{"sudo"}, adapters.PolicyAlwaysUpdate)
+	out, err := runUpdateDefault(t, &GlobalFlags{CI: true}, &UpdateFlags{}, "", mgr)
+	if err == nil {
+		t.Fatal("runUpdate --ci error = nil, want non-zero exit for a privileged manager row")
+	}
+	if mgr.updated {
+		t.Error("privileged manager row must not execute under --ci")
+	}
+	if !strings.Contains(out, "Failed: pacman") {
+		t.Errorf("expected failure report for pacman; output:\n%s", out)
+	}
+}
+
+func TestRunUpdate_PrivilegedManagerRowPromptApproved(t *testing.T) {
+	mgr := fakeManagerRow("pacman", "sudo pacman -S --noconfirm pacman", "sudo pacman -S --noconfirm <pkg>", []string{"sudo"}, adapters.PolicyAlwaysUpdate)
+	out, err := runUpdateDefault(t, &GlobalFlags{}, &UpdateFlags{}, "y\n", mgr)
+	if err != nil {
+		t.Fatalf("runUpdate error: %v", err)
+	}
+	if !mgr.updated {
+		t.Error("approved privileged manager row must execute")
+	}
+	if !strings.Contains(out, "sudo pacman -S --noconfirm pacman") {
+		t.Errorf("prompt must display the real sudo command; output:\n%s", out)
+	}
+}
+
+func TestRunUpdate_CustomManagerDelegatedGate(t *testing.T) {
+	newDelegated := func(t *testing.T) (*fakeUpdateAdapter, adapters.Adapter) {
+		t.Helper()
+		mgr := fakeManagerRow("pacman", "sudo pacman -S --noconfirm pacman", "sudo pacman -S --noconfirm <pkg>", []string{"sudo"}, adapters.PolicyAlwaysUpdate)
+		// The manager must never be planned as its own row here, so only the
+		// delegated custom row can execute it.
+		mgr.noDetect = true
+		custom, err := adapters.NewCustomAdapter("mytool", "echo update", "", true, mgr)
+		if err != nil {
+			t.Fatalf("NewCustomAdapter error: %v", err)
+		}
+		return mgr, custom
+	}
+
+	t.Run("interactive approval runs the manager self command", func(t *testing.T) {
+		mgr, custom := newDelegated(t)
+		out, err := runUpdateDefaultList(t, &GlobalFlags{}, &UpdateFlags{}, "y\n", []adapters.Adapter{mgr, custom})
+		if err != nil {
+			t.Fatalf("runUpdate error: %v", err)
+		}
+		if !strings.Contains(out, "Proceed? [y/N]") {
+			t.Errorf("delegated manager row must prompt; output:\n%s", out)
+		}
+		if !strings.Contains(out, "sudo pacman -S --noconfirm pacman") {
+			t.Errorf("prompt must show the delegated manager's real self command; output:\n%s", out)
+		}
+		if strings.Contains(out, "pacman upgrade mytool") {
+			t.Errorf("synthesized command must never be classified; output:\n%s", out)
+		}
+		if !mgr.updated {
+			t.Error("approved delegated custom row must run the manager's Update()")
+		}
+	})
+
+	t.Run("--ci fails non-zero", func(t *testing.T) {
+		mgr, custom := newDelegated(t)
+		_, err := runUpdateDefaultList(t, &GlobalFlags{CI: true}, &UpdateFlags{}, "", []adapters.Adapter{mgr, custom})
+		if err == nil {
+			t.Fatal("runUpdate --ci error = nil, want non-zero exit for a delegated privileged manager row")
+		}
+		if mgr.updated {
+			t.Error("delegated privileged row must not execute under --ci")
+		}
+	})
+}
