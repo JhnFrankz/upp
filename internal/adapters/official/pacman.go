@@ -17,6 +17,15 @@ var (
 // PacmanAdapter manages Arch Linux packages.
 type PacmanAdapter struct{}
 
+// pacmanSelfUpdateCmd is pacman's real self-update command — declared by
+// Info() and executed by Update() (design D2 single source of truth).
+const pacmanSelfUpdateCmd = "sudo pacman -S --noconfirm pacman"
+
+// pacmanPackageUpdateTemplate is pacman's per-package update command
+// template; the PackagePlaceholder is rendered per owned package by
+// UpdatePackage().
+const pacmanPackageUpdateTemplate = "sudo pacman -S --noconfirm <pkg>"
+
 func (a *PacmanAdapter) Name() string { return "pacman" }
 
 func (a *PacmanAdapter) Detect() bool {
@@ -25,12 +34,15 @@ func (a *PacmanAdapter) Detect() bool {
 
 func (a *PacmanAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "pacman",
-		Name:         "Pacman Package Manager",
-		Platforms:    []string{"linux"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyGated,
-		Kind:         adapters.KindManager,
+		ID:                   "pacman",
+		Name:                 "Pacman Package Manager",
+		Platforms:            []string{"linux"},
+		Trust:                adapters.TrustOfficial,
+		UpdatePolicy:         adapters.PolicyGated,
+		Kind:                 adapters.KindManager,
+		Privileges:           []string{"sudo"},
+		SelfUpdateCommand:    pacmanSelfUpdateCmd,
+		PackageUpdateCommand: pacmanPackageUpdateTemplate,
 	}
 }
 
@@ -54,7 +66,7 @@ func (a *PacmanAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("sudo pacman -S --noconfirm pacman")
+	_, stderr, err := runCmd(pacmanSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -153,7 +165,7 @@ func (a *PacmanAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 	}
 
 	before, _ := a.CurrentVersion()
-	_, stderr, err := runCmd(fmt.Sprintf("sudo pacman -S --noconfirm %s", pkg))
+	_, stderr, err := runCmd(adapters.RenderPackageCommand(pacmanPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success:    false,

@@ -10,6 +10,15 @@ import (
 // WingetAdapter manages Windows Package Manager packages.
 type WingetAdapter struct{}
 
+// wingetSelfUpdateCmd is winget's real self-update command — declared by
+// Info() and executed by Update() (design D2 single source of truth).
+const wingetSelfUpdateCmd = "winget upgrade winget"
+
+// wingetPackageUpdateTemplate is winget's per-package update command
+// template; the PackagePlaceholder is rendered per owned package by
+// UpdatePackage().
+const wingetPackageUpdateTemplate = "winget upgrade <pkg>"
+
 func (a *WingetAdapter) Name() string { return "winget" }
 
 func (a *WingetAdapter) Detect() bool {
@@ -86,7 +95,7 @@ func (a *WingetAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 		before = "unknown"
 	}
 
-	_, stderr, err := runCmd(fmt.Sprintf("winget upgrade %s", pkg))
+	_, stderr, err := runCmd(adapters.RenderPackageCommand(wingetPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -140,7 +149,7 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// Self-only: `winget upgrade winget` upgrades Windows Package Manager
 	// itself (equiv. Microsoft.AppInstaller), never the packages it manages.
 	// A bulk `winget upgrade --all` is intentionally avoided.
-	_, stderr, err := runCmd("winget upgrade winget")
+	_, stderr, err := runCmd(wingetSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -174,11 +183,13 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *WingetAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "winget",
-		Name:         "Windows Package Manager",
-		Platforms:    []string{"windows"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindManager,
+		ID:                   "winget",
+		Name:                 "Windows Package Manager",
+		Platforms:            []string{"windows"},
+		Trust:                adapters.TrustOfficial,
+		UpdatePolicy:         adapters.PolicyAlwaysUpdate,
+		Kind:                 adapters.KindManager,
+		SelfUpdateCommand:    wingetSelfUpdateCmd,
+		PackageUpdateCommand: wingetPackageUpdateTemplate,
 	}
 }

@@ -1371,3 +1371,89 @@ func TestPnpmCorruptionRecoveryMessage(t *testing.T) {
 		t.Errorf("Result.Error = %q, want it to mention the recovery attempt", result.Error)
 	}
 }
+
+// TestUpdateRunsDeclaredCommand is the D2 byte-equality pin (spec tool-adapter
+// "Declared equals executed"): for every manager, the command its
+// Update(false)/UpdatePackage(pkg) actually executes through the runCmdFn seam
+// MUST be byte-identical to the command declared on ToolInfo
+// (SelfUpdateCommand, or RenderPackageCommand(PackageUpdateCommand, pkg)).
+// A recorder replaces the seam for the duration of each row; the declared
+// constant must appear verbatim among the captured shell commands — no other
+// call site can produce that string, so presence proves the update path ran
+// exactly the declaration. This is the structural guarantee that plan/execution
+// divergence (the pacman synthesis bug) cannot reappear.
+func TestUpdateRunsDeclaredCommand(t *testing.T) {
+	tests := []struct {
+		name    string
+		newAdpt func() adapters.Adapter
+		pkg     string // "" → self-update row; otherwise the owned package
+	}{
+		{name: "apt/self", newAdpt: func() adapters.Adapter { return &AptAdapter{} }},
+		{name: "apt/package", newAdpt: func() adapters.Adapter { return &AptAdapter{} }, pkg: "gh"},
+		{name: "brew/self", newAdpt: func() adapters.Adapter { return &BrewAdapter{} }},
+		{name: "brew/package", newAdpt: func() adapters.Adapter { return &BrewAdapter{} }, pkg: "gh"},
+		{name: "winget/self", newAdpt: func() adapters.Adapter { return &WingetAdapter{} }},
+		{name: "winget/package", newAdpt: func() adapters.Adapter { return &WingetAdapter{} }, pkg: "gh"},
+		{name: "scoop/self", newAdpt: func() adapters.Adapter { return &ScoopAdapter{} }},
+		{name: "pacman/self", newAdpt: func() adapters.Adapter { return &PacmanAdapter{} }},
+		{name: "pacman/package", newAdpt: func() adapters.Adapter { return &PacmanAdapter{} }, pkg: "ripgrep"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Recorder seam: capture every shell command; version lookups are
+			// no-ops (adapters tolerate empty versions on the update path).
+			var captured []string
+			origRunCmd := runCmdFn
+			origRunCmdArgs := runCmdArgsFn
+			origLookPath := lookPathFn
+			runCmdFn = func(command string) (string, string, error) {
+				captured = append(captured, command)
+				return "", "", nil
+			}
+			runCmdArgsFn = func(string, ...string) (string, string, error) { return "", "", nil }
+			lookPathFn = func(string) bool { return true }
+			t.Cleanup(func() {
+				runCmdFn = origRunCmd
+				runCmdArgsFn = origRunCmdArgs
+				lookPathFn = origLookPath
+			})
+
+			info := tt.newAdpt().Info()
+			wantCmd := info.SelfUpdateCommand
+			if tt.pkg != "" {
+				wantCmd = adapters.RenderPackageCommand(info.PackageUpdateCommand, tt.pkg)
+			}
+
+			var res adapters.Result
+			var err error
+			if tt.pkg == "" {
+				res, err = tt.newAdpt().Update(false)
+			} else {
+				updater, ok := tt.newAdpt().(adapters.PackageUpdater)
+				if !ok {
+					t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
+				}
+				res, err = updater.UpdatePackage(tt.pkg)
+			}
+			if err != nil {
+				t.Fatalf("update returned unexpected error: %v", err)
+			}
+			if !res.Success {
+				t.Fatalf("update did not succeed: %v", res.Error)
+			}
+
+			found := false
+			for _, cmd := range captured {
+				if cmd == wantCmd {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("executed shell commands %v; declared command %q not executed byte-exactly",
+					captured, wantCmd)
+			}
+		})
+	}
+}

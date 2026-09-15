@@ -2,6 +2,8 @@
 // Every tool adapter (official or custom) must implement the Adapter interface.
 package adapters
 
+import "strings"
+
 // TrustLevel represents how much the system trusts a tool adapter.
 type TrustLevel int
 
@@ -121,6 +123,25 @@ const (
 	KindManager
 )
 
+// PackagePlaceholder marks where the owned package name goes inside a
+// manager's declared PackageUpdateCommand template. RenderPackageCommand
+// replaces its first occurrence with the concrete package name.
+const PackagePlaceholder = "<pkg>"
+
+// RenderPackageCommand renders a manager's per-package update command
+// template (PackageUpdateCommand) for one owned package: the FIRST
+// PackagePlaceholder occurrence is replaced by pkg; a template without the
+// placeholder appends " "+pkg. This is the declaration-driven replacement for
+// UpdateCmdName synthesis (design D6): the rendered string is both what the
+// manager's UpdatePackage() executes and what the plan declares, so the
+// confirmation gate always classifies the real command (design D2).
+func RenderPackageCommand(template, pkg string) string {
+	if strings.Contains(template, PackagePlaceholder) {
+		return strings.Replace(template, PackagePlaceholder, pkg, 1)
+	}
+	return template + " " + pkg
+}
+
 // ToolInfo holds static metadata about a tool.
 type ToolInfo struct {
 	ID             string
@@ -133,4 +154,15 @@ type ToolInfo struct {
 	ManagerPackage map[string]string // platform -> package name under that platform's manager
 	Command        string            // real update command; empty for official adapters
 	Privileges     []string          // e.g., ["sudo"]
+
+	// SelfUpdateCommand is the manager adapter's real self-update command —
+	// the exact command its Update() executes (design D1/D2). Declared by
+	// every KindManager adapter; empty for KindTool adapters.
+	SelfUpdateCommand string
+	// PackageUpdateCommand is the manager adapter's per-package update
+	// command template carrying PackagePlaceholder, rendered per owned
+	// package via RenderPackageCommand (design D1/D2). Declared by package
+	// managers (apt/brew/winget/pacman); self-only managers (scoop) and
+	// KindTool adapters leave it empty.
+	PackageUpdateCommand string
 }

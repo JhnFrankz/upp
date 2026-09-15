@@ -10,6 +10,11 @@ import (
 // ScoopAdapter manages Scoop packages on Windows.
 type ScoopAdapter struct{}
 
+// scoopSelfUpdateCmd is scoop's real self-update command — declared by Info()
+// and executed by Update() (design D2 single source of truth). scoop is
+// self-only: it declares no PackageUpdateCommand.
+const scoopSelfUpdateCmd = "scoop update scoop"
+
 func (a *ScoopAdapter) Name() string { return "scoop" }
 
 func (a *ScoopAdapter) Detect() bool {
@@ -66,7 +71,7 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// Self-only: `scoop update scoop` upgrades Scoop itself, never the
 	// packages it manages. A bulk `scoop update *` (which updates every
 	// app) is intentionally avoided — self-only semantics per point 4.
-	_, stderr, err := runCmd("scoop update scoop")
+	_, stderr, err := runCmd(scoopSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -101,11 +106,12 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *ScoopAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "scoop",
-		Name:         "Scoop",
-		Platforms:    []string{"windows"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindManager,
+		ID:                "scoop",
+		Name:              "Scoop",
+		Platforms:         []string{"windows"},
+		Trust:             adapters.TrustOfficial,
+		UpdatePolicy:      adapters.PolicyAlwaysUpdate,
+		Kind:              adapters.KindManager,
+		SelfUpdateCommand: scoopSelfUpdateCmd,
 	}
 }
