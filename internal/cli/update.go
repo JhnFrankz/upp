@@ -432,8 +432,11 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 // update for one engine.PlannedUpdate, returning that tool's ToolResult. Risk
 // command, privileges, trust, and the EnforceRisk policy all come from the
 // plan — never re-derived here — so the two paths cannot diverge (design D3).
-// A non-empty ManagerID means the row is an owned-package update whose real
-// command risk must decide even for TrustOfficial tools.
+// A non-empty ManagerID marks a row whose real command risk must decide even
+// for TrustOfficial tools: an owned-package update, or a manager self-row whose
+// Info() declares privileges (design D4 — plan sets ManagerID on a manager
+// self-row iff it declares privileges, so pacman prompts while apt/brew/winget
+// keep their byte-identical auto-proceed decision).
 func executePlannedUpdate(gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Adapter, index, total int, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) output.ToolResult {
 	info := a.Info()
 
