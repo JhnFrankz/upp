@@ -10,6 +10,14 @@ import (
 // BrewAdapter manages Homebrew packages on Linux and macOS.
 type BrewAdapter struct{}
 
+// brewSelfUpdateCmd is brew's real self-update command — declared by Info()
+// and executed by Update() (design D2 single source of truth).
+const brewSelfUpdateCmd = "brew update"
+
+// brewPackageUpdateTemplate is brew's per-package update command template;
+// the PackagePlaceholder is rendered per owned package by UpdatePackage().
+const brewPackageUpdateTemplate = "brew upgrade <pkg>"
+
 func (a *BrewAdapter) Name() string { return "brew" }
 
 func (a *BrewAdapter) Detect() bool {
@@ -67,7 +75,7 @@ func (a *BrewAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 	before := commandOutput("brew", "--version")
 	before = extractVersionFromString(before)
 
-	_, stderr, err := runCmd(fmt.Sprintf("brew upgrade %s", pkg))
+	_, stderr, err := runCmd(adapters.RenderPackageCommand(brewPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -117,7 +125,7 @@ func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// versions of the packages brew manages. `brew upgrade brew` is
 	// intentionally avoided — it is non-canonical and is a known portable-ruby
 	// footgun (Homebrew's ruby shims make it error-prone).
-	_, stderr, err := runCmd("brew update")
+	_, stderr, err := runCmd(brewSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -148,12 +156,14 @@ func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *BrewAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "brew",
-		Name:         "Homebrew",
-		Platforms:    []string{"linux", "macos"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindManager,
+		ID:                   "brew",
+		Name:                 "Homebrew",
+		Platforms:            []string{"linux", "macos"},
+		Trust:                adapters.TrustOfficial,
+		UpdatePolicy:         adapters.PolicyAlwaysUpdate,
+		Kind:                 adapters.KindManager,
+		SelfUpdateCommand:    brewSelfUpdateCmd,
+		PackageUpdateCommand: brewPackageUpdateTemplate,
 	}
 }
 

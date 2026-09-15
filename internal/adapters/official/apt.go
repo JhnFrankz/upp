@@ -10,6 +10,14 @@ import (
 // AptAdapter manages APT packages on Linux.
 type AptAdapter struct{}
 
+// aptSelfUpdateCmd is apt's real self-update command — declared by Info() and
+// executed by Update() (design D2 single source of truth).
+const aptSelfUpdateCmd = "sudo apt install --only-upgrade apt"
+
+// aptPackageUpdateTemplate is apt's per-package update command template; the
+// PackagePlaceholder is rendered per owned package by UpdatePackage().
+const aptPackageUpdateTemplate = "sudo apt install --only-upgrade <pkg>"
+
 func (a *AptAdapter) Name() string { return "apt" }
 
 func (a *AptAdapter) Detect() bool {
@@ -98,7 +106,7 @@ func (a *AptAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 	}
 
 	before, _ := a.CurrentVersion()
-	_, stderr, err := runCmd(fmt.Sprintf("sudo apt install --only-upgrade %s", pkg))
+	_, stderr, err := runCmd(adapters.RenderPackageCommand(aptPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -148,7 +156,7 @@ func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// `apt upgrade` is intentionally avoided). Stays sudo-gated: the row means
 	// "apt package stale" (distro-managed, often intentional). Check() stays
 	// root-free and reports real Installed vs Candidate availability.
-	_, stderr, err := runCmd("sudo apt install --only-upgrade apt")
+	_, stderr, err := runCmd(aptSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -180,12 +188,14 @@ func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 func (a *AptAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:           "apt",
-		Name:         "APT Package Manager",
-		Platforms:    []string{"linux"},
-		Trust:        adapters.TrustOfficial,
-		UpdatePolicy: adapters.PolicyGated,
-		Kind:         adapters.KindManager,
+		ID:                   "apt",
+		Name:                 "APT Package Manager",
+		Platforms:            []string{"linux"},
+		Trust:                adapters.TrustOfficial,
+		UpdatePolicy:         adapters.PolicyGated,
+		Kind:                 adapters.KindManager,
+		SelfUpdateCommand:    aptSelfUpdateCmd,
+		PackageUpdateCommand: aptPackageUpdateTemplate,
 	}
 }
 
