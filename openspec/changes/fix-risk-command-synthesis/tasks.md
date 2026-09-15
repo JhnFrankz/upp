@@ -10,17 +10,17 @@
 
 ## Phase 2: Plan Derivation + Gate Truth (Work Unit 2)
 
-- [ ] 2.1 RED `internal/engine/plan_test.go`: pacman self row → `sudo pacman -S --noconfirm pacman`, sudo, `ManagerID="pacman"` (D4); pacman owned render via synthetic fixture (path unreachable today); custom `manager="pacman"` inherits self command; custom standalone keeps `info.Command`; official standalone fallback unchanged; apt/brew/winget owned pins byte-identical.
-- [ ] 2.2 GREEN `internal/engine/plan.go`: D3 row-class derivation (self → `SelfUpdateCommand`; owned → `RenderPackageCommand(owner.PackageUpdateCommand, pkg)`; custom delegated → `owner.SelfUpdateCommand`; standalone unchanged); `ManagerID` on self-rows iff declared privileges (D4). `detectPrivileges` untouched.
-- [ ] 2.3 GREEN `internal/engine/resolve.go`: delete `UpdateCmdName`; drop its tests from `internal/engine/resolve_test.go`.
-- [ ] 2.4 RED→GREEN `internal/engine/plan_test.go`: stub `runCmdFn` (`internal/adapters/official/helper.go`), capture each manager's executed `Update(false)`/`UpdatePackage("gh")` command, assert `plan.RiskCommand` byte-equals capture, privileges equal declared (spec: gate input = executed command).
-- [ ] 2.5 RED→GREEN `internal/cli/update_test.go`: privileged-manager row prompts; `--ci` exits non-zero; custom `manager="pacman"` classified by real self command; apt/brew/winget decisions unchanged (spec "Pacman privileged update prompts", "--ci pacman privileged fails").
+- [x] 2.1 RED `internal/engine/plan_test.go`: pacman self row → `sudo pacman -S --noconfirm pacman`, sudo, `ManagerID="pacman"` (D4); pacman owned render via synthetic fixture (path unreachable today); custom `manager="pacman"` inherits self command; custom standalone keeps `info.Command`; official standalone fallback unchanged; apt/brew/winget owned pins byte-identical.
+- [x] 2.2 GREEN `internal/engine/plan.go`: D3 row-class derivation (self → `SelfUpdateCommand`; owned → `RenderPackageCommand(owner.PackageUpdateCommand, pkg)`; custom delegated → `owner.SelfUpdateCommand`; standalone unchanged); `ManagerID` on self-rows iff declared privileges (D4). `detectPrivileges` untouched.
+- [x] 2.3 GREEN `internal/engine/resolve.go`: delete `UpdateCmdName`; drop its tests from `internal/engine/resolve_test.go`.
+- [x] 2.4 RED→GREEN `internal/engine/plan_test.go`: `plan.RiskCommand` byte-equals the executed command declaration (`SelfUpdateCommand` / `RenderPackageCommand(PackageUpdateCommand, pkg)`); privileges equal declared. The execution half (declaration == the command Update/UpdatePackage runs, captured through the `runCmdFn` seam) lives in `internal/adapters/official/update_test.go:TestUpdateRunsDeclaredCommand`; the seam is package-private (engine imports official, so official cannot import engine) — the two equalities are composed rather than stubbed cross-package.
+- [x] 2.5 RED→GREEN `internal/cli/update_test.go`: privileged-manager row prompts; `--ci` exits non-zero; custom `manager="pacman"` classified by real self command; apt/brew/winget decisions unchanged (spec "Pacman privileged update prompts", "--ci pacman privileged fails").
 
 ## Phase 3: Comments, Battery, Archive Handoff
 
-- [ ] 3.1 Comment-only: correct stale EnforceRisk doc (`internal/cli/update.go:435-436`, `internal/security/confirm.go:37-41`) to cover ManagerID-marked privileged self-rows (D4). No logic change.
-- [ ] 3.2 Battery: `gofmt -s -l .` clean, `go vet ./...`, `go test ./... -count=1 -race` green.
-- [ ] 3.3 E2E `bash scripts/smoke-test.sh --skip-build`; verify: pacman prompts, `--ci` non-zero on pacman rows, apt/brew/winget byte-stable.
+- [x] 3.1 Comment-only: correct stale EnforceRisk doc (`internal/cli/update.go:435-436`, `internal/security/confirm.go:37-41`) to cover ManagerID-marked privileged self-rows (D4). No logic change.
+- [x] 3.2 Battery: `gofmt -s -l .` clean, `go vet ./...`, `go test ./... -count=1 -race` green.
+- [x] 3.3 E2E `bash scripts/smoke-test.sh --skip-build`; verify: pacman prompts, `--ci` non-zero on pacman rows, apt/brew/winget byte-stable.
 - [ ] 3.4 Carry the archive note below into verify/archive.
 
 ## Review Workload Forecast
