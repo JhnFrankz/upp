@@ -170,18 +170,3 @@ func OwnedPackage(a adapters.Adapter, osName string) string {
 	}
 	return ""
 }
-
-// UpdateCmdName returns the package-manager command token used to build the
-// conventional risk command for a manager's owned-package command.
-func UpdateCmdName(manager string) string {
-	switch manager {
-	case "apt":
-		return "sudo apt install --only-upgrade"
-	case "brew":
-		return "brew upgrade"
-	case "winget":
-		return "winget upgrade"
-	default:
-		return manager + " upgrade"
-	}
-}

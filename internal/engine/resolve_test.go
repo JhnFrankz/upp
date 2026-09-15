@@ -407,26 +407,6 @@ func TestResolvingOwner_Helpers(t *testing.T) {
 		}
 	})
 
-	t.Run("UpdateCmdName mappings", func(t *testing.T) {
-		tests := []struct {
-			manager string
-			want    string
-		}{
-			{"apt", "sudo apt install --only-upgrade"},
-			{"brew", "brew upgrade"},
-			{"winget", "winget upgrade"},
-			{"scoop", "scoop upgrade"},
-			{"pacman", "pacman upgrade"},
-			{"custom-mgr", "custom-mgr upgrade"},
-		}
-
-		for _, tt := range tests {
-			if got := UpdateCmdName(tt.manager); got != tt.want {
-				t.Errorf("UpdateCmdName(%q) = %q, want %q", tt.manager, got, tt.want)
-			}
-		}
-	})
-
 	// Suppress unused variable warnings if any
 	_ = aptAdapter
 	_ = brewAdapter

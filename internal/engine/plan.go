@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -106,9 +105,12 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 			trust := adapters.TrustOfficial
 			var privileges []string
 			var command string
+			var kind adapters.Kind
+			var selfCommand string
 
+			var info adapters.ToolInfo
 			if a != nil {
-				info := a.Info()
+				info = a.Info()
 				if info.ID != "" {
 					toolID = info.ID
 				}
@@ -118,32 +120,55 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 				trust = info.Trust
 				privileges = info.Privileges
 				command = info.Command
+				kind = info.Kind
+				selfCommand = info.SelfUpdateCommand
 			}
 
 			var managerID string
 			var packageName string
 			var riskCmd string
 
-			if owner != nil {
-				managerID = owner.Info().ID
+			switch {
+			case owner != nil:
+				ownerInfo := owner.Info()
+				managerID = ownerInfo.ID
 				if managerID == "" {
 					managerID = owner.Name()
 				}
 				packageName = OwnedPackage(a, e.osName)
-				if len(privileges) == 0 && len(owner.Info().Privileges) > 0 {
-					privileges = owner.Info().Privileges
+				if len(privileges) == 0 && len(ownerInfo.Privileges) > 0 {
+					privileges = ownerInfo.Privileges
 				}
-				if packageName != "" {
-					riskCmd = fmt.Sprintf("%s %s", UpdateCmdName(owner.Name()), packageName)
-				} else {
-					riskCmd = fmt.Sprintf("%s %s", UpdateCmdName(owner.Name()), toolName)
+				switch {
+				case packageName != "" && ownerInfo.PackageUpdateCommand != "":
+					// Owned-package row: the manager's real per-package command
+					// (design D3), rendered from the same declaration the
+					// manager's UpdatePackage() executes.
+					riskCmd = adapters.RenderPackageCommand(ownerInfo.PackageUpdateCommand, packageName)
+				case info.Manager == nil:
+					// Custom manager-delegated row: custom.Update() delegates to
+					// owner.Update(), so the manager's real self-update command
+					// is what actually executes (design D3).
+					riskCmd = ownerInfo.SelfUpdateCommand
+				default:
+					// Official owned tool with no declared package (unreachable
+					// today): keep the standalone fallback rule.
+					riskCmd = standaloneRiskCommand(command, toolName)
 				}
-			} else {
-				if command != "" {
-					riskCmd = command
-				} else {
-					riskCmd = toolName + " update"
+			case kind == adapters.KindManager:
+				// Manager self-row: the manager's real self-update command
+				// (design D3). Mark the row manager-scoped iff the manager
+				// declares privileges, so the gate's EnforceRisk path applies to
+				// privileged managers (pacman) only — apt/brew/winget keep their
+				// byte-identical auto-proceed decision (design D4).
+				riskCmd = selfCommand
+				if len(privileges) > 0 {
+					managerID = toolID
 				}
+			default:
+				// Standalone row: the declared command, or the "<name> update"
+				// fallback (unchanged).
+				riskCmd = standaloneRiskCommand(command, toolName)
 			}
 
 			if len(privileges) == 0 {
@@ -168,6 +193,17 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 	}
 
 	return plan, nil
+}
+
+// standaloneRiskCommand returns a standalone row's risk command: the adapter's
+// declared command when present, otherwise the "<name> update" fallback. It is
+// also the fallback for an official owned row whose manager declares no
+// per-package command (unreachable today).
+func standaloneRiskCommand(command, toolName string) string {
+	if command != "" {
+		return command
+	}
+	return toolName + " update"
 }
 
 // detectPrivileges inspects a command string for privilege escalation tokens.

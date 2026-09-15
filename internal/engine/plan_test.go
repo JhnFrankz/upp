@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -917,4 +918,294 @@ func TestResolveEffectiveUpdatePolicy(t *testing.T) {
 			t.Errorf("custom-standalone policy = %v, want PolicyAlwaysUpdate", got)
 		}
 	})
+}
+
+// --- fix-risk-command-synthesis WU2: row-class plan derivation + gate truth ---
+//
+// D3: the plan derives RiskCommand from the adapter declaration of the row's
+// class — manager self-row -> SelfUpdateCommand; owned-package row ->
+// RenderPackageCommand(owner.PackageUpdateCommand, pkg); custom
+// manager-delegated row -> the delegated manager's SelfUpdateCommand (because
+// custom.Update() runs manager.Update()); standalone -> the declared command or
+// the "<name> update" fallback. D4: a manager self-row is marked with ManagerID
+// iff its Info() declares privileges, so only privileged managers (pacman)
+// tighten the gate through EnforceRisk.
+
+// planRowForAdapter derives the single PlannedUpdate the engine produces for one
+// adapter on osName, so tests can assert the exact RiskCommand/ManagerID/
+// Privileges the confirmation gate consumes.
+func planRowForAdapter(t *testing.T, osName string, allAdapters []adapters.Adapter, id, name string) PlannedUpdate {
+	t.Helper()
+	eng := New(&config.Config{}, osName, WithAdapters(allAdapters))
+	outcomes := []CheckOutcome{{
+		ToolID:          id,
+		ToolName:        name,
+		Status:          StatusAvailable,
+		CurrentVersion:  "1.0.0",
+		LatestVersion:   "2.0.0",
+		UpdateAvailable: true,
+	}}
+	plan, err := eng.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("Plan error: %v", err)
+	}
+	if len(plan.Updates) != 1 {
+		t.Fatalf("len(plan.Updates) = %d, want 1 (current=%d skipped=%d failed=%d)",
+			len(plan.Updates), len(plan.Current), len(plan.Skipped), len(plan.Failed))
+	}
+	return plan.Updates[0]
+}
+
+// pacmanOwnedFixture is an owned tool that resolves to the REAL pacman manager
+// on Linux. The registry has no pacman-owned tool today, so this synthetic
+// fixture is the only way to reach the owned-render row class for pacman.
+func pacmanOwnedFixture() adapters.Adapter {
+	return &mockPlanAdapter{info: adapters.ToolInfo{
+		ID:             "ripgrep",
+		Name:           "ripgrep",
+		Kind:           adapters.KindTool,
+		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
+		Trust:          adapters.TrustOfficial,
+		Manager:        map[string]string{"linux": "pacman"},
+		ManagerPackage: map[string]string{"linux": "ripgrep"},
+	}}
+}
+
+func TestPlan_RowClassRiskCommands(t *testing.T) {
+	pacman := official.AdapterByName("pacman")
+	apt := official.AdapterByName("apt")
+	brew := official.AdapterByName("brew")
+	winget := official.AdapterByName("winget")
+	scoop := official.AdapterByName("scoop")
+	npm := official.AdapterByName("npm")
+
+	customDelegated, err := adapters.NewCustomAdapter("mytool", "echo update", "", false, pacman)
+	if err != nil {
+		t.Fatalf("NewCustomAdapter error: %v", err)
+	}
+
+	customStandalone := &mockPlanAdapter{info: adapters.ToolInfo{
+		ID:           "standalone-custom",
+		Name:         "standalone-custom",
+		Kind:         adapters.KindTool,
+		UpdatePolicy: adapters.PolicyAlwaysUpdate,
+		Trust:        adapters.TrustCustomTrusted,
+		Command:      "custom-standalone-upgrade --all",
+	}}
+
+	tests := []struct {
+		name      string
+		osName    string
+		all       []adapters.Adapter
+		id        string
+		toolName  string
+		wantRisk  string
+		wantMgrID string
+		wantPrivs []string
+	}{
+		{
+			name:      "pacman self row uses the real sudo command and marks ManagerID",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{pacman},
+			id:        "pacman",
+			toolName:  "Pacman Package Manager",
+			wantRisk:  "sudo pacman -S --noconfirm pacman",
+			wantMgrID: "pacman",
+			wantPrivs: []string{"sudo"},
+		},
+		{
+			name:      "apt self row uses the real command but stays auto-proceed (no declared privileges)",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{apt},
+			id:        "apt",
+			toolName:  "APT Package Manager",
+			wantRisk:  "sudo apt install --only-upgrade apt",
+			wantMgrID: "",
+			wantPrivs: []string{"sudo"},
+		},
+		{
+			name:      "brew self row uses the real command",
+			osName:    platform.OSMacOS,
+			all:       []adapters.Adapter{brew},
+			id:        "brew",
+			toolName:  "Homebrew",
+			wantRisk:  "brew update",
+			wantMgrID: "",
+			wantPrivs: nil,
+		},
+		{
+			name:      "winget self row uses the real command",
+			osName:    platform.OSWindows,
+			all:       []adapters.Adapter{winget},
+			id:        "winget",
+			toolName:  "Windows Package Manager",
+			wantRisk:  "winget upgrade winget",
+			wantMgrID: "",
+			wantPrivs: nil,
+		},
+		{
+			name:      "scoop self row uses the real command",
+			osName:    platform.OSWindows,
+			all:       []adapters.Adapter{scoop},
+			id:        "scoop",
+			toolName:  "Scoop",
+			wantRisk:  "scoop update scoop",
+			wantMgrID: "",
+			wantPrivs: nil,
+		},
+		{
+			name:      "pacman owned package row renders the real privileged package command",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{pacman, pacmanOwnedFixture()},
+			id:        "ripgrep",
+			toolName:  "ripgrep",
+			wantRisk:  "sudo pacman -S --noconfirm ripgrep",
+			wantMgrID: "pacman",
+			wantPrivs: []string{"sudo"},
+		},
+		{
+			name:      "custom manager-delegated row inherits the manager's real self command",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{pacman, customDelegated},
+			id:        "mytool",
+			toolName:  "mytool",
+			wantRisk:  "sudo pacman -S --noconfirm pacman",
+			wantMgrID: "pacman",
+			wantPrivs: []string{"sudo"},
+		},
+		{
+			name:      "custom standalone keeps its declared command",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{customStandalone},
+			id:        "standalone-custom",
+			toolName:  "standalone-custom",
+			wantRisk:  "custom-standalone-upgrade --all",
+			wantMgrID: "",
+			wantPrivs: nil,
+		},
+		{
+			name:      "official standalone fallback stays <name> update",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{npm},
+			id:        "npm",
+			toolName:  "npm",
+			wantRisk:  "npm update",
+			wantMgrID: "",
+			wantPrivs: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pu := planRowForAdapter(t, tt.osName, tt.all, tt.id, tt.toolName)
+			if pu.RiskCommand != tt.wantRisk {
+				t.Errorf("RiskCommand = %q, want %q", pu.RiskCommand, tt.wantRisk)
+			}
+			if pu.ManagerID != tt.wantMgrID {
+				t.Errorf("ManagerID = %q, want %q", pu.ManagerID, tt.wantMgrID)
+			}
+			if !reflect.DeepEqual(pu.Privileges, tt.wantPrivs) {
+				t.Errorf("Privileges = %v, want %v", pu.Privileges, tt.wantPrivs)
+			}
+		})
+	}
+}
+
+// TestPlan_RiskCommandEqualsExecutedDeclaration is the D2 byte-equality pin at
+// the plan boundary (spec security-model "Gate input is the executed command",
+// spec tool-adapter "Declared equals executed"). For every managed row,
+// plan.RiskCommand MUST byte-equal the adapter declaration that the update path
+// actually executes:
+//
+//   - self/delegated rows -> ToolInfo.SelfUpdateCommand
+//   - owned rows          -> RenderPackageCommand(owner.PackageUpdateCommand, pkg)
+//
+// The execution half of the equality is proven in package official by
+// TestUpdateRunsDeclaredCommand, which replaces the runCmdFn seam and captures
+// the exact command Update(false)/UpdatePackage(pkg) runs. That seam is
+// package-private (engine imports official, so official cannot import engine),
+// so the two equalities are proven in their own packages and composed here:
+// plan == declaration == executed command. The apt/brew/winget owned literals
+// are additionally pinned byte-for-byte to prove no prompt churn.
+func TestPlan_RiskCommandEqualsExecutedDeclaration(t *testing.T) {
+	gh := official.AdapterByName("gh")
+
+	tests := []struct {
+		name        string
+		osName      string
+		all         []adapters.Adapter
+		id          string
+		toolName    string
+		mgrID       string
+		pkg         string // "" -> self row
+		wantLiteral string // optional byte-identical cross-version pin
+	}{
+		{
+			name: "apt self", osName: platform.OSLinux,
+			all: []adapters.Adapter{official.AdapterByName("apt")},
+			id:  "apt", toolName: "APT Package Manager", mgrID: "apt",
+		},
+		{
+			name: "brew self", osName: platform.OSMacOS,
+			all: []adapters.Adapter{official.AdapterByName("brew")},
+			id:  "brew", toolName: "Homebrew", mgrID: "brew",
+		},
+		{
+			name: "winget self", osName: platform.OSWindows,
+			all: []adapters.Adapter{official.AdapterByName("winget")},
+			id:  "winget", toolName: "Windows Package Manager", mgrID: "winget",
+		},
+		{
+			name: "scoop self", osName: platform.OSWindows,
+			all: []adapters.Adapter{official.AdapterByName("scoop")},
+			id:  "scoop", toolName: "Scoop", mgrID: "scoop",
+		},
+		{
+			name: "pacman self", osName: platform.OSLinux,
+			all: []adapters.Adapter{official.AdapterByName("pacman")},
+			id:  "pacman", toolName: "Pacman Package Manager", mgrID: "pacman",
+		},
+		{
+			name: "apt owned gh", osName: platform.OSLinux,
+			all: []adapters.Adapter{gh, official.AdapterByName("apt")},
+			id:  "gh", toolName: "GitHub CLI", mgrID: "apt", pkg: "gh",
+			wantLiteral: "sudo apt install --only-upgrade gh",
+		},
+		{
+			name: "brew owned gh", osName: platform.OSMacOS,
+			all: []adapters.Adapter{gh, official.AdapterByName("brew")},
+			id:  "gh", toolName: "GitHub CLI", mgrID: "brew", pkg: "gh",
+			wantLiteral: "brew upgrade gh",
+		},
+		{
+			name: "winget owned gh", osName: platform.OSWindows,
+			all: []adapters.Adapter{gh, official.AdapterByName("winget")},
+			id:  "gh", toolName: "GitHub CLI", mgrID: "winget", pkg: "gh",
+			wantLiteral: "winget upgrade gh",
+		},
+		{
+			name: "pacman owned ripgrep (synthetic owned fixture)", osName: platform.OSLinux,
+			all: []adapters.Adapter{official.AdapterByName("pacman"), pacmanOwnedFixture()},
+			id:  "ripgrep", toolName: "ripgrep", mgrID: "pacman", pkg: "ripgrep",
+			wantLiteral: "sudo pacman -S --noconfirm ripgrep",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := official.AdapterByName(tt.mgrID).Info()
+			want := info.SelfUpdateCommand
+			if tt.pkg != "" {
+				want = adapters.RenderPackageCommand(info.PackageUpdateCommand, tt.pkg)
+			}
+
+			pu := planRowForAdapter(t, tt.osName, tt.all, tt.id, tt.toolName)
+			if pu.RiskCommand != want {
+				t.Errorf("RiskCommand = %q, want the executed declaration %q", pu.RiskCommand, want)
+			}
+			if tt.wantLiteral != "" && pu.RiskCommand != tt.wantLiteral {
+				t.Errorf("RiskCommand = %q, want byte-identical literal %q", pu.RiskCommand, tt.wantLiteral)
+			}
+		})
+	}
 }
