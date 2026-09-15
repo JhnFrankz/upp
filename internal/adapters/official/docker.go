@@ -27,7 +27,7 @@ func (a *DockerAdapter) Check() (adapters.UpdateInfo, error) {
 	// resolving manager, NOT the manager's own self check. docker is owned on
 	// every supported platform, so it delegates to the manager's CheckPackage
 	// for docker.ManagerPackage[platform] (e.g. `apt-cache policy docker-ce`,
-	// `brew outdated --json docker`, `winget upgrade Docker.Docker`).
+	// `brew outdated --json docker`, `winget upgrade`).
 	// runtime.GOOS is translated to the platform key because the manager and
 	// package maps are keyed by PLATFORM constants, not runtime.GOOS (darwin).
 	platform := runtimeGOOSToPlatform(runtime.GOOS)

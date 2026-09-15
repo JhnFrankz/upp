@@ -26,7 +26,7 @@ func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
 	// Delegated check path (WU2, spec Per-Owned-Tool Availability): go is
 	// owned by brew on macOS and winget on Windows, so its Check() reports the
 	// real update of its package under the resolving manager (e.g.
-	// `brew outdated --json golang`, `winget upgrade GoLang.Go`) there. On
+	// `brew outdated --json golang`, `winget upgrade`) there. On
 	// Linux go has NO resolving owner (standalone manual binary replace), so
 	// ResolveOwner returns nil and the standalone `go version` path below runs
 	// — matching its Update() branch. runtime.GOOS is translated to the

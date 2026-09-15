@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -576,7 +577,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true},
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade gh": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
@@ -634,7 +635,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true},
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade Docker.Docker": {stdout: "Name  Id  Version  Available  Source\n------\nDocker  Docker.Docker  26.1.4  26.2.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nDocker  Docker.Docker  26.1.4  26.2.0  winget\n"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.2.0", UpdateAvailable: true},
@@ -679,7 +680,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade GoLang.Go": {stdout: "Name  Id  Version  Available  Source\n------\nGo  GoLang.Go  1.21.0  1.22.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nGo  GoLang.Go  1.21.0  1.22.0  winget\n"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "1.21.0", LatestVersion: "1.22.0", UpdateAvailable: true},
@@ -1325,14 +1326,14 @@ func TestCheckPackage(t *testing.T) {
 			wantErrContains: "brew check failed",
 		},
 
-		// --- winget: winget upgrade <pkg> own row (generalized) ---
+		// --- winget: no-argument `winget upgrade` listing own row (generalized) ---
 		{
 			name:    "winget/available",
 			checker: &WingetAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade gh": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
@@ -1343,7 +1344,7 @@ func TestCheckPackage(t *testing.T) {
 			pkg:     "gh",
 			fakes: execFakes{
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade gh": {stdout: "Name  Id  Version  Available  Source\n------\nfoo  Baz.Corp.App  1.0.0  2.0.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nfoo  Baz.Corp.App  1.0.0  2.0.0  winget\n"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
@@ -1354,7 +1355,7 @@ func TestCheckPackage(t *testing.T) {
 			pkg:     "gh",
 			fakes: execFakes{
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade gh": {stdout: ""},
+					"winget upgrade": {stdout: ""},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "", LatestVersion: "", UpdateAvailable: false},
@@ -1442,6 +1443,60 @@ func TestCheckPackage(t *testing.T) {
 				t.Errorf("CheckPackage() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestWingetCheckPackageRunsReadOnlyListing is the regression guard for the
+// winget check path: CheckPackage MUST run the READ-ONLY no-argument
+// `winget upgrade` listing and MUST NEVER run the MUTATING
+// `winget upgrade <pkg>` form. The recorder captures the exact argv so the
+// absence of the package argument is asserted structurally, not by intent.
+func TestWingetCheckPackageRunsReadOnlyListing(t *testing.T) {
+	const pkg = "gh"
+	const table = "Name  Id  Version  Available  Source\n" +
+		"------\n" +
+		"github-cli  gh  2.45.0  2.46.0  winget\n"
+
+	// Recorder seam: capture every argv the check path executes. The fake
+	// listing table is returned for any invocation so the parser can still
+	// report the package's versions.
+	var captured [][]string
+	origRunCmd := runCmdFn
+	origRunCmdArgs := runCmdArgsFn
+	origLookPath := lookPathFn
+	runCmdFn = func(string) (string, string, error) { return "", "", nil }
+	runCmdArgsFn = func(name string, args ...string) (string, string, error) {
+		captured = append(captured, append([]string{name}, args...))
+		return table, "", nil
+	}
+	lookPathFn = func(string) bool { return true }
+	t.Cleanup(func() {
+		runCmdFn = origRunCmd
+		runCmdArgsFn = origRunCmdArgs
+		lookPathFn = origLookPath
+	})
+
+	got, err := (&WingetAdapter{}).CheckPackage(pkg)
+	if err != nil {
+		t.Fatalf("CheckPackage() unexpected error: %v", err)
+	}
+
+	wantArgv := []string{"winget", "upgrade"}
+	if len(captured) != 1 {
+		t.Fatalf("CheckPackage() executed %d commands, want exactly 1: %v", len(captured), captured)
+	}
+	if !slices.Equal(captured[0], wantArgv) {
+		t.Errorf("CheckPackage() argv = %v, want exactly %v (read-only listing, NO package argument)", captured[0], wantArgv)
+	}
+	for _, argv := range captured {
+		if len(argv) >= 3 && argv[0] == "winget" && argv[1] == "upgrade" {
+			t.Errorf("CheckPackage() executed mutating upgrade argv %v; the check path must never mutate", argv)
+		}
+	}
+
+	wantInfo := adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}
+	if got != wantInfo {
+		t.Errorf("CheckPackage() = %+v, want %+v", got, wantInfo)
 	}
 }
 
