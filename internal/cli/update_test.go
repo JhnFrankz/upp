@@ -47,9 +47,17 @@ type fakeUpdateAdapter struct {
 	// when this adapter is the resolved manager in a group batch; when no
 	// manager seam is wired, the default behaviors below keep the fake inert
 	// for the standard per-tool tests.
-	kind            adapters.Kind
-	manager         map[string]string
-	managerPackage  map[string]string
+	kind           adapters.Kind
+	manager        map[string]string
+	managerPackage map[string]string
+
+	// Manager declaration surface (fix-risk-command-synthesis): the real
+	// self-update command and per-package template a KindManager declares, so
+	// the plan can derive the gate's risk command from the declaration exactly
+	// like a real official manager. Empty for tool fakes.
+	selfUpdateCommand    string
+	packageUpdateCommand string
+
 	checkPackage    func(pkg string) (adapters.UpdateInfo, error)
 	updatePackage   func(pkg string) (adapters.Result, error)
 	checkPkgCount   int
@@ -83,15 +91,17 @@ func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
 		displayName = f.name
 	}
 	return adapters.ToolInfo{
-		ID:             f.name,
-		Name:           displayName,
-		Trust:          f.trust,
-		UpdatePolicy:   f.policy,
-		Command:        f.command,
-		Privileges:     f.privileges,
-		Kind:           f.kind,
-		Manager:        f.manager,
-		ManagerPackage: f.managerPackage,
+		ID:                   f.name,
+		Name:                 displayName,
+		Trust:                f.trust,
+		UpdatePolicy:         f.policy,
+		Command:              f.command,
+		Privileges:           f.privileges,
+		Kind:                 f.kind,
+		Manager:              f.manager,
+		ManagerPackage:       f.managerPackage,
+		SelfUpdateCommand:    f.selfUpdateCommand,
+		PackageUpdateCommand: f.packageUpdateCommand,
 	}
 }
 
@@ -1697,7 +1707,7 @@ func TestRunUpdate_DefaultBulkGroupExecution(t *testing.T) {
 
 	npm := &fakeUpdateAdapter{name: "npm", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	var aptUpdatedPkgs []string
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, nil
@@ -1753,7 +1763,7 @@ func TestRunUpdate_PerToolErrorIsolation(t *testing.T) {
 	npm.info = adapters.UpdateInfo{CurrentVersion: "10.0.0", LatestVersion: "10.1.0", UpdateAvailable: true}
 	npm.result = adapters.Result{Success: true, Before: "10.0.0", After: "10.1.0"}
 
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, nil
 	}
@@ -1796,7 +1806,7 @@ func TestRunUpdate_CISudoFailsClosedWithEnforceRisk(t *testing.T) {
 	gh.manager = map[string]string{"linux": "apt"}
 	gh.managerPackage = map[string]string{"linux": "gh"}
 
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, nil
 	}
@@ -1838,7 +1848,7 @@ func TestRunUpdate_DryRunPlannedFlags(t *testing.T) {
 	npm := &fakeUpdateAdapter{name: "npm", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	npm.info = adapters.UpdateInfo{CurrentVersion: "10.0.0", LatestVersion: "10.1.0", UpdateAvailable: true}
 
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true}, nil
 	}
@@ -1885,7 +1895,7 @@ func TestRunUpdate_OnlyNarrowsGroupBatch(t *testing.T) {
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	docker.manager = map[string]string{"linux": "apt"}
 	docker.managerPackage = map[string]string{"linux": "docker-ce"}
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
 	}
@@ -1922,7 +1932,7 @@ func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 		gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 		gh.manager = map[string]string{"linux": "apt"}
 		gh.managerPackage = map[string]string{"linux": "gh"}
-		apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: policy, trust: adapters.TrustOfficial, noDetect: true}
+		apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: policy, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testAptPackageUpdateCommand}
 		apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: avail}, nil
 		}
@@ -1962,7 +1972,7 @@ func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 	})
 
 	t.Run("always-update group runs regardless of check", func(t *testing.T) {
-		brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true}
+		brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testBrewPackageUpdateCommand}
 		gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 		gh.manager = map[string]string{"linux": "brew"}
 		gh.managerPackage = map[string]string{"linux": "gh"}
@@ -1994,7 +2004,7 @@ func TestRunUpdate_GroupCheckFailed(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	gh.manager = map[string]string{"linux": "apt"}
 	gh.managerPackage = map[string]string{"linux": "gh"}
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, errors.New("apt-cache policy failed")
 	}
@@ -2018,7 +2028,7 @@ func TestRunUpdate_GroupCheckFailed(t *testing.T) {
 // group proceeds" on the default delegated path: a brew-owned package command
 // (`brew upgrade gh`, no sudo) risk is LOW, so it proceeds without a prompt.
 func TestRunUpdate_GroupNonSudoProceeds(t *testing.T) {
-	brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true}
+	brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testBrewPackageUpdateCommand}
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	gh.manager = map[string]string{"linux": "brew"}
 	gh.managerPackage = map[string]string{"linux": "gh"}
@@ -2053,7 +2063,7 @@ func TestRunUpdate_DefaultGroupSummarySkipsDeselected(t *testing.T) {
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	docker.manager = map[string]string{"linux": "apt"}
 	docker.managerPackage = map[string]string{"linux": "docker-ce"}
-	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial}
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
 	}
@@ -2114,3 +2124,23 @@ func TestVerifyPins_StrictTTDScenarios(t *testing.T) {
 		})
 	}
 }
+
+// --- fix-risk-command-synthesis WU2: privileged-manager gate truth (T4) ---
+//
+// The CLI gate consumes plan.RiskCommand/Privileges and derives EnforceRisk
+// from plan.ManagerID (update.go:452). A manager that DECLARES privileges
+// (pacman) is marked ManagerID by the plan, so its row is classified by its
+// real sudo command: interactive prompts, --ci fails non-zero. Managers that
+// declare no privileges (apt/brew/winget self-rows) keep today's auto-proceed
+// decision. A custom tool whose manager delegates is classified by the
+// delegated manager's real self command, never a synthesized string.
+
+// Real apt/brew per-package command templates, mirrored by the group-path
+// manager fakes so they exercise the declaration-driven risk classification
+// exactly like the official managers (fix-risk-command-synthesis WU2, Phase 1
+// declaration surface). Without the declaration the plan cannot know the owned
+// package command, which is precisely the divergence this change removes.
+const (
+	testAptPackageUpdateCommand  = "sudo apt install --only-upgrade <pkg>"
+	testBrewPackageUpdateCommand = "brew upgrade <pkg>"
+)
