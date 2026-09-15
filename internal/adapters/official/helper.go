@@ -253,8 +253,9 @@ func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
 	return current, e.CurrentVersion, true
 }
 
-// parseWingetPackageUpgradeOutput scans `winget upgrade <pkg>` output for the
-// row whose manifest Id matches pkgID and returns (current, latest, found). It
+// parseWingetPackageUpgradeOutput scans the no-argument `winget upgrade`
+// listing (the read-only form CheckPackage runs) for the row whose manifest Id
+// matches pkgID and returns (current, latest, found). It
 // is a PURE, fail-closed generalization of parseWingetUpgradeOutput: instead
 // of anchoring on winget's self Id, it anchors on the supplied package Id, so
 // CheckPackage can find any owned package's row (e.g. gh, GoLang.Go). An

@@ -62,12 +62,14 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 // CheckPackage reports the installed vs available version of an owned package
 // (e.g. `gh`, `Docker.Docker`, `GoLang.Go`) under winget, so an owned tool's
 // delegated Check() and the manager-group bulk path know a real update exists
-// (design D2). It runs `winget upgrade <pkg>` (a read-only availability query
-// — NOT the mutating `winget upgrade --all`) and parses the owned package's
-// own row. Like winget.Check, a package that lists no row is reported current
-// (fail-closed: no phantom update).
+// (design D2). It runs the no-argument `winget upgrade` listing, which is the
+// READ-ONLY form that merely lists available upgrades; `winget upgrade <query>`
+// is the MUTATING upgrade command and MUST NEVER be used on this path. The
+// parser anchors on the supplied package Id in that listing. Like winget.Check,
+// a package that lists no row is reported current (fail-closed: no phantom
+// update).
 func (a *WingetAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
-	stdout, err := commandOutputErr("winget", "upgrade", pkg)
+	stdout, err := commandOutputErr("winget", "upgrade")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}

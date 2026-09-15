@@ -27,7 +27,7 @@ func (a *GhAdapter) Check() (adapters.UpdateInfo, error) {
 	// resolving manager, NOT the manager's own self check. gh is owned on
 	// every supported platform, so it delegates to the manager's CheckPackage
 	// for gh.ManagerPackage[platform] (e.g. `apt-cache policy gh`,
-	// `brew outdated --json gh`, `winget upgrade gh`). runtime.GOOS is
+	// `brew outdated --json gh`, `winget upgrade`). runtime.GOOS is
 	// translated to the platform key because the manager/package maps are
 	// keyed by PLATFORM constants, not runtime.GOOS (darwin) — the
 	// WU1-documented gotcha.
