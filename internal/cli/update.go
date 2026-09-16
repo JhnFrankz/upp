@@ -141,6 +141,63 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 	return runUpdateSequential(gf, uf, filteredAdapters, r, p.OS, eng, allAdapters)
 }
 
+// unconsentedCheckAdapter delegates every Adapter method to the wrapped adapter
+// except Check, which returns an empty result without running the declared
+// check command.
+//
+// Authorization must NOT drop adapters from the check list: the sequential
+// update path indexes outcomes by filtered-adapter position (update.go:231) and
+// the interactive board indexes its labels the same way, so a shorter list
+// desynchronizes both. Neutralizing Check keeps length and order intact.
+type unconsentedCheckAdapter struct {
+	adapters.Adapter
+}
+
+func (a unconsentedCheckAdapter) Check() (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+
+// authorizeChecks neutralizes the check of every adapter whose declared check
+// command needs consent that was not granted.
+//
+// A custom tool's check command is arbitrary shell, so it is gated by its real
+// risk exactly like an update command (spec security-model: custom check-command
+// gate). Interactive runs prompt through security.ConfirmAction; --ci denies
+// with a non-zero error. A denial neutralizes only that check: the tool still
+// reports as detected with an unknown version, and the run continues.
+func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.Renderer) ([]adapters.Adapter, error) {
+	authorized := make([]adapters.Adapter, 0, len(adapterList))
+	for _, a := range adapterList {
+		info := a.Info()
+		if !security.CheckNeedsConsent(info) {
+			authorized = append(authorized, a)
+			continue
+		}
+
+		decision := security.ConfirmAction(security.ConfirmConfig{
+			ToolName:   info.Name,
+			TrustLevel: info.Trust,
+			RiskLevel:  security.ClassifyCommand(info.CheckCommand),
+			Command:    info.CheckCommand,
+			Privileges: info.Privileges,
+			CI:         gf.CI,
+		})
+
+		switch decision {
+		case security.ConfirmError:
+			return nil, fmt.Errorf(
+				"tool %q: check command requires confirmation and cannot run in --ci mode: %s",
+				info.Name, info.CheckCommand)
+		case security.ConfirmDeny:
+			r.Warning(fmt.Sprintf("skipping version check for %q: check command not confirmed", info.Name))
+			authorized = append(authorized, unconsentedCheckAdapter{Adapter: a})
+		default: // ConfirmAuto, ConfirmProceed
+			authorized = append(authorized, a)
+		}
+	}
+	return authorized, nil
+}
+
 // runUpdateSequential processes each filtered adapter: for owned tools under a
 // package manager, it checks per-package availability via PackageChecker and
 // updates via PackageUpdater (with EnforceRisk: true); for standalone tools, it
@@ -163,6 +220,10 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 	}
 
 	checkAdapters := prepareCheckAdapters(filteredAdapters, osName, allAdapters...)
+	checkAdapters, err := authorizeChecks(gf, checkAdapters, r)
+	if err != nil {
+		return err
+	}
 	outcomes, err := eng.Check(context.Background(), checkAdapters, nil)
 	if err != nil {
 		return err
@@ -281,6 +342,11 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 	}
 
 	grouped := output.GroupOrder(filteredAdapters, osName)
+	authorized, err := authorizeChecks(gf, grouped, r)
+	if err != nil {
+		return err
+	}
+	grouped = authorized
 	names := make([]string, len(grouped))
 	for i, a := range grouped {
 		names[i] = a.Info().Name

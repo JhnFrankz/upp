@@ -3,6 +3,7 @@ package output
 import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // Group is a section of the list/selector output: a manager header line
@@ -162,14 +163,21 @@ func ownerIDOf(a adapters.Adapter, osName string) string {
 // command's Detect → Check logic: an uninstalled tool is Skipped with no
 // version; an installed tool is Current with its detected version (a failed
 // Check leaves the version empty).
+//
+// A custom tool's check command is arbitrary shell, and `list` is a read-only
+// surface that MUST NOT modify the system (spec command-interface). A check
+// command classified above RiskLow is therefore not run here: the tool still
+// reports as detected, with an empty version.
 func listEntryFor(a adapters.Adapter) ListEntry {
 	info := a.Info()
 	status := StatusSkipped
 	version := ""
 	if a.Detect() {
 		status = StatusCurrent
-		if updateInfo, err := a.Check(); err == nil {
-			version = updateInfo.CurrentVersion
+		if !security.CheckNeedsConsent(info) {
+			if updateInfo, err := a.Check(); err == nil {
+				version = updateInfo.CurrentVersion
+			}
 		}
 	}
 	return ListEntry{

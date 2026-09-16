@@ -72,6 +72,23 @@ Trusted custom tools still display action and origin before execution. High-risk
 | Untrusted low-risk | `custom.mytool.trusted = false`, non-destructive | Update requested | Proceeds with info |
 | Untrusted high-risk | `custom.mytool.trusted = false`, destructive | Update requested | Confirmation required |
 
+### Requirement: Custom Check-Command Gate
+
+A custom tool's `check_cmd` is arbitrary shell. The system MUST classify it by its real risk — never by the tool's trust level alone — before allowing it to run without consent, exactly as it does for a custom update command.
+
+A check command classified above `RiskLow` MUST NOT run from a read-only surface (`upp list`, the bare dashboard), whose contract is that it does not modify the system. In an interactive `update`, the user MUST be prompted through the standard confirmation gate before the check runs. `--ci` MUST deny with a non-zero exit. A denial drops only that check: the tool still reports as detected, with an empty version.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Benign check command | `check_cmd = "mytool --version"` | Any command | Runs unchanged, no prompt |
+| No check command | `check_cmd` absent | Any command | No gate applies |
+| Dangerous check in list | `check_cmd` uses `sudo` | `upp list` | Check is not run; tool listed as detected with an empty version |
+| Dangerous check interactive | `check_cmd` uses `sudo` | `upp update` (TTY, user answers y) | Prompted before running the check, then runs |
+| Dangerous check denied | `check_cmd` uses `sudo` | `upp update` (TTY, user answers n) | Check skipped; the run continues for the other tools |
+| Dangerous check `--ci` | `check_cmd` uses `sudo` | `upp update --ci` | Deny message naming the tool, exit non-zero |
+
+(Previously: `CustomAdapter.Check()` ran `check_cmd` with no trust check, no risk classification, and no privilege declaration — `Info()` declared only the update command's privileges. `upp list` therefore executed arbitrary shell despite its "Modifies System: No" contract.)
+
 ### Requirement: Official Tool Integrity
 
 Official tool adapters MUST only invoke platform-native package managers or known official installers (brew, apt, pacman, winget, scoop, nvm, npm, pnpm, official curl installers).

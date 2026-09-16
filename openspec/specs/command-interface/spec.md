@@ -32,6 +32,7 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | `update --dry-run` | User runs `upp update --dry-run` | Execution | Shows what would be updated, no changes |
 | `update -n` | User runs `upp update -n` | Execution | Behaves identically to `upp update --dry-run`, no changes |
 | `update --ci` | User runs `upp update --ci` | Execution | Non-interactive updates, exit non-zero on failure |
+| `list` read-only contract | Custom tool whose `check_cmd` is classified above RiskLow | `upp list` | The check command is not run; the tool is still listed as detected, with an empty version (see security-model: Custom Check-Command Gate) |
 | `self-update` | User runs `upp self-update` | Execution | Checks release, verifies, prompts, replaces binary |
 | `uninstall` | User runs `upp uninstall` | Execution | Removes binary, backups, config, and cache under Zero-Sudo policy |
 | `uninstall --dry-run` | User runs `upp uninstall --dry-run` | Execution | Lists planned deletions without modifying disk |

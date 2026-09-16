@@ -155,6 +155,13 @@ type ToolInfo struct {
 	Command        string            // real update command; empty for official adapters
 	Privileges     []string          // e.g., ["sudo"]
 
+	// CheckCommand is the custom tool's declared check command — the exact
+	// command its Check() executes. Empty for official adapters and for custom
+	// tools that declare no check_cmd. A check command is arbitrary shell, so
+	// the check gate classifies it by real risk before letting it run without
+	// consent (spec security-model: custom check-command gate).
+	CheckCommand string
+
 	// SelfUpdateCommand is the manager adapter's real self-update command —
 	// the exact command its Update() executes (design D1/D2). Declared by
 	// every KindManager adapter; empty for KindTool adapters.

@@ -140,6 +140,7 @@ func (c *CustomAdapter) Info() ToolInfo {
 		Kind:         KindTool,
 		Command:      c.command,
 		Privileges:   detectPrivileges(c.command),
+		CheckCommand: c.checkCmd,
 	}
 	if c.manager != nil {
 		// An owned custom tool is not a manager itself and must not gate

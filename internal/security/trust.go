@@ -2,7 +2,11 @@
 // confirmation prompts for tool execution safety.
 package security
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/JhnFrankz/upp/internal/adapters"
+)
 
 // RiskLevel classifies how dangerous a command is.
 type RiskLevel int
@@ -86,6 +90,17 @@ func ClassifyCommand(cmd string) RiskLevel {
 	}
 
 	return RiskLow
+}
+
+// CheckNeedsConsent reports whether an adapter's declared check command is
+// dangerous enough to require consent before it runs. A tool that declares no
+// check command, or one classified RiskLow, needs no consent.
+//
+// A check command is arbitrary shell, so it is classified by its real risk
+// exactly like an update command — never by the tool's trust level alone
+// (spec security-model: custom check-command gate).
+func CheckNeedsConsent(ti adapters.ToolInfo) bool {
+	return ti.CheckCommand != "" && ClassifyCommand(ti.CheckCommand) != RiskLow
 }
 
 // hasCommandChaining detects command chaining operators.
