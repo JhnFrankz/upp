@@ -16,7 +16,7 @@ type infoCase struct {
 	want    adapters.ToolInfo
 }
 
-// TestInfo verifies Info() for all 12 official adapters: golden
+// TestInfo verifies Info() for all 14 official adapters: golden
 // ID/Name/Platforms/Trust/UpdatePolicy/Kind/Manager, plus the manager
 // command declarations (SelfUpdateCommand/PackageUpdateCommand, pacman
 // Privileges) and Name() consistency

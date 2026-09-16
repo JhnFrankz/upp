@@ -1133,6 +1133,20 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 			wantMgrID: "",
 			wantPrivs: nil,
 		},
+		{
+			// nvm's declared command chains with `&&`, so ClassifyCommand
+			// returns RiskMedium and the gate now prompts for it interactively
+			// (see enforceRiskFor in internal/cli). Pinned here so the declared
+			// command and its consequence stay visible together.
+			name:      "official standalone nvm declares its real update command",
+			osName:    platform.OSLinux,
+			all:       []adapters.Adapter{official.AdapterByName("nvm")},
+			id:        "nvm",
+			toolName:  "Node Version Manager",
+			wantRisk:  "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'",
+			wantMgrID: "",
+			wantPrivs: nil,
+		},
 	}
 
 	for _, tt := range tests {

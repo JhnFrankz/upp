@@ -61,7 +61,7 @@ For each batch tool in a manager group, the system MUST run that tool's per-mana
 | Executes package command | macOS, gh in brew batch | `upp update` | Runs brew package update via `UpdatePackage("gh")` and collects gh result |
 | Canonical order execution | macOS, brew group owning docker, gh, and go | `upp update` | Package updates execute sequentially in deterministic canonical discovery order (docker, gh, go) |
 | Per-tool error isolation | Linux, apt group batch where gh package update fails | `upp update` | gh reports failure, docker package update still executes, remaining tools proceed |
-| Elevated sudo fails closed in CI | Linux, apt package update requires sudo, `--ci` flag | `upp update --ci` with `EnforceRisk: true` | Command fails closed non-zero without prompting for password |
+| Elevated sudo proceeds in CI | Linux, apt package update requires sudo, `--ci` flag | `upp update --ci` | Group proceeds: the package command is an official, shipped declaration |
 | Elevated sudo prompts in TTY | Linux, apt package update requires sudo, interactive TTY | `upp update` | Security confirmation prompt displayed before executing privileged package command |
 | Manager self separate | Linux, apt group batch | `upp update` | Owned tools updated via `UpdatePackage`; apt self handled by apt's own self-only path |
 
