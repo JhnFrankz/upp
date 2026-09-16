@@ -73,9 +73,9 @@ func GroupByOwner(tools []adapters.Adapter, osName string) []Group {
 // rows first in canonical AllAdapters order, then their owned tools, then
 // standalone tools) WITHOUT computing status. It is used by the interactive
 // update board/selector so display order is grouped while each tool's status
-// is computed exactly once by runChecks. Filtered-out managers never produce a
-// phantom group: owned tools whose manager is absent fall to the standalone
-// tail, preserving the flat --only round-trip.
+// is computed exactly once by the engine's concurrent Check. Filtered-out
+// managers never produce a phantom group: owned tools whose manager is absent
+// fall to the standalone tail, preserving the flat --only round-trip.
 func GroupOrder(tools []adapters.Adapter, osName string) []adapters.Adapter {
 	presentManagers := make(map[string]bool)
 	for _, a := range tools {

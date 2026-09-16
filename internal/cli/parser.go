@@ -135,17 +135,3 @@ func parseCommaList(s string) []string {
 	}
 	return result
 }
-
-// SilenceStdout redirects os.Stdout to /dev/null for the duration of fn.
-// Restores it after fn completes. Returns any error from fn.
-func SilenceStdout(fn func() error) error {
-	origStdout := os.Stdout
-	_, w, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	os.Stdout = w
-	defer func() { os.Stdout = origStdout }()
-	_ = w.Close()
-	return fn()
-}

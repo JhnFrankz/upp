@@ -288,27 +288,6 @@ func TestUnknownCommand_Check(t *testing.T) {
 	}
 }
 
-func TestSilenceStdout(t *testing.T) {
-	err := SilenceStdout(func() error {
-		return nil
-	})
-	if err != nil {
-		t.Errorf("SilenceStdout should not error, got %v", err)
-	}
-}
-
-func TestSilenceStdout_Error(t *testing.T) {
-	err := SilenceStdout(func() error {
-		return fmt.Errorf("test error")
-	})
-	if err == nil {
-		t.Error("SilenceStdout should propagate errors")
-	}
-	if err.Error() != "test error" {
-		t.Errorf("expected 'test error', got %q", err.Error())
-	}
-}
-
 // TestUpdateCommand_ManagerFlagsRejected pins the spec command-interface and
 // bulk-update rejection scenarios: `--manager` and `--update-group` MUST NOT
 // exist as update flags. Lookup must miss both, and ParseFlags must reject
