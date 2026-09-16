@@ -154,6 +154,9 @@ func (a *NVMAdapter) Info() adapters.ToolInfo {
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 		Kind:         adapters.KindTool,
+		// Command is the exact string Update() runs, declared so the plan's
+		// RiskCommand and the confirmation gate see what actually executes.
+		Command: "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'",
 	}
 }
 

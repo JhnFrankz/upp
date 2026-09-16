@@ -26,6 +26,11 @@ func (a *UvAdapter) Info() adapters.ToolInfo {
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 		Kind:         adapters.KindTool,
+		// Command is the exact string Update() runs, declared so the plan's
+		// RiskCommand and the confirmation gate see what actually executes.
+		// Update() also runs "uv tool upgrade --all", which upgrades the tools
+		// uv manages rather than uv itself; Command names the self-update.
+		Command: "uv self update",
 	}
 }
 

@@ -493,6 +493,25 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 	return nil
 }
 
+// enforceRiskFor reports whether a planned row's REAL command risk must decide
+// the confirmation decision instead of the TrustOfficial auto-proceed shortcut.
+//
+// Interactive: any command above RiskLow must be confirmed, whoever ships it,
+// so no official row ever runs a dangerous command unseen — apt's
+// `sudo apt install --only-upgrade apt` prompts exactly like pacman's.
+//
+// --ci cannot prompt, so upp answers only for the commands it ships. An official
+// adapter's command is a fixed, reviewed string inside the binary, so it
+// proceeds; a custom command comes from the user's config and cannot be vouched
+// for, so anything above RiskLow fails closed (spec security-model: `--ci` MUST
+// fail high-risk custom updates even when trusted).
+func enforceRiskFor(trust adapters.TrustLevel, risk security.RiskLevel, ci bool) bool {
+	if risk == security.RiskLow {
+		return false
+	}
+	return !ci || trust != adapters.TrustOfficial
+}
+
 // executePlannedUpdate is the single executor shared by the sequential and
 // interactive update paths (design D2). It runs the confirmation gate and the
 // update for one engine.PlannedUpdate, returning that tool's ToolResult. Risk
@@ -518,7 +537,7 @@ func executePlannedUpdate(gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Ad
 		Command:     p.RiskCommand,
 		Privileges:  p.Privileges,
 		CI:          gf.CI,
-		EnforceRisk: p.ManagerID != "",
+		EnforceRisk: enforceRiskFor(p.Trust, riskLevel, gf.CI),
 	})
 
 	switch decision {

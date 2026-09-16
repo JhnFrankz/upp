@@ -1409,15 +1409,16 @@ func TestExecutePlannedUpdate_Coverage(t *testing.T) {
 			wantUpdated: true, // Update() was invoked and failed
 		},
 		{
-			// Threat matrix: a Plan-derived sudo owned-package command must
-			// fail closed non-zero in CI. A trust=official tool would normally
-			// auto-proceed, but ManagerID != "" sets EnforceRisk so the REAL
-			// command risk decides (design D3/D4, spec `--ci` elevated risk).
-			name: "plan-derived sudo owned tool fails closed in CI",
+			// Threat matrix: a Plan-derived sudo command from a CUSTOM tool must
+			// fail closed non-zero in CI. A custom tool cannot be vouched for,
+			// so the REAL command risk decides even under --ci (spec
+			// security-model: `--ci` fails high-risk custom updates). The
+			// official counterpart proceeds because upp ships its commands.
+			name: "plan-derived sudo custom tool fails closed in CI",
 			fake: &fakeUpdateAdapter{
 				name:   "gh",
 				policy: adapters.PolicyAlwaysUpdate,
-				trust:  adapters.TrustOfficial,
+				trust:  adapters.TrustCustomUntrusted,
 			},
 			planned: engine.PlannedUpdate{
 				ToolID:      "gh",
@@ -1426,7 +1427,7 @@ func TestExecutePlannedUpdate_Coverage(t *testing.T) {
 				PackageName: "gh",
 				RiskCommand: "sudo apt install --only-upgrade gh",
 				Privileges:  []string{"sudo"},
-				Trust:       adapters.TrustOfficial,
+				Trust:       adapters.TrustCustomUntrusted,
 			},
 			gf:          &GlobalFlags{CI: true},
 			wantStatus:  output.StatusFailed, // ConfirmError → StatusFailed (CI)
@@ -1799,10 +1800,13 @@ func TestRunUpdate_PerToolErrorIsolation(t *testing.T) {
 	}
 }
 
-// TestRunUpdate_CISudoFailsClosedWithEnforceRisk proves that elevated sudo
-// package updates fail closed non-zero in --ci mode with EnforceRisk: true.
-func TestRunUpdate_CISudoFailsClosedWithEnforceRisk(t *testing.T) {
-	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
+// TestRunUpdate_CICustomHighRiskFailsClosed proves the spec requirement that
+// `--ci` fails a high-risk CUSTOM update closed and non-zero, even when the
+// command it delegates to is a manager's privileged package command. Official
+// commands proceed under `--ci` (upp ships them); custom ones come from the
+// user's config and cannot be vouched for.
+func TestRunUpdate_CICustomHighRiskFailsClosed(t *testing.T) {
+	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustCustomUntrusted}
 	gh.manager = map[string]string{"linux": "apt"}
 	gh.managerPackage = map[string]string{"linux": "gh"}
 
@@ -2200,10 +2204,16 @@ func TestRunUpdate_PrivilegedManagerRowDecisions(t *testing.T) {
 			wantUpdated: false,
 		},
 		{
-			name:        "apt-like self row (no declared privileges) auto-proceeds",
+			// The REAL command risk decides now, not whether the adapter
+			// declared Privileges: apt's self command is privileged, so it
+			// prompts exactly like pacman's even though this fixture declares
+			// none (spec security-model: classified by the real privileges and
+			// risk of the command, not by the tool's trust or declarations).
+			name:        "apt-like self row with a privileged command prompts",
 			mgr:         fakeManagerRow("apt", "sudo apt install --only-upgrade apt", "sudo apt install --only-upgrade <pkg>", nil, adapters.PolicyAlwaysUpdate),
-			wantPrompt:  false,
-			wantUpdated: true,
+			stdin:       "\n",
+			wantPrompt:  true,
+			wantUpdated: false,
 		},
 		{
 			name:        "brew-like self row auto-proceeds",
@@ -2234,17 +2244,18 @@ func TestRunUpdate_PrivilegedManagerRowDecisions(t *testing.T) {
 	}
 }
 
-func TestRunUpdate_PrivilegedManagerRowCIFails(t *testing.T) {
+// `--ci` cannot prompt, so upp answers only for the commands it ships: a
+// privileged manager self-row is a fixed, reviewed string inside the binary, so
+// it proceeds. The custom counterpart still fails closed — see
+// TestRunUpdate_CICustomHighRiskFailsClosed.
+func TestRunUpdate_PrivilegedManagerRowCIProceeds(t *testing.T) {
 	mgr := fakeManagerRow("pacman", "sudo pacman -S --noconfirm pacman", "sudo pacman -S --noconfirm <pkg>", []string{"sudo"}, adapters.PolicyAlwaysUpdate)
-	out, err := runUpdateDefault(t, &GlobalFlags{CI: true}, &UpdateFlags{}, "", mgr)
-	if err == nil {
-		t.Fatal("runUpdate --ci error = nil, want non-zero exit for a privileged manager row")
+	_, err := runUpdateDefault(t, &GlobalFlags{CI: true}, &UpdateFlags{}, "", mgr)
+	if err != nil {
+		t.Fatalf("runUpdate --ci error = %v, want nil: upp ships this command", err)
 	}
-	if mgr.updated {
-		t.Error("privileged manager row must not execute under --ci")
-	}
-	if !strings.Contains(out, "Failed: pacman") {
-		t.Errorf("expected failure report for pacman; output:\n%s", out)
+	if !mgr.updated {
+		t.Error("an official privileged manager row must proceed under --ci")
 	}
 }
 

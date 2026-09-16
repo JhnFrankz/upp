@@ -145,6 +145,11 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		Kind:           adapters.KindTool,
 		Manager:        map[string]string{"macos": "brew", "windows": "winget"},
 		ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"},
+		// Command is the exact string Update() runs on Linux, declared so the
+		// plan's RiskCommand and the confirmation gate see what actually
+		// executes. On macOS and Windows go is owned (Manager above), so the
+		// plan takes the owning manager's command and never reads this field.
+		Command: "curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -",
 	}
 }
 

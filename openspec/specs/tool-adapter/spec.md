@@ -19,6 +19,15 @@ Every adapter MUST implement four operations:
 
 Every manager adapter MUST declare its real update commands — the manager self-update command and the per-package update command — including any privilege elevation, and MUST declare the privileges each command requires. The pacman adapter MUST declare `Privileges: ["sudo"]`. Plan metadata consumed by the confirmation gate and transparency display (`RiskCommand`, plan privileges) MUST be derived from these declarations and MUST byte-equal the command actually executed; the system MUST NOT synthesize plan commands from templates (e.g. `<manager> upgrade <pkg>`). A custom tool whose update delegates to its manager MUST inherit the manager's real declared command and privileges as its own for confirmation and display.
 
+Every standalone official tool adapter — one with no resolving owner on the platform where its own update path runs — MUST likewise declare its real update command in `ToolInfo.Command`, so its plan row's `RiskCommand` byte-equals what executes. Without the declaration the plan falls back to a synthesized `"<toolName> update"`, which is both wrong and, for a tool whose displayed name is not its executable name, not a runnable command at all (e.g. `OpenCode update` for opencode's `curl -fsSL https://opencode.ai/install | bash`). The synthesized fallback remains only for adapters that genuinely declare nothing.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Standalone declares its command | npm, pnpm, bun, uv, nvm, opencode, go-on-Linux | Plan row built | `RiskCommand` byte-equals the command `Update()` executes |
+| No synthesis for official tools | any standalone official adapter | Plan row built | `RiskCommand` is never `"<toolName> update"` |
+| Risky declaration is visible to the gate | opencode (`curl -fsSL … \| bash`) | Plan row built | `RiskCommand` is the installer command, classified RiskHigh |
+| Manager-only surface unchanged | apt, brew, winget, scoop, pacman | `Info()` inspected | `Command` stays empty; the manager surface is `SelfUpdateCommand` / `PackageUpdateCommand` |
+
 (Previously: adapters had no declared real-update-command surface; the engine synthesized plan commands (`UpdateCmdName`, e.g. `<manager> upgrade <pkg>`), which diverged from execution for pacman (`sudo pacman -S --noconfirm <pkg>` executed, sudo-free string planned) and for custom manager-delegated tools.)
 
 | Scenario | GIVEN | WHEN | THEN |

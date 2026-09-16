@@ -84,6 +84,12 @@ func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 		Kind:         adapters.KindTool,
+		// Command is the exact string Update() runs, declared so the plan's
+		// RiskCommand and the confirmation gate see what actually executes.
+		// Classifying this command is the point: it is RiskHigh (curl piped to
+		// a shell from an external source), where the previous synthesized
+		// "OpenCode update" classified RiskLow.
+		Command: "curl -fsSL https://opencode.ai/install | bash",
 	}
 }
 

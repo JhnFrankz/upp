@@ -116,5 +116,8 @@ func (a *PnpmAdapter) Info() adapters.ToolInfo {
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 		Kind:         adapters.KindTool,
+		// Command is the exact string Update() runs, declared so the plan's
+		// RiskCommand and the confirmation gate see what actually executes.
+		Command: "pnpm update -g",
 	}
 }

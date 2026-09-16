@@ -6,6 +6,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/output"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // checkGateAdapter is a minimal adapter that only declares a check command, so
@@ -40,6 +41,82 @@ func checkGateAdapters(checks ...string) []*checkGateAdapter {
 		}})
 	}
 	return list
+}
+
+// TestEnforceRiskFor pins when a planned row's REAL command risk must decide the
+// confirmation decision instead of the TrustOfficial auto-proceed shortcut
+// (spec security-model: custom check-command gate; official/custom `--ci` rule).
+func TestEnforceRiskFor(t *testing.T) {
+	tests := []struct {
+		name  string
+		trust adapters.TrustLevel
+		risk  security.RiskLevel
+		ci    bool
+		want  bool
+	}{
+		{
+			name:  "official low-risk keeps auto-proceed",
+			trust: adapters.TrustOfficial,
+			risk:  security.RiskLow,
+			want:  false,
+		},
+		{
+			name:  "official low-risk under --ci keeps auto-proceed",
+			trust: adapters.TrustOfficial,
+			risk:  security.RiskLow,
+			ci:    true,
+			want:  false,
+		},
+		{
+			name:  "official high-risk prompts interactively",
+			trust: adapters.TrustOfficial,
+			risk:  security.RiskHigh,
+			want:  true,
+		},
+		{
+			name:  "official high-risk proceeds under --ci because upp ships the command",
+			trust: adapters.TrustOfficial,
+			risk:  security.RiskHigh,
+			ci:    true,
+			want:  false,
+		},
+		{
+			name:  "custom untrusted high-risk prompts interactively",
+			trust: adapters.TrustCustomUntrusted,
+			risk:  security.RiskHigh,
+			want:  true,
+		},
+		{
+			name:  "custom untrusted high-risk fails under --ci",
+			trust: adapters.TrustCustomUntrusted,
+			risk:  security.RiskHigh,
+			ci:    true,
+			want:  true,
+		},
+		{
+			name:  "custom trusted high-risk still fails under --ci",
+			trust: adapters.TrustCustomTrusted,
+			risk:  security.RiskHigh,
+			ci:    true,
+			want:  true,
+		},
+		{
+			name:  "custom trusted medium-risk proceeds under --ci",
+			trust: adapters.TrustCustomTrusted,
+			risk:  security.RiskMedium,
+			ci:    true,
+			want:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := enforceRiskFor(tc.trust, tc.risk, tc.ci); got != tc.want {
+				t.Errorf("enforceRiskFor(%v, %v, ci=%v) = %v, want %v",
+					tc.trust, tc.risk, tc.ci, got, tc.want)
+			}
+		})
+	}
 }
 
 // TestAuthorizeChecks_GatesByRisk pins the update-side half of the check gate

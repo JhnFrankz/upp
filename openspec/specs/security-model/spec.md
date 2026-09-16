@@ -44,9 +44,10 @@ Confirmation MUST be classified by the REAL privileges and risk of the command t
 | `--ci` trusted high-risk | `trusted = true`, uses `sudo` | `upp update --ci` | Exits non-zero; confirmation cannot be waived in non-interactive mode |
 | Sudo-heavy group prompts | Linux, apt owned tools (gh/docker) use `sudo apt install --only-upgrade` | `upp update` (default run, apt group in selection) | Prompts for confirmation despite TrustOfficial owned tools |
 | Non-sudo group proceeds | macOS, brew owned tools use `brew upgrade` (no sudo) | `upp update` (default run, brew group in selection) | Group update proceeds without confirmation |
-| `--ci` sudo group fails | Linux, `--ci`, apt group sudo package commands | `upp update --ci` | Exits non-zero for the sudo-heavy group; group not executed |
+| `--ci` sudo group proceeds | Linux, `--ci`, apt group sudo package commands | `upp update --ci` | Group update proceeds: the package command is an official, shipped declaration |
 | Pacman privileged update prompts | Linux, pacman self-update or package update declares `sudo` privilege | `upp update` (interactive) | Prompts for confirmation before executing `sudo pacman` command |
-| `--ci` pacman privileged fails | Linux, `--ci`, pacman update requires `sudo` | `upp update --ci` | Exits non-zero; privileged execution fails closed in non-interactive mode |
+| `--ci` pacman privileged proceeds | Linux, `--ci`, pacman update requires `sudo` | `upp update --ci` | Proceeds: the command is an official, shipped declaration |
+| Apt privileged update prompts | Linux, apt self-update (`sudo apt install --only-upgrade apt`) declares no `Privileges` | `upp update` (interactive) | Prompts for confirmation — classified by the REAL command, not by the adapter's declarations |
 | Gate input is the executed command | Any managed adapter row planned (pacman included) | `upp update` plan built | `plan.RiskCommand` byte-equals the command the update path executes; plan privileges equal the adapter's declared privileges |
 | Pacman package gate sees sudo | pacman package row planned (`sudo pacman -S --noconfirm <pkg>`) | Gate classifies the row | Classified high risk from the real privileged command: interactive run prompts; `--ci` exits non-zero |
 | Custom manager-delegated confirm | Custom tool with `manager = "pacman"` | Update requested | Classified/confirmed by the delegated manager's real self-update command (`sudo pacman -S --noconfirm pacman`, sudo) — never a synthesized `pacman upgrade <tool>` string |
@@ -88,6 +89,26 @@ A check command classified above `RiskLow` MUST NOT run from a read-only surface
 | Dangerous check `--ci` | `check_cmd` uses `sudo` | `upp update --ci` | Deny message naming the tool, exit non-zero |
 
 (Previously: `CustomAdapter.Check()` ran `check_cmd` with no trust check, no risk classification, and no privilege declaration — `Info()` declared only the update command's privileges. `upp list` therefore executed arbitrary shell despite its "Modifies System: No" contract.)
+
+(Previously: the `--ci` scenarios required a privileged OFFICIAL row to fail closed — pacman's self-update and the apt sudo package group both exited non-zero, because the adapter was TrustOfficial and `EnforceRisk` was derived from the declaration. Two consequences followed from classifying by the declaration instead of the command: apt's self-update ran `sudo apt install --only-upgrade apt` without ever prompting (it declared no `Privileges`), while pacman's identical-shaped privileged row did prompt; and `--ci` was unusable on any Debian/Ubuntu host with pending apt updates. Confirmation now classifies by the real command for every row, and `--ci` distinguishes only by who ships the command.)
+
+### Requirement: Official Command Versus Custom Command Under `--ci`
+
+Interactive confirmation MUST classify every row by the real risk of the command it will execute, whatever the row's origin or trust: any command above RiskLow MUST prompt before running.
+
+`--ci` cannot prompt, so it MUST distinguish by who ships the command:
+
+- An **official** adapter's command is a fixed string inside the binary — written, reviewed and versioned by upp. A row whose `RiskCommand` is an official declaration proceeds under `--ci` regardless of its risk tier.
+- A **custom** command comes from the user's config and cannot be vouched for. A custom row whose real risk is above `RiskLow` MUST fail closed with a non-zero exit, even when `trusted = true`.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Official privileged self-row in `--ci` | pacman or apt self-update, `sudo` command | `upp update --ci` | Proceeds; the command is shipped by upp |
+| Official privileged owned group in `--ci` | apt group sudo package commands | `upp update --ci` | Proceeds; the command is shipped by upp |
+| Custom privileged in `--ci` | `[custom.x]` whose update resolves to a `sudo` command | `upp update --ci` | Deny message, exit non-zero, not executed |
+| Custom trusted privileged in `--ci` | same, `trusted = true` | `upp update --ci` | Still denied; trust does not waive the risk matrix |
+| Official privileged interactive | apt self-update declaring no `Privileges` | `upp update` (TTY) | Prompts; classified by the real command, not the declaration |
+| Custom low-risk in `--ci` | `[custom.x]` with a non-destructive command | `upp update --ci` | Proceeds unchanged |
 
 ### Requirement: Official Tool Integrity
 
