@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -982,6 +983,13 @@ func TestUpdateDryRun_SummaryOutput(t *testing.T) {
 
 // --- Init with Existing Config ---
 
+// `upp init --ci` with an existing config must DENY before any work: --ci can
+// never answer the overwrite prompt, the exit is non-zero, and the config file
+// is left byte-for-byte unchanged (spec command-interface: `upp init`, `--ci`
+// existing-config scenario).
+//
+// This test previously asserted "Config written to", pinning the silent
+// overwrite the deny now prevents, and discarded the command error with `_ =`.
 func TestInitCommand_AlreadyExists(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -990,16 +998,36 @@ func TestInitCommand_AlreadyExists(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
+	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
 
-	output := withCapturedStdout(func() {
+	var runErr error
+	captured := withCapturedStdout(func() {
 		root, gf := BuildRoot()
 		AddCommands(root, gf)
 		root.SetArgs([]string{"init", "--ci"})
-		_ = root.Execute()
+		runErr = root.Execute()
 	})
 
-	if !strings.Contains(output, "Config written to") {
-		t.Errorf("init should confirm config written, got: %q", output)
+	if runErr == nil {
+		t.Fatal("init --ci with an existing config must deny")
+	}
+	if !errors.Is(runErr, ErrInitDeniedCI) {
+		t.Errorf("error should carry ErrInitDeniedCI, got: %v", runErr)
+	}
+	if strings.Contains(captured, "Config written to") {
+		t.Errorf("a denied init must not report a write, got: %q", captured)
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Error("init --ci deny must leave the existing config byte-for-byte unchanged")
 	}
 }
 

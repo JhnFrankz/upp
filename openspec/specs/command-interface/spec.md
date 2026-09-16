@@ -76,13 +76,16 @@ Filtering rules for `--only`:
 
 ### Requirement: `upp init`
 
-`upp init` MUST detect installed tools, present them for selection, and generate initial config. MUST be idempotent — running again with existing config prompts before overwriting.
+`upp init` MUST detect installed tools, present them for selection, and generate initial config. MUST be idempotent — running again with existing config prompts before overwriting. With an existing config, `--ci` MUST deny with a clear message and a non-zero exit before any detection work — never auto-proceed, never hang, never silently skip — and the existing config file MUST remain byte-for-byte unchanged.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Fresh install | No config | `upp init` | Detects tools, generates config |
 | Existing config | Config exists | `upp init` | Prompts: overwrite, merge, or cancel |
 | `--ci` mode | No config | `upp init --ci` | Generates config with all detected tools, no prompts |
+| `--ci` existing config | Config exists | `upp init --ci` | Deny message naming `--ci`, exit non-zero, config file byte-for-byte unchanged |
+
+(Previously: the `--ci` scenario was specified only for the no-config GIVEN, leaving the existing-config case undefined. `--ci` therefore skipped the overwrite prompt and silently overwrote the config, destroying user custom tools and non-detected enabled tools. The deny restores the Confirmation Gate doctrine already applied by `self-update --ci` and `security.ConfirmAction`.)
 
 ### Requirement: Self-Update Flag Semantics
 

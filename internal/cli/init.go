@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -11,6 +12,12 @@ import (
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
+
+// ErrInitDeniedCI is returned when `upp init --ci` would overwrite an existing
+// config. The deny happens before any detection work: the exit is non-zero and
+// the config file is never touched. This mirrors self-update's Confirmation
+// Gate — never auto-proceed, never hang, never silently skip.
+var ErrInitDeniedCI = errors.New("init denied in --ci mode")
 
 // NewInitCommand creates the `upp init` command.
 func NewInitCommand(gf *GlobalFlags) *cobra.Command {
@@ -25,6 +32,15 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 func runInit(gf *GlobalFlags) error {
+	// An existing config gates the destructive overwrite this command
+	// performs. --ci can never answer the overwrite prompt, and the repo's
+	// doctrine is to deny rather than auto-proceed or silently skip
+	// (self-update Confirmation Gate; security.ConfirmAction). Checked before
+	// any detection work so the deny has no side effects.
+	if config.Exists() && gf.CI {
+		return fmt.Errorf("%w: rerun `upp init` interactively to confirm the overwrite", ErrInitDeniedCI)
+	}
+
 	r := output.NewRenderer(os.Stdout, gf.Quiet)
 	r.InitHeader()
 
@@ -52,8 +68,9 @@ func runInit(gf *GlobalFlags) error {
 	}
 
 	// First-run state comes from explicit file existence (D5) — never from
-	// applied defaults. Existing config: confirm before overwriting.
-	if config.Exists() && !gf.CI {
+	// applied defaults. Existing config: confirm before overwriting. Reaching
+	// here implies no --ci, which denied above.
+	if config.Exists() {
 		fmt.Println()
 		fmt.Println("  Config already exists. Overwrite with new detection?")
 		fmt.Print("  [y/N] ")

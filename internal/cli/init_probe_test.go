@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,5 +111,62 @@ func TestInitProbe_ExistingConfig_ConfirmedOverwrites(t *testing.T) {
 	}
 	if !strings.Contains(out, "Config written to") {
 		t.Errorf("confirmed overwrite should regenerate config, got: %q", out)
+	}
+}
+
+// Probe: existing config + --ci — the destructive overwrite must be DENIED
+// before any work: non-zero error and the config file left byte-for-byte
+// unchanged. --ci can never answer the overwrite prompt, and the repo's
+// doctrine (security.ConfirmAction, self-update Confirmation Gate) is to deny
+// rather than auto-proceed or silently skip.
+func TestInitProbe_ExistingConfig_CIDenies(t *testing.T) {
+	tmpDir := probeHome(t)
+
+	cfg := config.DefaultConfig()
+	cfg.Custom["keepme"] = config.CustomTool{Command: "keepme --update", Trusted: true}
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, runErr := runInitCmd(t, "", "--ci")
+	if runErr == nil {
+		t.Fatal("init --ci with an existing config must deny")
+	}
+	if !errors.Is(runErr, ErrInitDeniedCI) {
+		t.Errorf("error should carry ErrInitDeniedCI through the root command, got: %v", runErr)
+	}
+	if !strings.Contains(runErr.Error(), "--ci") {
+		t.Errorf("deny message should name the --ci mode, got: %v", runErr)
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Error("init --ci deny must leave the existing config byte-for-byte unchanged")
+	}
+}
+
+// Probe: no config + --ci — still generates the config with no prompts. Guards
+// the one --ci scenario the spec does define (GIVEN: no config).
+func TestInitProbe_MissingConfig_CICreates(t *testing.T) {
+	tmpDir := probeHome(t)
+
+	out, err := runInitCmd(t, "", "--ci")
+	if err != nil {
+		t.Fatalf("init --ci on first run should not error: %v", err)
+	}
+	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+	if _, statErr := os.Stat(cfgPath); statErr != nil {
+		t.Errorf("first-run init --ci must create config at %s", cfgPath)
+	}
+	if !strings.Contains(out, "Config written to") {
+		t.Errorf("init --ci should report config creation, got: %q", out)
 	}
 }
