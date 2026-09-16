@@ -10,163 +10,165 @@ import (
 	"github.com/JhnFrankz/upp/internal/config"
 )
 
+// initProbeMarker is a custom tool name seeded into a pre-existing config. It
+// makes a destructive overwrite observable: `upp init` rewrites the config from
+// detected tools alone, so a surviving marker proves the file was untouched
+// while a replaced one proves the overwrite really happened.
+const initProbeMarker = "keepme"
+
 // runInitCmd executes `upp init` with the given args through the real CLI
-// (root.Execute). When stdin is non-empty, it is served from a temp file
-// replacing os.Stdin so fmt.Scanln prompts read deterministic input.
+// (root.Execute), serving stdin to fmt.Scanln prompts via withStdin. An empty
+// stdin yields an immediate EOF, which is how a non-TTY invocation behaves.
 // Returns the captured stdout plus the error from root.Execute().
 func runInitCmd(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
-	if stdin != "" {
-		f, err := os.CreateTemp("", "upp-init-stdin-*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = f.Close() }()
-		defer func() { _ = os.Remove(f.Name()) }()
-		if _, err := f.WriteString(stdin); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := f.Seek(0, 0); err != nil {
-			t.Fatal(err)
-		}
-		origStdin := os.Stdin
-		os.Stdin = f
-		defer func() { os.Stdin = origStdin }()
-	}
 
+	var out string
 	var runErr error
-	out := withCapturedStdout(func() {
-		root, gf := BuildRoot()
-		AddCommands(root, gf)
-		root.SetArgs(append([]string{"init"}, args...))
-		runErr = root.Execute()
+	withStdin(t, stdin, func() {
+		out = withCapturedStdout(func() {
+			root, gf := BuildRoot()
+			AddCommands(root, gf)
+			root.SetArgs(append([]string{"init"}, args...))
+			runErr = root.Execute()
+		})
 	})
 	return out, runErr
 }
 
-// Probe: first run — no config file exists — must run the wizard and CREATE
-// the config. First-run state comes from explicit file existence
-// (config-system: missing file → wizard runs and creates config).
-func TestInitProbe_MissingConfig_WizardCreates(t *testing.T) {
-	tmpDir := probeHome(t)
-
-	out, err := runInitCmd(t, "")
-	if err != nil {
-		t.Fatalf("first-run init should not error: %v", err)
-	}
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
-	if _, statErr := os.Stat(cfgPath); statErr != nil {
-		t.Errorf("first-run init must create config at %s (wizard never ran)", cfgPath)
-	}
-	if !strings.Contains(out, "Config written to") {
-		t.Errorf("init should report config creation, got: %q", out)
-	}
-}
-
-// Probe: existing config — interactive init must PROMPT for overwrite and,
-// unless confirmed, leave the file byte-for-byte unchanged.
-func TestInitProbe_ExistingConfig_PromptsAndPreserves(t *testing.T) {
-	tmpDir := probeHome(t)
-
-	cfg := config.DefaultConfig()
-	cfg.Custom["keepme"] = config.CustomTool{Command: "keepme --update", Trusted: true}
-	if err := config.Save(cfg); err != nil {
-		t.Fatal(err)
-	}
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
-	before, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := runInitCmd(t, "n\n")
-	if err != nil {
-		t.Fatalf("init with existing config should not error on deny: %v", err)
-	}
-	if !strings.Contains(out, "Overwrite with new detection?") {
-		t.Errorf("existing-config init must prompt for overwrite; output: %q", out)
-	}
-	after, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
-		t.Error("init without confirmation must not change the existing config file")
-	}
-}
-
-// Probe (triangulation): existing config confirmed with "y" — the wizard
-// overwrites with a fresh detection-based config.
-func TestInitProbe_ExistingConfig_ConfirmedOverwrites(t *testing.T) {
-	probeHome(t)
-
-	cfg := config.DefaultConfig()
-	if err := config.Save(cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	out, err := runInitCmd(t, "y\n")
-	if err != nil {
-		t.Fatalf("init with confirmed overwrite should not error: %v", err)
-	}
-	if !strings.Contains(out, "Config written to") {
-		t.Errorf("confirmed overwrite should regenerate config, got: %q", out)
-	}
-}
-
-// Probe: existing config + --ci — the destructive overwrite must be DENIED
-// before any work: non-zero error and the config file left byte-for-byte
-// unchanged. --ci can never answer the overwrite prompt, and the repo's
-// doctrine (security.ConfirmAction, self-update Confirmation Gate) is to deny
-// rather than auto-proceed or silently skip.
-func TestInitProbe_ExistingConfig_CIDenies(t *testing.T) {
-	tmpDir := probeHome(t)
-
-	cfg := config.DefaultConfig()
-	cfg.Custom["keepme"] = config.CustomTool{Command: "keepme --update", Trusted: true}
-	if err := config.Save(cfg); err != nil {
-		t.Fatal(err)
-	}
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
-	before, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
+// TestInitProbe_ConfigGateMatrix walks the whole `upp init` state machine
+// (spec command-interface: `upp init`) as one visible matrix over
+// {no config, existing config} x {interactive n, interactive y, interactive
+// EOF, --ci}:
+//
+//   - No config: the wizard runs and creates the config, with or without --ci.
+//     First-run state comes from explicit file existence, never applied
+//     defaults (config-system).
+//   - Existing config, interactive: the overwrite prompt appears and only an
+//     explicit y/yes rewrites. Anything else — including EOF on a non-TTY —
+//     cancels with exit 0 and leaves the file byte-for-byte unchanged.
+//   - Existing config, --ci: DENIED before any work with ErrInitDeniedCI and a
+//     non-zero exit. --ci can never answer the prompt, and the doctrine
+//     (security.ConfirmAction, self-update Confirmation Gate) is to deny rather
+//     than auto-proceed or silently skip.
+func TestInitProbe_ConfigGateMatrix(t *testing.T) {
+	tests := []struct {
+		name string
+		// preexisting seeds a config containing initProbeMarker before the run.
+		preexisting bool
+		// stdin is fed to the prompt; "" yields an immediate EOF (non-TTY).
+		stdin string
+		// args are passed after `init`.
+		args []string
+		// wantErrIs asserts the returned error wraps this sentinel.
+		wantErrIs error
+		// wantErrText asserts the returned error message contains this text.
+		wantErrText string
+		// wantPrompt asserts the interactive overwrite prompt appeared.
+		wantPrompt bool
+		// wantWrote asserts the "Config written to" confirmation appeared.
+		wantWrote bool
+		// wantUntouched asserts the seeded config is byte-for-byte unchanged.
+		wantUntouched bool
+		// wantMarkerReplaced asserts the seeded tool was overwritten.
+		wantMarkerReplaced bool
+	}{
+		{
+			name:      "first run, wizard creates",
+			wantWrote: true,
+		},
+		{
+			name:      "first run, --ci creates",
+			args:      []string{"--ci"},
+			wantWrote: true,
+		},
+		{
+			name:          "existing config, interactive n preserves",
+			preexisting:   true,
+			stdin:         "n\n",
+			wantPrompt:    true,
+			wantUntouched: true,
+		},
+		{
+			name:          "existing config, interactive EOF cancels",
+			preexisting:   true,
+			stdin:         "",
+			wantPrompt:    true,
+			wantUntouched: true,
+		},
+		{
+			name:               "existing config, interactive y overwrites",
+			preexisting:        true,
+			stdin:              "y\n",
+			wantPrompt:         true,
+			wantWrote:          true,
+			wantMarkerReplaced: true,
+		},
+		{
+			name:          "existing config, --ci denies",
+			preexisting:   true,
+			args:          []string{"--ci"},
+			wantErrIs:     ErrInitDeniedCI,
+			wantErrText:   "--ci",
+			wantUntouched: true,
+		},
 	}
 
-	_, runErr := runInitCmd(t, "", "--ci")
-	if runErr == nil {
-		t.Fatal("init --ci with an existing config must deny")
-	}
-	if !errors.Is(runErr, ErrInitDeniedCI) {
-		t.Errorf("error should carry ErrInitDeniedCI through the root command, got: %v", runErr)
-	}
-	if !strings.Contains(runErr.Error(), "--ci") {
-		t.Errorf("deny message should name the --ci mode, got: %v", runErr)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := probeHome(t)
+			cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
 
-	after, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
-		t.Error("init --ci deny must leave the existing config byte-for-byte unchanged")
-	}
-}
+			var before []byte
+			if tc.preexisting {
+				cfg := config.DefaultConfig()
+				cfg.Custom[initProbeMarker] = config.CustomTool{
+					Command: initProbeMarker + " --update",
+					Trusted: true,
+				}
+				if err := config.Save(cfg); err != nil {
+					t.Fatalf("seed config: %v", err)
+				}
+				var readErr error
+				before, readErr = os.ReadFile(cfgPath)
+				if readErr != nil {
+					t.Fatalf("read seeded config: %v", readErr)
+				}
+			}
 
-// Probe: no config + --ci — still generates the config with no prompts. Guards
-// the one --ci scenario the spec does define (GIVEN: no config).
-func TestInitProbe_MissingConfig_CICreates(t *testing.T) {
-	tmpDir := probeHome(t)
+			out, runErr := runInitCmd(t, tc.stdin, tc.args...)
 
-	out, err := runInitCmd(t, "", "--ci")
-	if err != nil {
-		t.Fatalf("init --ci on first run should not error: %v", err)
-	}
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
-	if _, statErr := os.Stat(cfgPath); statErr != nil {
-		t.Errorf("first-run init --ci must create config at %s", cfgPath)
-	}
-	if !strings.Contains(out, "Config written to") {
-		t.Errorf("init --ci should report config creation, got: %q", out)
+			if tc.wantErrIs != nil || tc.wantErrText != "" {
+				if runErr == nil {
+					t.Fatal("expected the command to fail, got a nil error")
+				}
+				if tc.wantErrIs != nil && !errors.Is(runErr, tc.wantErrIs) {
+					t.Errorf("error should wrap %v, got: %v", tc.wantErrIs, runErr)
+				}
+				if tc.wantErrText != "" && !strings.Contains(runErr.Error(), tc.wantErrText) {
+					t.Errorf("error message should contain %q, got: %v", tc.wantErrText, runErr)
+				}
+			} else if runErr != nil {
+				t.Fatalf("unexpected error: %v", runErr)
+			}
+
+			if got := strings.Contains(out, "Overwrite with new detection?"); got != tc.wantPrompt {
+				t.Errorf("prompt shown = %v, want %v; output: %q", got, tc.wantPrompt, out)
+			}
+			if got := strings.Contains(out, "Config written to"); got != tc.wantWrote {
+				t.Errorf("write reported = %v, want %v; output: %q", got, tc.wantWrote, out)
+			}
+
+			after, err := os.ReadFile(cfgPath)
+			if err != nil {
+				t.Fatalf("config must exist after init: %v", err)
+			}
+			if tc.wantUntouched && string(before) != string(after) {
+				t.Error("config must be byte-for-byte unchanged")
+			}
+			if tc.wantMarkerReplaced && strings.Contains(string(after), initProbeMarker) {
+				t.Errorf("overwrite must replace the seeded %q tool; file still contains it", initProbeMarker)
+			}
+		})
 	}
 }
