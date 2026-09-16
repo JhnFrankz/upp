@@ -21,7 +21,7 @@
 - [x] 3.1 Comment-only: correct stale EnforceRisk doc (`internal/cli/update.go:435-436`, `internal/security/confirm.go:37-41`) to cover ManagerID-marked privileged self-rows (D4). No logic change.
 - [x] 3.2 Battery: `gofmt -s -l .` clean, `go vet ./...`, `go test ./... -count=1 -race` green.
 - [x] 3.3 E2E `bash scripts/smoke-test.sh --skip-build`; verify: pacman prompts, `--ci` non-zero on pacman rows, apt/brew/winget byte-stable.
-- [ ] 3.4 Carry the archive note below into verify/archive.
+- [x] 3.4 Carry the archive note below into verify/archive.
 
 ## Review Workload Forecast
 
