@@ -47,3 +47,6 @@ Desktop.ini
 .atl/
 .codegraph/
 .gemini/
+
+# ODD working documents — recovery lives in Engram, not in the repo
+odd/
