@@ -1223,20 +1223,20 @@ func TestRunUpdate_ManagerSelfUpdateDryRun(t *testing.T) {
 		}
 	})
 
-	// brew: current, never "would update" (no -n signal exists for it).
-	if !strings.Contains(out, "up to date") {
-		t.Errorf("brew must render current in -n; got:\n%s", out)
+	// brew carries PolicyAlwaysUpdate, so a real run WILL execute its update
+	// command even though Check reports no version delta. The dry-run must say
+	// so rather than claim "up to date": the interactive selector already lists
+	// brew as pending (TestRunUpdate_ManagerSelfUpdateBrewInSelector), and the
+	// two paths must agree.
+	if strings.Contains(out, "Up to date: brew") {
+		t.Errorf("brew must not be 'up to date' in -n: a real run would update it; got:\n%s", out)
 	}
-	if !strings.Contains(out, "Up to date: brew") {
-		t.Errorf("brew must be listed as up to date in -n; got:\n%s", out)
+	if !strings.Contains(out, "[available] brew") {
+		t.Errorf("brew must render as a planned action in -n; got:\n%s", out)
 	}
-	// brew must never render as a planned (available) self-update action.
-	if strings.Contains(out, "[available] brew") || strings.Contains(out, "Dry run — no changes") && strings.Contains(out, "brew (") {
-		t.Errorf("brew must never be 'would update' in -n (current-only by design); got:\n%s", out)
-	}
-	// apt + winget: planned self-update actions reported explicitly.
-	if !strings.Contains(out, "2 would update") {
-		t.Errorf("pending apt+winget must report '2 would update'; got:\n%s", out)
+	// brew + apt + winget: planned actions reported explicitly.
+	if !strings.Contains(out, "3 would update") {
+		t.Errorf("brew+apt+winget must report '3 would update'; got:\n%s", out)
 	}
 	// Dry-run with a pending manager update must never claim "All clean!".
 	if strings.Contains(out, "All clean!") {

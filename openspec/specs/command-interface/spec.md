@@ -120,6 +120,7 @@ Execution across tools and manager groups MUST maintain per-tool error isolation
 | Dry run short flag | 3 tools have updates | `upp update -n` | Behaves identically to `upp update --dry-run`, no changes made |
 | Selector over filtered set | TTY, `--only brew,gh,npm` where brew owns gh | `upp update --only brew,gh,npm` | Selector lists brew group containing gh and standalone npm; other tools excluded |
 | Plan-derived pending set | TTY, brew current (`UpdateAvailable=false`), npm has an update | `upp update` | Selector lists both brew (AlwaysUpdate) and npm; pending set equals `plan.Updates` |
+| `--dry-run` uses the plan-derived pending set | brew current (`UpdateAvailable=false`), carries `PolicyAlwaysUpdate` | `upp update --dry-run` | brew reports as a planned action, matching the selector — never "up to date", because a real run would execute its update command |
 | Canonical identity selection | TTY, adapter `Info().ID="gh"`, `Info().Name="GitHub CLI"` | User selects gh and confirms | gh adapter resolved by ID and updated; no silent drop |
 | Granular selection in manager group | TTY, selector shows apt group with gh and docker pre-checked | User deselects docker | Only gh is updated via apt package update; docker is reported under the distinct deselected status; summary counts match selection |
 | Dry-run non-interactive | TTY, `--dry-run`, pending updates | `upp update --dry-run` | No selector rendered; planned actions listed, no changes made |

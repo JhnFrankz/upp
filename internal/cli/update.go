@@ -288,9 +288,18 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 						Version: fmt.Sprintf("%s → %s", oc.CurrentVersion, oc.LatestVersion),
 					}
 				} else {
+					// Reaching this branch means the row IS in plan.Updates
+					// (isUpdate was true above), so a real run WILL execute its
+					// update command: the row is eligible by PolicyAlwaysUpdate
+					// even though Check reported no version delta. Rendering
+					// StatusCurrent here claimed "up to date" for a tool the real
+					// run would update, contradicting the interactive selector,
+					// which lists the same row as pending (spec command-interface:
+					// --dry-run MUST report what would be updated).
+					r.DryRunPlanned(info.Name)
 					results[i] = output.ToolResult{
 						Name:    info.Name,
-						Status:  output.StatusCurrent,
+						Status:  output.StatusAvailable,
 						Version: oc.CurrentVersion,
 					}
 				}
