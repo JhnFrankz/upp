@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -35,15 +36,23 @@ var (
 // CheckboxSelector renders an interactive multi-select list and reads keys
 // from the injected reader.
 type CheckboxSelector struct {
-	w    io.Writer
-	r    io.Reader
-	opts []SelectOption
+	w     io.Writer
+	r     io.Reader
+	opts  []SelectOption
+	color *bool
 }
 
 // NewCheckboxSelector creates a checkbox selector rendering to w and reading
 // keys from r. All options start pre-checked; the cursor starts on the first.
 func NewCheckboxSelector(w io.Writer, r io.Reader, opts []SelectOption) *CheckboxSelector {
 	return &CheckboxSelector{w: w, r: r, opts: opts}
+}
+
+// WithColor explicitly sets or overrides whether ANSI color and in-place
+// cursor repositioning are enabled. By default it is auto-detected from w.
+func (s *CheckboxSelector) WithColor(color bool) *CheckboxSelector {
+	s.color = &color
+	return s
 }
 
 // Run renders the selector and processes keys until Enter (confirm), Esc/q
@@ -69,14 +78,36 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 	// The renderer detects color/emoji from w: TTY renders with ANSI colors,
 	// buffer/pipe writers stay plain (existing Renderer conventions).
 	r := NewRenderer(s.w, false)
+	useColor := r.Color()
+	if s.color != nil {
+		useColor = *s.color
+	}
+
+	if useColor {
+		_, _ = io.WriteString(s.w, "\x1b[?25l")
+		defer func() { _, _ = io.WriteString(s.w, "\x1b[?25h") }()
+	}
+
+	linesRendered := 0
 	render := func() {
+		var sb strings.Builder
+		if useColor && linesRendered > 0 {
+			fmt.Fprintf(&sb, "\x1b[%dA\r", linesRendered)
+		}
+
+		currentLines := 0
 		lastGroup := ""
 		for i, opt := range s.opts {
 			// A group header line renders once, before the first option of
 			// that group (design: selector group headers). Options without a
 			// Group field (or repeated within a contiguous run) are unaffected.
 			if opt.Group != "" && opt.Group != lastGroup {
-				_, _ = fmt.Fprintln(s.w, opt.Group)
+				if useColor {
+					sb.WriteString("\r\x1b[K")
+				}
+				sb.WriteString(opt.Group)
+				sb.WriteByte('\n')
+				currentLines++
 				lastGroup = opt.Group
 			}
 			marker := "[ ]"
@@ -91,8 +122,15 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 			if opt.Version != "" {
 				line += " " + r.dim(opt.Version)
 			}
-			_, _ = fmt.Fprintln(s.w, line)
+			if useColor {
+				sb.WriteString("\r\x1b[K")
+			}
+			sb.WriteString(line)
+			sb.WriteByte('\n')
+			currentLines++
 		}
+		linesRendered = currentLines
+		_, _ = io.WriteString(s.w, sb.String())
 	}
 
 	collect := func() []string {

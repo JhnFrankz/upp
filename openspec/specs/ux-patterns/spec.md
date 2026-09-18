@@ -213,12 +213,13 @@ For long-running operations, the system SHOULD show per-operation progress label
 
 ### Requirement: Interactive Update Tool Selection
 
-In TTY `upp update` runs, the pending-update checkbox selector MUST group pending updates under per-manager headers. Manager adapters with pending self-update render as their group header; owned tools with a pending delegated update render as child rows within their owning manager's group. Grouping is DISPLAY-ONLY and applies to the pending-only set, which is unchanged. The selector remains a user-choice UI, NOT a security confirmation: per-tool `security.ConfirmAction` gating MUST still run unchanged for every selected custom tool.
+In TTY `upp update` runs, the pending-update checkbox selector MUST group pending updates under per-manager headers. Manager adapters with pending self-update render as their group header; owned tools with a pending delegated update render as child rows within their owning manager's group. Grouping is DISPLAY-ONLY and applies to the pending-only set, which is unchanged. The selector remains a user-choice UI, NOT a security confirmation: per-tool `security.ConfirmAction` gating MUST still run unchanged for every selected custom tool. In interactive TTY mode, the selector MUST redraw in place by repositioning the cursor up (`\x1b[%dA\r`) and clearing lines (`\r\x1b[K`) on each redraw to prevent scrolling, and MUST hide the cursor on start (`\x1b[?25l`) and restore cursor visibility on completion or cancellation (`\x1b[?25h`).
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Selector groups pending | TTY, Linux, apt+gh pending | CheckboxSelector renders | apt group header with gh child row pre-checked |
 | Owned tool in group | Platform Windows, winget+gh pending, scoop pending | CheckboxSelector renders | winget group with gh child; scoop as standalone group |
+| In-place TTY redraw | TTY, interactive navigation | Key pressed (arrow/toggle) | Cursor repositioned up and line cleared in-place; cursor restored on exit |
 | Bypass unchanged | `--ci`, non-TTY, `--quiet`, or `--dry-run` | `upp update` | No selector; existing non-interactive behavior unchanged |
 | Not a security confirmation | Custom high-risk tool selected in selector | Selector submitted | `security.ConfirmAction` prompt still shown before execution |
 
