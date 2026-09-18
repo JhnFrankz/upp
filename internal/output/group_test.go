@@ -215,6 +215,12 @@ func TestOwnerIDOf(t *testing.T) {
 // resolving manager per platform, using the official adapters for that platform
 // so the owner manager is actually present in the set.
 func TestGroupByOwner_PerPlatformBuckets(t *testing.T) {
+	orig := adapterCheckFn
+	adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
+		return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
+	}
+	defer func() { adapterCheckFn = orig }()
+
 	tests := []struct {
 		name       string
 		os         string
@@ -266,6 +272,12 @@ func TestGroupByOwner_PerPlatformBuckets(t *testing.T) {
 // exactly once. This is the order the group bulk summary mirrors so concurrent
 // completion never reorders it.
 func TestGroupByOwner_DeterministicCanonicalOrder(t *testing.T) {
+	orig := adapterCheckFn
+	adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
+		return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
+	}
+	defer func() { adapterCheckFn = orig }()
+
 	// The canonical platform feed (mirrors buildAdapterList → AdaptersForPlatform).
 	tools := official.AdaptersForPlatform(platform.OSLinux)
 
@@ -317,6 +329,12 @@ func TestGroupByOwner_DeterministicCanonicalOrder(t *testing.T) {
 // interactive board/selector never disagree on ordering (spec deterministic
 // order rule).
 func TestGroupByOwner_CanonicalOrderRoundTrip(t *testing.T) {
+	orig := adapterCheckFn
+	adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
+		return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
+	}
+	defer func() { adapterCheckFn = orig }()
+
 	tools := official.AdaptersForPlatform(platform.OSLinux)
 
 	groupOrder := adapterNames(GroupOrder(tools, platform.OSLinux))

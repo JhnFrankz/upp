@@ -168,6 +168,12 @@ func ownerIDOf(a adapters.Adapter, osName string) string {
 // surface that MUST NOT modify the system (spec command-interface). A check
 // command classified above RiskLow is therefore not run here: the tool still
 // reports as detected, with an empty version.
+// adapterCheckFn is the injectable seam for querying version info in listEntryFor.
+// In production it executes a.Check(); tests stub it to eliminate network and subprocess I/O.
+var adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
+	return a.Check()
+}
+
 func listEntryFor(a adapters.Adapter) ListEntry {
 	info := a.Info()
 	status := StatusSkipped
@@ -175,7 +181,7 @@ func listEntryFor(a adapters.Adapter) ListEntry {
 	if a.Detect() {
 		status = StatusCurrent
 		if !security.CheckNeedsConsent(info) {
-			if updateInfo, err := a.Check(); err == nil {
+			if updateInfo, err := adapterCheckFn(a); err == nil {
 				version = updateInfo.CurrentVersion
 			}
 		}
