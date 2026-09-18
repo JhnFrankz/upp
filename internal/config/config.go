@@ -138,7 +138,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// Save writes the config to disk, creating directories as needed.
+// Save writes the config to disk atomically, creating directories as needed.
 func Save(cfg *Config) error {
 	path, err := ConfigPath()
 	if err != nil {
@@ -150,15 +150,32 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("cannot create config directory: %w", err)
 	}
 
-	f, err := os.Create(path)
+	tmpFile, err := os.CreateTemp(dir, "config-*.tmp")
 	if err != nil {
-		return fmt.Errorf("cannot create config file: %w", err)
+		return fmt.Errorf("cannot create temporary config file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	tmpName := tmpFile.Name()
+	defer func() {
+		_ = os.Remove(tmpName) // safe no-op if already renamed
+	}()
 
-	enc := toml.NewEncoder(f)
+	enc := toml.NewEncoder(tmpFile)
 	if err := enc.Encode(cfg); err != nil {
+		_ = tmpFile.Close()
 		return fmt.Errorf("cannot encode config: %w", err)
+	}
+
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("cannot sync config file: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("cannot close temporary config file: %w", err)
+	}
+
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("cannot atomically replace config file: %w", err)
 	}
 
 	return nil
