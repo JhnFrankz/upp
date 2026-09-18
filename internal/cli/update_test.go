@@ -2318,3 +2318,33 @@ func TestRunUpdate_CustomManagerDelegatedGate(t *testing.T) {
 		}
 	})
 }
+
+func TestRunUpdate_ContextCanceledAborts(t *testing.T) {
+	probeHome(t)
+	fake := &fakeUpdateAdapter{
+		name:   "tool1",
+		policy: adapters.PolicyAlwaysUpdate,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "2.0.0", UpdateAvailable: true},
+	}
+
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return []adapters.Adapter{fake}
+		},
+		stdinIsTTY: func() bool { return false },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-canceled
+
+	err := runUpdateContext(ctx, &GlobalFlags{}, &UpdateFlags{}, deps)
+	if err == nil {
+		t.Fatal("runUpdateContext with canceled context must return an error, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got: %v", err)
+	}
+	if fake.updated {
+		t.Error("fake adapter Update() must not be invoked when context is canceled")
+	}
+}
