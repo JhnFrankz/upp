@@ -46,7 +46,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22.x'
+          go-version: '1.24'
           cache: true
 
       - name: Vet
@@ -80,7 +80,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22.x'
+          go-version: '1.24'
           cache: true
 
       - name: golangci-lint
@@ -120,7 +120,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22.x'
+          go-version: '1.24'
           cache: true
 
       - name: Build release assets

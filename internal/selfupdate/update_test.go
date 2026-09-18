@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -202,7 +203,7 @@ func TestExtract(t *testing.T) {
 			if err != nil {
 				t.Fatalf("stat extracted binary: %v", err)
 			}
-			if fi.Mode().Perm() != 0o755 {
+			if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755 {
 				t.Errorf("extracted binary mode = %v, want 0755", fi.Mode().Perm())
 			}
 			entries, err := os.ReadDir(dest)
@@ -444,7 +445,7 @@ func assertBinary(t *testing.T, path string, want []byte) {
 	if err != nil {
 		t.Fatalf("stat %s: %v", path, err)
 	}
-	if fi.Mode().Perm() != 0o755 {
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755 {
 		t.Errorf("%s mode = %v, want 0755", path, fi.Mode().Perm())
 	}
 }
@@ -481,6 +482,9 @@ func skipIfRoot(t *testing.T) {
 }
 
 func TestReplace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("self-update binary replacement is not supported on Windows")
+	}
 	oldBytes := []byte("old-binary-bytes")
 	newBytes := []byte("brand-new-binary")
 

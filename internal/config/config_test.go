@@ -8,6 +8,20 @@ import (
 	"testing"
 )
 
+func testConfigDir(t *testing.T, tmpDir string) string {
+	t.Helper()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("APPDATA", filepath.Join(tmpDir, "AppData", "Roaming"))
+	dir, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("ConfigDir: %v", err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	return dir
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
@@ -55,7 +69,7 @@ func TestValidate(t *testing.T) {
 
 func TestLoadMissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -69,12 +83,7 @@ func TestLoadMissingFile(t *testing.T) {
 
 func TestLoadValidTOML(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	cfgDir := testConfigDir(t, tmpDir)
 
 	tomlContent := `
 version = 1
@@ -82,7 +91,7 @@ version = 1
 [settings]
 check_self_update = false
 
-[tools.apt]
+[tools.npm]
 enabled = true
 `
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
@@ -96,19 +105,14 @@ enabled = true
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if !cfg.Tools["apt"].Enabled {
-		t.Error("expected apt to be enabled")
+	if !cfg.Tools["npm"].Enabled {
+		t.Error("expected npm to be enabled")
 	}
 }
 
 func TestLoadInvalidTOML(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	cfgDir := testConfigDir(t, tmpDir)
 
 	badToml := `this is not valid toml {{{`
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(badToml), 0o644); err != nil {
@@ -198,7 +202,7 @@ func TestDefaultConfigWithDefaults(t *testing.T) {
 
 func TestExists_MissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	if Exists() {
 		t.Error("Exists() should be false when no config file exists")
@@ -207,7 +211,7 @@ func TestExists_MissingFile(t *testing.T) {
 
 func TestExists_ExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	if err := Save(DefaultConfig()); err != nil {
 		t.Fatal(err)
@@ -222,12 +226,8 @@ func TestExists_ExistingFile(t *testing.T) {
 // ignored), and export/import NEVER re-emit the key.
 func TestLoadStrayInteractiveKey(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	cfgDir := testConfigDir(t, tmpDir)
 
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	tomlContent := "version = 1\n\n[settings]\ninteractive = false\n"
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
@@ -249,12 +249,8 @@ func TestLoadStrayInteractiveKey(t *testing.T) {
 // and Save NEVER rewrites the key back into the file.
 func TestLoadStrayCheckSelfUpdateKey_NeverRewritten(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	cfgDir := testConfigDir(t, tmpDir)
 
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	tomlContent := "version = 1\n\n[settings]\ncheck_self_update = true\n"
 	path := filepath.Join(cfgDir, "config.toml")
 	if err := os.WriteFile(path, []byte(tomlContent), 0o644); err != nil {
@@ -284,7 +280,7 @@ func TestLoadStrayCheckSelfUpdateKey_NeverRewritten(t *testing.T) {
 
 func TestLoadMissingFile_NoDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -299,12 +295,8 @@ func TestLoadMissingFile_NoDefaults(t *testing.T) {
 
 func TestLoadEmptyFile_AppliesDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	cfgDir := testConfigDir(t, tmpDir)
 
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -321,12 +313,8 @@ func TestLoadEmptyFile_AppliesDefaults(t *testing.T) {
 
 func TestLoadPartialConfig_CatalogDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	cfgDir := testConfigDir(t, tmpDir)
 
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	tomlContent := "version = 1\n\n[settings]\nlanguage = \"es\"\n"
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
@@ -345,7 +333,7 @@ func TestLoadPartialConfig_CatalogDefaults(t *testing.T) {
 
 func TestLoadFullConfig_AsIs(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	orig := DefaultConfigWithDefaults()
 	orig.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
@@ -463,7 +451,7 @@ func TestValidate_ManagerRoundTrip(t *testing.T) {
 // `manager` line.
 func TestSave_NeverWritesManager(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg := DefaultConfigWithDefaults()
 	cfg.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
@@ -486,7 +474,7 @@ func TestSave_NeverWritesManager(t *testing.T) {
 
 func TestSave_AtomicPersistence(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg := DefaultConfigWithDefaults()
 	cfg.Custom["initial"] = CustomTool{Command: "echo 1"}
