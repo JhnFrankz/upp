@@ -25,6 +25,25 @@ Every CI job MUST declare a `timeout-minutes` limit: `test` 15, `lint` 10, `rele
 | Hung job | `test` hangs past 15 min | Limit reached | Job terminated, run fails |
 | Healthy run | All jobs finish under limits | Jobs complete | No job hits its timeout |
 
+### Requirement: Multiplatform Test Matrix
+
+The `test` job MUST execute across a multiplatform matrix covering Linux (`ubuntu-latest`), macOS (`macos-latest`), and Windows (`windows-latest`) with `fail-fast: false` to ensure complete visibility of test outcomes on each platform.
+
+Execution invariants:
+- **Universal verification**: Each platform runner MUST execute `go vet ./...`, `go test ./... -count=1`, and `go test ./... -count=1 -race`.
+- **Native compilation**: Each platform runner MUST compile the binary natively via `go build -trimpath ./cmd/upp` without dependency on external build tools (such as `make` on Windows).
+- **Format gate**: The `gofmt -s -l` gate MUST execute on Linux (`runner.os == 'Linux'`) to enforce formatting standards without platform-specific shell syntax conflicts on Windows runners.
+- **End-to-end smoke tests**: The `scripts/smoke-test.sh` gate MUST execute on POSIX platforms (Linux and macOS via `runner.os != 'Windows'`).
+- **Release dependency**: The `release` job MUST depend on `test` and `lint` (`needs: [test, lint]`), requiring all matrix platforms to pass before packaging or publishing assets.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Multiplatform test run | PR or push to main | CI triggers `test` job | Separate runners spawn for `ubuntu-latest`, `macos-latest`, and `windows-latest` |
+| Native build on Windows | `windows-latest` runner executes | Build step runs | `go build -trimpath ./cmd/upp` succeeds, producing `upp.exe` |
+| Smoke test on POSIX | Linux or macOS runner executes | Smoke test step runs | `scripts/smoke-test.sh --skip-build` executes and validates CLI contract |
+| Smoke test skipped on Windows | `windows-latest` runner executes | Smoke test step evaluated | Step skipped via `runner.os != 'Windows'` |
+| Test failure on one OS | Failure on macOS runner with passing Linux/Windows | Matrix executes | `fail-fast: false` allows other runners to finish; overall run fails |
+
 ### Requirement: Script and Workflow Static Checks
 
 The `lint` job MUST run `shellcheck -S warning` over `scripts/install.sh`, `scripts/smoke-test.sh`, and `scripts/publish-release.sh`, and MUST run actionlint pinned to `v1.7.7` over the workflow files. Any warning-level shellcheck finding or actionlint error MUST fail the `lint` job.
