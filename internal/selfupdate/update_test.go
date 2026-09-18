@@ -493,6 +493,9 @@ func TestReplace(t *testing.T) {
 	newFixture := func(t *testing.T) (dir, binPath, newPath string) {
 		t.Helper()
 		dir = t.TempDir()
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			dir = resolved
+		}
 		binPath = filepath.Join(dir, "upp")
 		newPath = filepath.Join(dir, "staged")
 		writeFile(t, binPath, oldBytes, 0o755)
@@ -525,6 +528,9 @@ func TestReplace(t *testing.T) {
 
 	t.Run("resolves symlink and replaces the target", func(t *testing.T) {
 		root := t.TempDir()
+		if resolved, err := filepath.EvalSymlinks(root); err == nil {
+			root = resolved
+		}
 		realDir := filepath.Join(root, "real")
 		linkDir := filepath.Join(root, "link")
 		if err := os.MkdirAll(realDir, 0o755); err != nil {

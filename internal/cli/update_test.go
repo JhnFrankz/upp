@@ -18,6 +18,14 @@ import (
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
+func testManagerMap(m string) map[string]string {
+	return map[string]string{"linux": m, "darwin": m, "windows": m}
+}
+
+func testManagerPackageMap(pkg string) map[string]string {
+	return map[string]string{"linux": pkg, "darwin": pkg, "windows": pkg}
+}
+
 // fakeUpdateAdapter is a test double for the update gating matrix. It records
 // whether Update was invoked — the behavioral signal the gating requirement
 // is about — and lets each test control policy, trust, command, privileges,
@@ -941,8 +949,8 @@ func TestRunUpdate_InteractiveSelection_OwnedToolDelegation(t *testing.T) {
 		},
 		result: adapters.Result{Success: true, Before: "2.45.0", After: "2.46.0"},
 	}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 
 	docker := &fakeUpdateAdapter{
 		name:   "docker",
@@ -956,8 +964,8 @@ func TestRunUpdate_InteractiveSelection_OwnedToolDelegation(t *testing.T) {
 		},
 		result: adapters.Result{Success: true, Before: "26.1.4", After: "27.0.0"},
 	}
-	docker.manager = map[string]string{"linux": "apt"}
-	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	docker.manager = testManagerMap("apt")
+	docker.managerPackage = testManagerPackageMap("docker-ce")
 
 	apt := &fakeUpdateAdapter{
 		name:   "apt",
@@ -1702,12 +1710,12 @@ func TestRunUpdate_AlwaysUpdateCurrentSelectedExecutes(t *testing.T) {
 // alongside standalone tools (spec bulk-update "Default runs group bulk updates").
 func TestRunUpdate_DefaultBulkGroupExecution(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	docker.manager = map[string]string{"linux": "apt"}
-	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	docker.manager = testManagerMap("apt")
+	docker.managerPackage = testManagerPackageMap("docker-ce")
 
 	npm := &fakeUpdateAdapter{name: "npm", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 
@@ -1756,12 +1764,12 @@ func TestRunUpdate_DefaultBulkGroupExecution(t *testing.T) {
 // or standalone tool updates (spec bulk-update "Per-tool error isolation").
 func TestRunUpdate_PerToolErrorIsolation(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	docker.manager = map[string]string{"linux": "apt"}
-	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	docker.manager = testManagerMap("apt")
+	docker.managerPackage = testManagerPackageMap("docker-ce")
 
 	npm := &fakeUpdateAdapter{name: "npm", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	npm.info = adapters.UpdateInfo{CurrentVersion: "10.0.0", LatestVersion: "10.1.0", UpdateAvailable: true}
@@ -1810,8 +1818,8 @@ func TestRunUpdate_PerToolErrorIsolation(t *testing.T) {
 // user's config and cannot be vouched for.
 func TestRunUpdate_CICustomHighRiskFailsClosed(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustCustomUntrusted}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 
 	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
@@ -1849,8 +1857,8 @@ func TestRunUpdate_CICustomHighRiskFailsClosed(t *testing.T) {
 // actions without executing package updates.
 func TestRunUpdate_DryRunPlannedFlags(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 
 	npm := &fakeUpdateAdapter{name: "npm", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
 	npm.info = adapters.UpdateInfo{CurrentVersion: "10.0.0", LatestVersion: "10.1.0", UpdateAvailable: true}
@@ -1897,11 +1905,11 @@ func TestRunUpdate_DryRunPlannedFlags(t *testing.T) {
 // --only gh` updates gh only, docker untouched.
 func TestRunUpdate_OnlyNarrowsGroupBatch(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	docker.manager = map[string]string{"linux": "apt"}
-	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	docker.manager = testManagerMap("apt")
+	docker.managerPackage = testManagerPackageMap("docker-ce")
 	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
@@ -1937,8 +1945,8 @@ func TestRunUpdate_OnlyNarrowsGroupBatch(t *testing.T) {
 func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 	newApt := func(policy adapters.UpdatePolicy, avail bool) (*fakeUpdateAdapter, *fakeUpdateAdapter) {
 		gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-		gh.manager = map[string]string{"linux": "apt"}
-		gh.managerPackage = map[string]string{"linux": "gh"}
+		gh.manager = testManagerMap("apt")
+		gh.managerPackage = testManagerPackageMap("gh")
 		apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: policy, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testAptPackageUpdateCommand}
 		apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: avail}, nil
@@ -1981,8 +1989,8 @@ func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 	t.Run("always-update group runs regardless of check", func(t *testing.T) {
 		brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testBrewPackageUpdateCommand}
 		gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-		gh.manager = map[string]string{"linux": "brew"}
-		gh.managerPackage = map[string]string{"linux": "gh"}
+		gh.manager = testManagerMap("brew")
+		gh.managerPackage = testManagerPackageMap("gh")
 		// brew AlwaysUpdate: runs even though gh reports NO availability.
 		brew.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.45.0", UpdateAvailable: false}, nil
@@ -2009,8 +2017,8 @@ func TestRunUpdate_GroupGatedBlocksAndRuns(t *testing.T) {
 // UpdatePackage does NOT run, and the run continues (does not abort).
 func TestRunUpdate_GroupCheckFailed(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, errors.New("apt-cache policy failed")
@@ -2037,8 +2045,8 @@ func TestRunUpdate_GroupCheckFailed(t *testing.T) {
 func TestRunUpdate_GroupNonSudoProceeds(t *testing.T) {
 	brew := &fakeUpdateAdapter{name: "brew", kind: adapters.KindManager, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial, noDetect: true, packageUpdateCommand: testBrewPackageUpdateCommand}
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "brew"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("brew")
+	gh.managerPackage = testManagerPackageMap("gh")
 	brew.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
 	}
@@ -2065,11 +2073,11 @@ func TestRunUpdate_GroupNonSudoProceeds(t *testing.T) {
 // "Skipped: docker" — each owned tool's outcome, no group header.
 func TestRunUpdate_DefaultGroupSummarySkipsDeselected(t *testing.T) {
 	gh := &fakeUpdateAdapter{name: "gh", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	gh.manager = map[string]string{"linux": "apt"}
-	gh.managerPackage = map[string]string{"linux": "gh"}
+	gh.manager = testManagerMap("apt")
+	gh.managerPackage = testManagerPackageMap("gh")
 	docker := &fakeUpdateAdapter{name: "docker", kind: adapters.KindTool, policy: adapters.PolicyAlwaysUpdate, trust: adapters.TrustOfficial}
-	docker.manager = map[string]string{"linux": "apt"}
-	docker.managerPackage = map[string]string{"linux": "docker-ce"}
+	docker.manager = testManagerMap("apt")
+	docker.managerPackage = testManagerPackageMap("docker-ce")
 	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, packageUpdateCommand: testAptPackageUpdateCommand}
 	apt.checkPackage = func(pkg string) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true}, nil
