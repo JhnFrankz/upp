@@ -80,7 +80,8 @@ func setExecFakes(t *testing.T, f execFakes) {
 		}
 		if name == "pacman" && len(args) == 2 {
 			pkg := args[1]
-			if args[0] == "-Q" {
+			switch args[0] {
+			case "-Q":
 				qKey := pacmanInstalledQueryCmd(pkg)
 				if pkg == "pacman" {
 					qKey = pacmanInstalledCmd
@@ -88,7 +89,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 				if r, ok := f.shell[qKey]; ok {
 					return r.stdout, r.stderr, r.err
 				}
-			} else if args[0] == "-Si" {
+			case "-Si":
 				siKey := pacmanCandidateQueryCmd(pkg)
 				if pkg == "pacman" {
 					siKey = pacmanCandidateCmd
