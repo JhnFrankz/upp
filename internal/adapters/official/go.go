@@ -2,14 +2,54 @@ package official
 
 import (
 	"fmt"
+	"net/http"
+	"os/exec"
 	"runtime"
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
+// goBinaryPathFn is the seam for locating the go binary on Linux.
+// Swapped in tests via setExecFakes.
+var goBinaryPathFn = func() string {
+	p, err := exec.LookPath("go")
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+// goDevVersionFn is the seam for querying the latest version from go.dev.
+// Swapped in tests via setExecFakes.
+var goDevVersionFn = fetchGoDevVersion
+
+func fetchGoDevVersion() (string, error) {
+	client := &http.Client{
+		Timeout: adapters.CheckTimeout,
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://go.dev/VERSION?m=text", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "upp")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d from go.dev", resp.StatusCode)
+	}
+	buf := make([]byte, 512)
+	n, _ := resp.Body.Read(buf)
+	line := strings.TrimSpace(strings.Split(string(buf[:n]), "\n")[0])
+	return line, nil
+}
+
 // GoAdapter manages Go across platforms.
-// Linux: manual binary replace, macOS: brew, Windows: winget.
+// Linux: manual binary replace or apt/pacman delegation, macOS: brew, Windows: winget.
 type GoAdapter struct{}
 
 func (a *GoAdapter) Name() string { return "go" }
@@ -18,24 +58,39 @@ func (a *GoAdapter) Detect() bool {
 	return lookPath("go")
 }
 
+func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
+	if runtime.GOOS != "linux" {
+		return nil, ""
+	}
+	bin := goBinaryPathFn()
+	if bin == "/usr/bin/go" || strings.HasPrefix(bin, "/usr/bin/") {
+		if lookPath("apt") {
+			return AdapterByName("apt"), "golang-go"
+		}
+		if lookPath("pacman") {
+			return AdapterByName("pacman"), "go"
+		}
+	}
+	return nil, ""
+}
+
 func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("go is not installed")
 	}
 
-	// Delegated check path (WU2, spec Per-Owned-Tool Availability): go is
-	// owned by brew on macOS and winget on Windows, so its Check() reports the
-	// real update of its package under the resolving manager (e.g.
-	// `brew outdated --json golang`, `winget upgrade`) there. On
-	// Linux go has NO resolving owner (standalone manual binary replace), so
-	// ResolveOwner returns nil and the standalone `go version` path below runs
-	// — matching its Update() branch. runtime.GOOS is translated to the
-	// platform key because the manager/package maps are keyed by PLATFORM
-	// constants, not runtime.GOOS (darwin).
+	// Delegated check path: go is owned by brew on macOS and winget on Windows.
+	// On Linux, if go is installed in /usr/bin under apt or pacman, delegate to
+	// that package manager; if manual (e.g. /usr/local/go), check go.dev directly.
 	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	if owner := ResolveOwner("go", platform); owner != nil {
+	owner := ResolveOwner("go", platform)
+	pkg := a.Info().ManagerPackage[platform]
+	if owner == nil && runtime.GOOS == "linux" {
+		owner, pkg = a.linuxOwner()
+	}
+
+	if owner != nil {
 		if checker, ok := owner.(adapters.PackageChecker); ok {
-			pkg := a.Info().ManagerPackage[platform]
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
 			}
@@ -47,10 +102,20 @@ func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
 	current := commandOutput("go", "version")
 	current = extractGoVersion(current)
 
+	latest := current
+	updateAvailable := false
+
+	if raw, err := goDevVersionFn(); err == nil && raw != "" {
+		if v := extractGoVersion(raw); v != "" {
+			latest = v
+			updateAvailable = current != "" && semverCompare(current, latest)
+		}
+	}
+
 	return adapters.UpdateInfo{
 		CurrentVersion:  current,
-		LatestVersion:   current,
-		UpdateAvailable: false,
+		LatestVersion:   latest,
+		UpdateAvailable: updateAvailable,
 	}, nil
 }
 
@@ -59,17 +124,18 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
 	}
 
-	// Delegated update path: go is owned by brew on macOS and winget on Windows,
-	// so it delegates to the resolving manager's PackageUpdater interface there.
-	// On Linux go has NO resolving owner (standalone manual binary replace),
-	// so ResolveOwner returns nil and the standalone path below runs.
 	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	if owner := ResolveOwner("go", platform); owner != nil {
+	owner := ResolveOwner("go", platform)
+	pkg := a.Info().ManagerPackage[platform]
+	if owner == nil && runtime.GOOS == "linux" {
+		owner, pkg = a.linuxOwner()
+	}
+
+	if owner != nil {
 		if dryRun {
 			return adapters.Result{Success: true}, nil
 		}
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
-			pkg := a.Info().ManagerPackage[platform]
 			if pkg == "" {
 				return adapters.Result{Success: false}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
 			}
@@ -93,8 +159,8 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 	switch runtime.GOOS {
 	case "linux":
-		// Manual binary update: download latest from go.dev.
-		cmd = "curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"
+		// Manual binary update: purge existing installation, then download and extract latest from go.dev.
+		cmd = "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"
 		privileges = []string{"sudo"}
 	default:
 		return adapters.Result{
@@ -149,7 +215,7 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		// plan's RiskCommand and the confirmation gate see what actually
 		// executes. On macOS and Windows go is owned (Manager above), so the
 		// plan takes the owning manager's command and never reads this field.
-		Command: "curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -",
+		Command: "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -",
 	}
 }
 

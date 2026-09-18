@@ -21,7 +21,7 @@ const (
 	pnpmUpdateCmd     = "pnpm update -g"
 	pnpmPruneCmd      = "pnpm store prune 2>/dev/null"
 	bunUpdateCmd      = "bun upgrade"
-	goLinuxUpdateCmd  = "curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
+	goLinuxUpdateCmd  = "sudo rm -rf /usr/local/go && curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
 	opencodeUpdateCmd = "opencode update"
 	wingetUpdateCmd   = "winget upgrade winget"
 	scoopUpdateCmd    = "scoop update scoop"
@@ -630,6 +630,30 @@ func TestUpdate(t *testing.T) {
 				shell:    map[string]fakeResult{goLinuxUpdateCmd: {}},
 			},
 			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
+		},
+		{
+			name:    "go/linux-apt-delegation-success",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				goBinaryPath: "/usr/bin/go",
+				lookPath:     map[string]bool{"go": true, "apt": true},
+				cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				shell:        map[string]fakeResult{"sudo apt install --only-upgrade golang-go": {}},
+			},
+			want: adapters.Result{Success: true, Before: "unknown", After: "unknown", Privileges: sudo},
+		},
+		{
+			name:    "go/linux-pacman-delegation-success",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				goBinaryPath: "/usr/bin/go",
+				lookPath:     map[string]bool{"go": true, "pacman": true},
+				cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				shell:        map[string]fakeResult{"sudo pacman -S --noconfirm go": {}},
+			},
+			want: adapters.Result{Success: true, Before: "unknown", After: "unknown", Privileges: sudo},
 		},
 		{
 			name:    "go/macos-delegates-to-brew-success",

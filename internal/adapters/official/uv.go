@@ -45,6 +45,7 @@ func (a *UvAdapter) Check() (adapters.UpdateInfo, error) {
 		current = "unknown"
 	}
 
+	latest := current
 	selfUpdateAvailable := false
 	stdout, stderr, err := runCmdArgs("uv", "self", "update", "--dry-run")
 	if err != nil {
@@ -53,7 +54,11 @@ func (a *UvAdapter) Check() (adapters.UpdateInfo, error) {
 		}
 		selfUpdateAvailable = false
 	} else {
-		selfUpdateAvailable = parseUvSelfUpdateOutput(stdout + " " + stderr)
+		combined := stdout + " " + stderr
+		selfUpdateAvailable = parseUvSelfUpdateOutput(combined)
+		if selfUpdateAvailable {
+			latest = extractUvLatestVersion(combined, current)
+		}
 	}
 
 	stdout, stderr, err = runCmdArgs("uv", "tool", "list", "--outdated")
@@ -66,9 +71,34 @@ func (a *UvAdapter) Check() (adapters.UpdateInfo, error) {
 
 	return adapters.UpdateInfo{
 		CurrentVersion:  current,
-		LatestVersion:   current,
+		LatestVersion:   latest,
 		UpdateAvailable: updateAvailable,
 	}, nil
+}
+
+func extractUvLatestVersion(output, current string) string {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		for i, f := range fields {
+			if strings.EqualFold(f, "to") && i+1 < len(fields) {
+				target := strings.Trim(fields[i+1], "(),:;\"'")
+				if isVersionLike(target) {
+					return target
+				}
+			}
+		}
+	}
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		for i := len(fields) - 1; i >= 0; i-- {
+			cleaned := strings.Trim(fields[i], "(),:;\"'")
+			if isVersionLike(cleaned) && cleaned != current {
+				return cleaned
+			}
+		}
+	}
+	return current
 }
 
 func extractUvVersion(raw string) string {
