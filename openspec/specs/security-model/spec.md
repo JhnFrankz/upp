@@ -49,7 +49,6 @@ Confirmation MUST be classified by the REAL privileges and risk of the command t
 | `--ci` pacman privileged proceeds | Linux, `--ci`, pacman update requires `sudo` | `upp update --ci` | Proceeds: the command is an official, shipped declaration |
 | Apt privileged update prompts | Linux, apt self-update (`sudo apt install --only-upgrade apt`) declares no `Privileges` | `upp update` (interactive) | Prompts for confirmation — classified by the REAL command, not by the adapter's declarations |
 | Gate input is the executed command | Any managed adapter row planned (pacman included) | `upp update` plan built | `plan.RiskCommand` byte-equals the command the update path executes; plan privileges equal the adapter's declared privileges |
-| Pacman package gate sees sudo | pacman package row planned (`sudo pacman -S --noconfirm <pkg>`) | Gate classifies the row | Classified high risk from the real privileged command: interactive run prompts; `--ci` exits non-zero |
 | Custom manager-delegated confirm | Custom tool with `manager = "pacman"` | Update requested | Classified/confirmed by the delegated manager's real self-update command (`sudo pacman -S --noconfirm pacman`, sudo) — never a synthesized `pacman upgrade <tool>` string |
 
 (Previously: confirmation applied only to custom tool updates; owned-tool rows were `TrustOfficial` and always auto-proceeded (`ConfirmAuto`), so a sudo-heavy manager group update would run without prompting.)

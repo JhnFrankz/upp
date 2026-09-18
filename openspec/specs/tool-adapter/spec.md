@@ -8,12 +8,13 @@ Define the contract every tool adapter (official or custom) must implement. Each
 
 ### Requirement: Adapter Interface
 
-Every adapter MUST implement four operations:
+Every adapter MUST implement five core operations:
 
-- `detect() → bool` — is this tool installed?
-- `check() → UpdateInfo` — current version + latest available + update available?
-- `update() → Result` — perform the update, return success/failure + details
-- `list() → ToolInfo` — return installed tool info (name, version, source, owning manager, kind)
+- `Name() → string` — tool identifier (e.g. "apt", "brew", "nvm")
+- `Detect() → bool` — is this tool installed on the current platform?
+- `Check() → UpdateInfo` — current version + latest available + update available?
+- `Update(dryRun bool) → Result` — perform the update, return success/failure + details
+- `Info() → ToolInfo` — return static tool metadata (display name, platform, manager mapping, kind, declared commands)
 
 `ToolInfo` MUST carry an owning `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` otherwise). A tool with a resolving owner on the current platform reports that manager; a tool with no owner reports no manager. A `ToolInfo` whose `Kind=KindTool` and that has a resolving owner on the current platform MUST also declare a per-manager package-name entry (see Per-Manager Package Mapping), so the owned tool's package under its manager is known.
 
