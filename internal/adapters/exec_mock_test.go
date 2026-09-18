@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -30,7 +31,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 	origShellExecWithTimeout := shellExecWithTimeoutFn
 	origLookPath := lookPathFn
 
-	shellExecWithTimeoutFn = func(command string, timeout time.Duration) (string, error) {
+	shellExecWithTimeoutFn = func(ctx context.Context, command string, timeout time.Duration) (string, error) {
 		if f.shell != nil {
 			if r, ok := f.shell[command]; ok {
 				return r.stdout, r.err
@@ -74,12 +75,12 @@ func TestExecFakes_Isolation(t *testing.T) {
 		})
 
 		// Test intercepted shellExecWithTimeoutFn
-		out, err := shellExecWithTimeoutFn("mock-cmd", 1*time.Second)
+		out, err := shellExecWithTimeoutFn(context.Background(), "mock-cmd", 1*time.Second)
 		if err != nil || out != "mocked output" {
 			t.Errorf("shellExecWithTimeoutFn(mock-cmd) = (%q, %v), want (%q, nil)", out, err, "mocked output")
 		}
 
-		_, err = shellExecWithTimeoutFn("err-cmd", 1*time.Second)
+		_, err = shellExecWithTimeoutFn(context.Background(), "err-cmd", 1*time.Second)
 		if err == nil || err.Error() != "exec error" {
 			t.Errorf("shellExecWithTimeoutFn(err-cmd) err = %v, want 'exec error'", err)
 		}

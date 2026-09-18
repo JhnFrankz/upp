@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -41,11 +42,11 @@ func setExecFakes(t *testing.T, f execFakes) {
 	origGoBinaryPath := goBinaryPathFn
 	origGoDevVersion := goDevVersionFn
 
-	runCmdFn = func(command string) (stdout, stderr string, err error) {
+	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
 		r := f.shell[command]
 		return r.stdout, r.stderr, r.err
 	}
-	runCmdArgsFn = func(name string, args ...string) (stdout, stderr string, err error) {
+	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
 		// Prefer an invocation-specific key ("name arg1 arg2..."), falling
 		// back to the binary-name key for callers that only fake by name.
 		key := name
@@ -107,7 +108,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 	lookPathFn = func(name string) bool {
 		return f.lookPath[name]
 	}
-	opencodeLatestTagFn = func() (string, error) {
+	opencodeLatestTagFn = func(ctx context.Context) (string, error) {
 		if f.opencodeTag != "" || f.opencodeTagErr != nil {
 			return f.opencodeTag, f.opencodeTagErr
 		}
@@ -119,7 +120,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 		}
 		return "/usr/local/go/bin/go"
 	}
-	goDevVersionFn = func() (string, error) {
+	goDevVersionFn = func(ctx context.Context) (string, error) {
 		if f.goDevVersion != "" || f.goDevVersionErr != nil {
 			return f.goDevVersion, f.goDevVersionErr
 		}

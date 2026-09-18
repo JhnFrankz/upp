@@ -20,8 +20,11 @@ import (
 // leaf functions (runCmd, runCmdArgs, lookPath) delegate to the vars, so both
 // adapters and wrappers stay hermetic when a test swaps the seam.
 var (
-	runCmdFn = func(command string) (stdout, stderr string, err error) {
-		ctx, cancel := context.WithTimeout(context.Background(), adapters.UpdateTimeout)
+	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(ctx, adapters.UpdateTimeout)
 		defer cancel()
 
 		var cmd *exec.Cmd
@@ -36,8 +39,11 @@ var (
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
-	runCmdArgsFn = func(name string, args ...string) (stdout, stderr string, err error) {
-		ctx, cancel := context.WithTimeout(context.Background(), adapters.CheckTimeout)
+	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(ctx, adapters.CheckTimeout)
 		defer cancel()
 
 		var cmd *exec.Cmd
@@ -61,14 +67,14 @@ var (
 // runCmd executes a shell command and returns stdout, stderr, and any error.
 // The command runs via the platform's default shell.
 // Delegates to the runCmdFn seam variable.
-func runCmd(command string) (stdout, stderr string, err error) {
-	return runCmdFn(command)
+func runCmd(ctx context.Context, command string) (stdout, stderr string, err error) {
+	return runCmdFn(ctx, command)
 }
 
 // runCmdArgs executes a command with explicit arguments (no shell).
 // Delegates to the runCmdArgsFn seam variable.
-func runCmdArgs(name string, args ...string) (stdout, stderr string, err error) {
-	return runCmdArgsFn(name, args...)
+func runCmdArgs(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
+	return runCmdArgsFn(ctx, name, args...)
 }
 
 // lookPath checks if a command exists on PATH.
@@ -140,8 +146,8 @@ func isVersionLike(s string) bool {
 
 // commandOutput runs a command and returns its trimmed stdout.
 // Used for simple version commands where stderr is irrelevant.
-func commandOutput(name string, args ...string) string {
-	stdout, _, err := runCmdArgsFn(name, args...)
+func commandOutput(ctx context.Context, name string, args ...string) string {
+	stdout, _, err := runCmdArgsFn(ctx, name, args...)
 	if err != nil {
 		return ""
 	}
@@ -149,8 +155,8 @@ func commandOutput(name string, args ...string) string {
 }
 
 // shellOutput runs a shell command and returns its trimmed stdout.
-func shellOutput(command string) string {
-	stdout, _, err := runCmdFn(command)
+func shellOutput(ctx context.Context, command string) string {
+	stdout, _, err := runCmdFn(ctx, command)
 	if err != nil {
 		return ""
 	}
@@ -159,8 +165,8 @@ func shellOutput(command string) string {
 
 // commandOutputErrFor runs a command and returns its trimmed stdout, labeling
 // errors with the given tool name rather than the binary name.
-func commandOutputErrFor(tool, name string, args ...string) (string, error) {
-	stdout, stderr, err := runCmdArgsFn(name, args...)
+func commandOutputErrFor(ctx context.Context, tool, name string, args ...string) (string, error) {
+	stdout, stderr, err := runCmdArgsFn(ctx, name, args...)
 	if err != nil {
 		return strings.TrimSpace(stdout), commandFailureErr(tool, stderr, err)
 	}
@@ -172,8 +178,8 @@ func commandOutputErrFor(tool, name string, args ...string) (string, error) {
 // same runCmdArgsFn seam variable as commandOutput, so seam fakes keep
 // working. stdout is preserved on failure: the npm/pnpm exit-1 convention
 // (D4) needs it to decide availability.
-func commandOutputErr(name string, args ...string) (string, error) {
-	return commandOutputErrFor(name, name, args...)
+func commandOutputErr(ctx context.Context, name string, args ...string) (string, error) {
+	return commandOutputErrFor(ctx, name, name, args...)
 }
 
 // shellOutputErr runs a shell command and returns its trimmed stdout, or a
@@ -182,8 +188,8 @@ func commandOutputErr(name string, args ...string) (string, error) {
 // stdout is preserved on failure: the npm/pnpm exit-1 convention (D4) needs
 // it to decide availability. The failure label is the explicit tool name,
 // not the command's first token (a wrapper or shell builtin).
-func shellOutputErr(command, tool string) (string, error) {
-	stdout, stderr, err := runCmdFn(command)
+func shellOutputErr(ctx context.Context, command, tool string) (string, error) {
+	stdout, stderr, err := runCmdFn(ctx, command)
 	if err != nil {
 		return strings.TrimSpace(stdout), commandFailureErr(tool, stderr, err)
 	}

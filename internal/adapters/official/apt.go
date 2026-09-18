@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -24,11 +25,11 @@ func (a *AptAdapter) Detect() bool {
 	return lookPath("apt")
 }
 
-func (a *AptAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *AptAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("apt is not installed")
 	}
-	return a.CheckPackage("apt")
+	return a.CheckPackage(ctx, "apt")
 }
 
 // parseAptPolicyOutput parses the stdout of `apt-cache policy <pkg>`.
@@ -62,8 +63,8 @@ func parseAptPolicyOutput(out string) (string, string) {
 // the manager-group bulk path know a real update exists (design D2). It
 // queries `apt-cache policy <pkg>` directly via structured execution, not
 // through bash or awk.
-func (a *AptAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
-	stdout, err := commandOutputErrFor("apt", "apt-cache", "policy", pkg)
+func (a *AptAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErrFor(ctx, "apt", "apt-cache", "policy", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -82,13 +83,13 @@ func (a *AptAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 // (sudo) executor. This is the manager-group bulk path (design D3): it
 // upgrades the owned PACKAGE, NOT apt's self-only row. It is the sudo-gated
 // mutating counterpart to CheckPackage's read-only availability query.
-func (a *AptAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
 	}
 
-	before, _ := a.CurrentVersion()
-	_, stderr, err := runCmd(adapters.RenderPackageCommand(aptPackageUpdateTemplate, pkg))
+	before, _ := a.CurrentVersion(ctx)
+	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(aptPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -109,7 +110,7 @@ func (a *AptAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 		}, nil
 	}
 
-	after, _ := a.CurrentVersion()
+	after, _ := a.CurrentVersion(ctx)
 	return adapters.Result{
 		Success:    true,
 		Before:     before,
@@ -118,12 +119,12 @@ func (a *AptAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 	}, nil
 }
 
-func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
 	}
 
-	before, _ := a.CurrentVersion()
+	before, _ := a.CurrentVersion(ctx)
 
 	if dryRun {
 		return adapters.Result{
@@ -138,7 +139,7 @@ func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// `apt upgrade` is intentionally avoided). Stays sudo-gated: the row means
 	// "apt package stale" (distro-managed, often intentional). Check() stays
 	// root-free and reports real Installed vs Candidate availability.
-	_, stderr, err := runCmd(aptSelfUpdateCmd)
+	_, stderr, err := runCmd(ctx, aptSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -159,7 +160,7 @@ func (a *AptAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after, _ := a.CurrentVersion()
+	after, _ := a.CurrentVersion(ctx)
 	return adapters.Result{
 		Success:    true,
 		Before:     before,
@@ -182,13 +183,13 @@ func (a *AptAdapter) Info() adapters.ToolInfo {
 }
 
 // CurrentVersion returns the currently installed apt version.
-func (a *AptAdapter) CurrentVersion() (string, error) {
-	stdout := shellOutput("bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'")
-	v := strings.TrimSpace(stdout)
-	if v == "" || v == "(none)" {
+func (a *AptAdapter) CurrentVersion(ctx context.Context) (string, error) {
+	stdout, err := commandOutputErrFor(ctx, "apt", "apt-cache", "policy", "apt")
+	if err != nil {
 		return "unknown", nil
 	}
-	return v, nil
+	current, _ := parseAptPolicyOutput(stdout)
+	return current, nil
 }
 
 // truncate shortens a string to maxLen characters, appending "..." if truncated.

@@ -1,6 +1,8 @@
 package output
 
 import (
+	"context"
+
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -171,7 +173,7 @@ func ownerIDOf(a adapters.Adapter, osName string) string {
 // adapterCheckFn is the injectable seam for querying version info in listEntryFor.
 // In production it executes a.Check(); tests stub it to eliminate network and subprocess I/O.
 var adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
-	return a.Check()
+	return a.Check(context.Background())
 }
 
 func listEntryFor(a adapters.Adapter) ListEntry {

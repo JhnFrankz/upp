@@ -900,11 +900,11 @@ func (f *fakeSkipAdapter) Name() string { return f.id }
 
 func (f *fakeSkipAdapter) Detect() bool { return false }
 
-func (f *fakeSkipAdapter) Check() (adapters.UpdateInfo, error) {
+func (f *fakeSkipAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	return adapters.UpdateInfo{}, nil
 }
 
-func (f *fakeSkipAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (f *fakeSkipAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 

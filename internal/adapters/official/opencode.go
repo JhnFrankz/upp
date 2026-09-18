@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"path"
@@ -13,14 +14,17 @@ import (
 // Swapped in tests via setExecFakes.
 var opencodeLatestTagFn = fetchOpenCodeLatestTag
 
-func fetchOpenCodeLatestTag() (string, error) {
+func fetchOpenCodeLatestTag(ctx context.Context) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	client := &http.Client{
 		Timeout: adapters.CheckTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
-	req, err := http.NewRequest(http.MethodHead, "https://github.com/anomalyco/opencode/releases/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://github.com/anomalyco/opencode/releases/latest", nil)
 	if err != nil {
 		return "", err
 	}
@@ -52,18 +56,18 @@ func (a *OpenCodeAdapter) Detect() bool {
 	return lookPath("opencode")
 }
 
-func (a *OpenCodeAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *OpenCodeAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("opencode is not installed")
 	}
 
-	current := commandOutput("opencode", "--version")
+	current := commandOutput(ctx, "opencode", "--version")
 	current = extractVersion(current)
 
 	latest := current
 	updateAvailable := false
 
-	if tag, err := opencodeLatestTagFn(); err == nil && tag != "" {
+	if tag, err := opencodeLatestTagFn(ctx); err == nil && tag != "" {
 		if v := extractVersion(tag); v != "" {
 			latest = v
 			updateAvailable = current != "" && semverCompare(current, latest)
@@ -77,12 +81,12 @@ func (a *OpenCodeAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
-func (a *OpenCodeAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("opencode is not installed")
 	}
 
-	before := extractVersion(commandOutput("opencode", "--version"))
+	before := extractVersion(commandOutput(ctx, "opencode", "--version"))
 
 	if dryRun {
 		return adapters.Result{
@@ -94,7 +98,7 @@ func (a *OpenCodeAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 	cmd := "opencode update"
 
-	_, stderr, err := runCmd(cmd)
+	_, stderr, err := runCmd(ctx, cmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -113,7 +117,7 @@ func (a *OpenCodeAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := extractVersion(commandOutput("opencode", "--version"))
+	after := extractVersion(commandOutput(ctx, "opencode", "--version"))
 	return adapters.Result{
 		Success: true,
 		Before:  before,

@@ -77,7 +77,7 @@ func safeCheck(ctx context.Context, a adapters.Adapter) (oc CheckOutcome) {
 		}
 	}
 
-	updateInfo, err := a.Check()
+	updateInfo, err := a.Check(ctx)
 	if err != nil {
 		wrappedErr := TimeoutErr(toolName, "check", err)
 		return CheckOutcome{

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"testing"
 
@@ -19,11 +20,11 @@ type checkGateAdapter struct {
 
 func (a *checkGateAdapter) Name() string { return a.info.ID }
 func (a *checkGateAdapter) Detect() bool { return true }
-func (a *checkGateAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *checkGateAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	a.checkRan = true
 	return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
 }
-func (a *checkGateAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *checkGateAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 func (a *checkGateAdapter) Info() adapters.ToolInfo { return a.info }
@@ -207,7 +208,7 @@ func TestAuthorizeChecks_GatesByRisk(t *testing.T) {
 			}
 
 			for i, a := range kept {
-				if _, checkErr := a.Check(); checkErr != nil {
+				if _, checkErr := a.Check(context.Background()); checkErr != nil {
 					t.Fatalf("Check() on position %d: %v", i, checkErr)
 				}
 			}

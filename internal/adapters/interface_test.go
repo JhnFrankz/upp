@@ -1,6 +1,9 @@
 package adapters
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // TestRenderPackageCommand drives the pure rendering helper that turns a
 // manager's declared per-package command template into the concrete command
@@ -49,3 +52,21 @@ func TestRenderPackageCommand(t *testing.T) {
 		})
 	}
 }
+
+// TestAdapter_ContextContract verifies that Adapter implementations receive and respect context.Context.
+func TestAdapter_ContextContract(t *testing.T) {
+	// Verify mock adapter satisfies Adapter with context signatures.
+	var _ Adapter = (*testCtxAdapter)(nil)
+}
+
+type testCtxAdapter struct{}
+
+func (t *testCtxAdapter) Name() string { return "test" }
+func (t *testCtxAdapter) Detect() bool { return true }
+func (t *testCtxAdapter) Check(ctx context.Context) (UpdateInfo, error) {
+	return UpdateInfo{}, ctx.Err()
+}
+func (t *testCtxAdapter) Update(ctx context.Context, dryRun bool) (Result, error) {
+	return Result{}, ctx.Err()
+}
+func (t *testCtxAdapter) Info() ToolInfo { return ToolInfo{ID: "test"} }

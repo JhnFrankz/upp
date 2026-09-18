@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -15,11 +16,15 @@ type mockPlanAdapter struct {
 	info adapters.ToolInfo
 }
 
-func (m *mockPlanAdapter) Name() string                                { return m.info.Name }
-func (m *mockPlanAdapter) Detect() bool                                { return true }
-func (m *mockPlanAdapter) Check() (adapters.UpdateInfo, error)         { return adapters.UpdateInfo{}, nil }
-func (m *mockPlanAdapter) Update(dryRun bool) (adapters.Result, error) { return adapters.Result{}, nil }
-func (m *mockPlanAdapter) Info() adapters.ToolInfo                     { return m.info }
+func (m *mockPlanAdapter) Name() string { return m.info.Name }
+func (m *mockPlanAdapter) Detect() bool { return true }
+func (m *mockPlanAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (m *mockPlanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{}, nil
+}
+func (m *mockPlanAdapter) Info() adapters.ToolInfo { return m.info }
 
 func TestPlan_OutcomeSegregation(t *testing.T) {
 	cfg := &config.Config{}

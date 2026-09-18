@@ -48,7 +48,7 @@ func TestUpdate_TimeoutErrorPropagates(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setExecFakes(t, tt.fakes)
 
-			result, err := tt.newAdpt().Update(false)
+			result, err := tt.newAdpt().Update(context.Background(), false)
 			if err != nil {
 				t.Fatalf("Update() unexpected error: %v", err)
 			}
@@ -74,7 +74,7 @@ func TestRunCmd_UpdateTimeoutKills(t *testing.T) {
 	adapters.UpdateTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { adapters.UpdateTimeout = orig })
 
-	_, _, err := runCmd("sleep 2")
+	_, _, err := runCmd(context.Background(), "sleep 2")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("runCmd() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
@@ -91,7 +91,7 @@ func TestRunCmdArgs_CheckTimeoutKills(t *testing.T) {
 	adapters.CheckTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { adapters.CheckTimeout = orig })
 
-	_, _, err := runCmdArgs("sleep", "2")
+	_, _, err := runCmdArgs(context.Background(), "sleep", "2")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("runCmdArgs() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
@@ -114,7 +114,7 @@ func TestRunCmdArgs_GroupKillProvesGrandchildrenDie(t *testing.T) {
 	t.Cleanup(func() { adapters.CheckTimeout = orig })
 
 	marker := "sleep 28.91" // unique marker; only this test ever runs it
-	_, _, err := runCmdArgs("sh", "-c", marker+" & wait")
+	_, _, err := runCmdArgs(context.Background(), "sh", "-c", marker+" & wait")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("runCmdArgs() error = %v, want DeadlineExceeded", err)
 	}
@@ -140,7 +140,7 @@ func TestRunCmd_GroupKillProvesGrandchildrenDie(t *testing.T) {
 	t.Cleanup(func() { adapters.UpdateTimeout = orig })
 
 	marker := "sleep 29.17" // unique marker; only this test ever runs it
-	_, _, err := runCmd("sh -c '" + marker + " & wait'")
+	_, _, err := runCmd(context.Background(), "sh -c '"+marker+" & wait'")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("runCmd() error = %v, want DeadlineExceeded", err)
 	}

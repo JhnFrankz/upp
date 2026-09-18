@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"errors"
 	"runtime"
 	"strings"
@@ -1037,7 +1038,7 @@ func TestUpdate(t *testing.T) {
 			}
 			setExecFakes(t, tt.fakes)
 
-			got, err := tt.newAdpt().Update(tt.dryRun)
+			got, err := tt.newAdpt().Update(context.Background(), tt.dryRun)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("Update() error = nil, want error when tool is not installed")
@@ -1170,7 +1171,7 @@ func TestUpdateDelegation(t *testing.T) {
 			}
 			setExecFakes(t, tt.fakes)
 
-			got, err := tt.newAdpt().Update(tt.dryRun)
+			got, err := tt.newAdpt().Update(context.Background(), tt.dryRun)
 			if err != nil {
 				t.Fatalf("Update() unexpected error: %v", err)
 			}
@@ -1345,7 +1346,7 @@ func TestUpdatePackage(t *testing.T) {
 			if pkg == "" {
 				pkg = "gh"
 			}
-			res, err := updater.UpdatePackage(pkg)
+			res, err := updater.UpdatePackage(context.Background(), pkg)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("UpdatePackage() error = nil, want error")
@@ -1384,7 +1385,7 @@ func TestPnpmCorruptionRecoveryMessage(t *testing.T) {
 		},
 	})
 
-	result, err := (&PnpmAdapter{}).Update(false)
+	result, err := (&PnpmAdapter{}).Update(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Update() unexpected error: %v", err)
 	}
@@ -1431,11 +1432,11 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 			origRunCmd := runCmdFn
 			origRunCmdArgs := runCmdArgsFn
 			origLookPath := lookPathFn
-			runCmdFn = func(command string) (string, string, error) {
+			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 				captured = append(captured, command)
 				return "", "", nil
 			}
-			runCmdArgsFn = func(string, ...string) (string, string, error) { return "", "", nil }
+			runCmdArgsFn = func(ctx context.Context, s string, strings ...string) (string, string, error) { return "", "", nil }
 			lookPathFn = func(string) bool { return true }
 			t.Cleanup(func() {
 				runCmdFn = origRunCmd
@@ -1452,13 +1453,13 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 			var res adapters.Result
 			var err error
 			if tt.pkg == "" {
-				res, err = tt.newAdpt().Update(false)
+				res, err = tt.newAdpt().Update(context.Background(), false)
 			} else {
 				updater, ok := tt.newAdpt().(adapters.PackageUpdater)
 				if !ok {
 					t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
 				}
-				res, err = updater.UpdatePackage(tt.pkg)
+				res, err = updater.UpdatePackage(context.Background(), tt.pkg)
 			}
 			if err != nil {
 				t.Fatalf("update returned unexpected error: %v", err)

@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -21,7 +22,7 @@ func (a *ScoopAdapter) Detect() bool {
 	return lookPath("scoop")
 }
 
-func (a *ScoopAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *ScoopAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("scoop is not installed")
 	}
@@ -34,7 +35,7 @@ func (a *ScoopAdapter) Check() (adapters.UpdateInfo, error) {
 	// current-only and reports no availability, no error.
 	current := "unknown"
 	latest := "unknown"
-	if out := commandOutput("scoop", "status"); out != "" {
+	if out := commandOutput(ctx, "scoop", "status"); out != "" {
 		if cur, lat, ok := parseScoopStatusOutput(out); ok {
 			current = cur
 			latest = lat
@@ -48,13 +49,13 @@ func (a *ScoopAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
-func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("scoop is not installed")
 	}
 
 	before := "unknown"
-	if out := commandOutput("scoop", "status"); out != "" {
+	if out := commandOutput(ctx, "scoop", "status"); out != "" {
 		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
 			before = cur
 		}
@@ -71,7 +72,7 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// Self-only: `scoop update scoop` upgrades Scoop itself, never the
 	// packages it manages. A bulk `scoop update *` (which updates every
 	// app) is intentionally avoided — self-only semantics per point 4.
-	_, stderr, err := runCmd(scoopSelfUpdateCmd)
+	_, stderr, err := runCmd(ctx, scoopSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -91,7 +92,7 @@ func (a *ScoopAdapter) Update(dryRun bool) (adapters.Result, error) {
 	}
 
 	after := before
-	if out := commandOutput("scoop", "status"); out != "" {
+	if out := commandOutput(ctx, "scoop", "status"); out != "" {
 		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
 			after = cur
 		}

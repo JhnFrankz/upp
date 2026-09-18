@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -14,11 +15,11 @@ type checkSpyAdapter struct {
 
 func (a *checkSpyAdapter) Name() string { return a.info.ID }
 func (a *checkSpyAdapter) Detect() bool { return true }
-func (a *checkSpyAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *checkSpyAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	a.checkRan = true
 	return adapters.UpdateInfo{CurrentVersion: "1.2.3"}, nil
 }
-func (a *checkSpyAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *checkSpyAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 func (a *checkSpyAdapter) Info() adapters.ToolInfo { return a.info }

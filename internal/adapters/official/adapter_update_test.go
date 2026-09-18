@@ -27,13 +27,13 @@ func TestCommandOutput(t *testing.T) {
 		{
 			name:  "success-trimmed",
 			fakes: execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "hello\n"}}},
-			call:  func() string { return commandOutput("echo", "hello") },
+			call:  func() string { return commandOutput(context.Background(), "echo", "hello") },
 			want:  "hello",
 		},
 		{
 			name:  "command-error-empty",
 			fakes: execFakes{cmdArgs: map[string]fakeResult{"echo": {err: errors.New("boom")}}},
-			call:  func() string { return commandOutput("echo", "hello") },
+			call:  func() string { return commandOutput(context.Background(), "echo", "hello") },
 			want:  "",
 		},
 	}
@@ -58,13 +58,13 @@ func TestShellOutput(t *testing.T) {
 		{
 			name:  "success-trimmed",
 			fakes: execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "hello\n"}}},
-			call:  func() string { return shellOutput("echo hello") },
+			call:  func() string { return shellOutput(context.Background(), "echo hello") },
 			want:  "hello",
 		},
 		{
 			name:  "command-error-empty",
 			fakes: execFakes{shell: map[string]fakeResult{"echo hello": {err: errors.New("boom")}}},
-			call:  func() string { return shellOutput("echo hello") },
+			call:  func() string { return shellOutput(context.Background(), "echo hello") },
 			want:  "",
 		},
 	}
@@ -93,7 +93,7 @@ func TestCommandOutputErr(t *testing.T) {
 
 	t.Run("success-passthrough", func(t *testing.T) {
 		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "hello\n"}}})
-		out, err := commandOutputErr("echo", "hello")
+		out, err := commandOutputErr(context.Background(), "echo", "hello")
 		if err != nil {
 			t.Fatalf("commandOutputErr unexpected error: %v", err)
 		}
@@ -104,7 +104,7 @@ func TestCommandOutputErr(t *testing.T) {
 
 	t.Run("failure-structured-and-chained", func(t *testing.T) {
 		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "partial\n", stderr: "boom details\n", err: fakeErr}}})
-		out, err := commandOutputErr("echo", "hello")
+		out, err := commandOutputErr(context.Background(), "echo", "hello")
 		if err == nil {
 			t.Fatal("commandOutputErr error = nil, want structured error")
 		}
@@ -126,7 +126,7 @@ func TestCommandOutputErr(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("real sh child not available on windows")
 		}
-		_, err := commandOutputErr("sh", "-c", "exit 7")
+		_, err := commandOutputErr(context.Background(), "sh", "-c", "exit 7")
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
 			t.Fatalf("commandOutputErr() error = %v, want *exec.ExitError", err)
@@ -141,7 +141,7 @@ func TestCommandOutputErr(t *testing.T) {
 
 	t.Run("deadline-exceeded-preserved", func(t *testing.T) {
 		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {err: context.DeadlineExceeded}}})
-		_, err := commandOutputErr("echo", "hello")
+		_, err := commandOutputErr(context.Background(), "echo", "hello")
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("commandOutputErr() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 		}
@@ -153,7 +153,7 @@ func TestShellOutputErr(t *testing.T) {
 
 	t.Run("success-passthrough", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "hello\n"}}})
-		out, err := shellOutputErr("echo hello", "echo")
+		out, err := shellOutputErr(context.Background(), "echo hello", "echo")
 		if err != nil {
 			t.Fatalf("shellOutputErr unexpected error: %v", err)
 		}
@@ -164,7 +164,7 @@ func TestShellOutputErr(t *testing.T) {
 
 	t.Run("failure-structured-and-chained", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "partial\n", stderr: "boom details\n", err: fakeErr}}})
-		out, err := shellOutputErr("echo hello", "echo")
+		out, err := shellOutputErr(context.Background(), "echo hello", "echo")
 		if err == nil {
 			t.Fatal("shellOutputErr error = nil, want structured error")
 		}
@@ -186,7 +186,7 @@ func TestShellOutputErr(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("real sh child not available on windows")
 		}
-		_, err := shellOutputErr("exit 7", "sh")
+		_, err := shellOutputErr(context.Background(), "exit 7", "sh")
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
 			t.Fatalf("shellOutputErr() error = %v, want *exec.ExitError", err)
@@ -201,7 +201,7 @@ func TestShellOutputErr(t *testing.T) {
 
 	t.Run("deadline-exceeded-preserved", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {err: context.DeadlineExceeded}}})
-		_, err := shellOutputErr("echo hello", "echo")
+		_, err := shellOutputErr(context.Background(), "echo hello", "echo")
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("shellOutputErr() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 		}
@@ -410,7 +410,7 @@ func TestRunCmd_Success(t *testing.T) {
 		t.Skip("skipping shell test on windows")
 	}
 
-	stdout, stderr, err := runCmd("echo hello")
+	stdout, stderr, err := runCmd(context.Background(), "echo hello")
 	if err != nil {
 		t.Fatalf("runCmd error: %v", err)
 	}
@@ -425,14 +425,14 @@ func TestRunCmd_Failure(t *testing.T) {
 		t.Skip("skipping shell test on windows")
 	}
 
-	_, _, err := runCmd("exit 1")
+	_, _, err := runCmd(context.Background(), "exit 1")
 	if err == nil {
 		t.Error("runCmd with 'exit 1' should return error")
 	}
 }
 
 func TestRunCmdArgs_Success(t *testing.T) {
-	stdout, _, err := runCmdArgs("echo", "hello")
+	stdout, _, err := runCmdArgs(context.Background(), "echo", "hello")
 	if err != nil {
 		t.Fatalf("runCmdArgs error: %v", err)
 	}

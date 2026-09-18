@@ -1270,7 +1270,7 @@ func TestCheck(t *testing.T) {
 				}
 			}
 
-			got, err := tt.newAdpt().Check()
+			got, err := tt.newAdpt().Check(context.Background())
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("Check() error = nil, want error")
@@ -1506,7 +1506,7 @@ func TestCheckPackage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setExecFakes(t, tt.fakes)
 
-			got, err := tt.checker.CheckPackage(tt.pkg)
+			got, err := tt.checker.CheckPackage(context.Background(), tt.pkg)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("CheckPackage() error = nil, want error")
@@ -1544,8 +1544,8 @@ func TestWingetCheckPackageRunsReadOnlyListing(t *testing.T) {
 	origRunCmd := runCmdFn
 	origRunCmdArgs := runCmdArgsFn
 	origLookPath := lookPathFn
-	runCmdFn = func(string) (string, string, error) { return "", "", nil }
-	runCmdArgsFn = func(name string, args ...string) (string, string, error) {
+	runCmdFn = func(context.Context, string) (string, string, error) { return "", "", nil }
+	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
 		captured = append(captured, append([]string{name}, args...))
 		return table, "", nil
 	}
@@ -1556,7 +1556,7 @@ func TestWingetCheckPackageRunsReadOnlyListing(t *testing.T) {
 		lookPathFn = origLookPath
 	})
 
-	got, err := (&WingetAdapter{}).CheckPackage(pkg)
+	got, err := (&WingetAdapter{}).CheckPackage(context.Background(), pkg)
 	if err != nil {
 		t.Fatalf("CheckPackage() unexpected error: %v", err)
 	}
@@ -1677,13 +1677,13 @@ func TestAptCheckPackage_StructuredExecution(t *testing.T) {
 	})
 	var shellCalled bool
 	origRunCmd := runCmdFn
-	runCmdFn = func(command string) (string, string, error) {
+	runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 		shellCalled = true
 		return "", "", nil
 	}
 	t.Cleanup(func() { runCmdFn = origRunCmd })
 
-	info, err := apt.CheckPackage("gh")
+	info, err := apt.CheckPackage(context.Background(), "gh")
 	if err != nil {
 		t.Fatalf("CheckPackage() unexpected error: %v", err)
 	}
@@ -1713,13 +1713,13 @@ func TestPacmanCheckPackage_StructuredExecution(t *testing.T) {
 	})
 	var shellCalled bool
 	origRunCmd := runCmdFn
-	runCmdFn = func(command string) (string, string, error) {
+	runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 		shellCalled = true
 		return "", "", nil
 	}
 	t.Cleanup(func() { runCmdFn = origRunCmd })
 
-	info, err := pac.CheckPackage("ripgrep")
+	info, err := pac.CheckPackage(context.Background(), "ripgrep")
 	if err != nil {
 		t.Fatalf("CheckPackage() unexpected error: %v", err)
 	}

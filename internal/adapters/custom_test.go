@@ -146,7 +146,7 @@ func TestCustomAdapter_Check_NoCheckCmd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := ca.Check()
+	info, err := ca.Check(context.Background())
 	if err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
@@ -168,7 +168,7 @@ func TestCustomAdapter_Check_WithCheckCmd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := ca.Check()
+	info, err := ca.Check(context.Background())
 	if err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestCustomAdapter_Check_MissingBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = ca.Check()
+	_, err = ca.Check(context.Background())
 	if err == nil {
 		t.Fatal("Check() expected error when binary missing, got nil")
 	}
@@ -204,7 +204,7 @@ func TestCustomAdapter_Check_CheckTimeoutKills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = ca.Check()
+	_, err = ca.Check(context.Background())
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("Check() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
@@ -219,7 +219,7 @@ func TestCustomAdapter_Update_DryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ca.Update(true) // dry run
+	result, err := ca.Update(context.Background(), true) // dry run
 	if err != nil {
 		t.Fatalf("Update(dryRun=true) error = %v", err)
 	}
@@ -237,7 +237,7 @@ func TestCustomAdapter_Update_DryRun_Privileges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ca.Update(true)
+	result, err := ca.Update(context.Background(), true)
 	if err != nil {
 		t.Fatalf("Update(dryRun=true) unexpected error = %v", err)
 	}
@@ -261,7 +261,7 @@ func TestCustomAdapter_Update_MissingBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ca.Update(false)
+	result, err := ca.Update(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Update() returned error %v, expected error inside Result", err)
 	}
@@ -272,7 +272,7 @@ func TestCustomAdapter_Update_MissingBinary(t *testing.T) {
 		t.Error("Update(dryRun=false) Result.Error = nil, want structured error when binary missing")
 	}
 
-	dryResult, err := ca.Update(true)
+	dryResult, err := ca.Update(context.Background(), true)
 	if err != nil {
 		t.Fatalf("Update(dryRun=true) returned error %v", err)
 	}
@@ -296,7 +296,7 @@ func TestCustomAdapter_Update_Execute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ca.Update(false)
+	result, err := ca.Update(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
@@ -317,7 +317,7 @@ func TestCustomAdapter_Update_Failure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ca.Update(false)
+	result, err := ca.Update(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Update() returned unexpected error: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestCustomAdapter_Privileges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ca.Update(false)
+	result, err := ca.Update(context.Background(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,10 +367,10 @@ type fakeManagerAdapter struct {
 
 func (f *fakeManagerAdapter) Name() string { return f.name }
 func (f *fakeManagerAdapter) Detect() bool { return true }
-func (f *fakeManagerAdapter) Check() (UpdateInfo, error) {
+func (f *fakeManagerAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 	return UpdateInfo{CurrentVersion: "1.0.0", LatestVersion: "1.0.0", UpdateAvailable: false}, nil
 }
-func (f *fakeManagerAdapter) Update(dryRun bool) (Result, error) {
+func (f *fakeManagerAdapter) Update(ctx context.Context, dryRun bool) (Result, error) {
 	f.updated = true
 	return Result{Success: true, Before: "1.0.0", After: "1.1.0"}, nil
 }
@@ -404,7 +404,7 @@ func TestCustomAdapter_Update_DelegatesToManager(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := ca.Update(false)
+	result, err := ca.Update(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Update() unexpected error: %v", err)
 	}
@@ -487,7 +487,7 @@ func TestShellExec(t *testing.T) {
 		},
 	})
 
-	stdout, err := shellExec("echo hello")
+	stdout, err := shellExec(context.Background(), "echo hello")
 	if err != nil {
 		t.Fatalf("shellExec() error = %v", err)
 	}
@@ -519,7 +519,7 @@ func TestShellExec_UpdateTimeoutKills(t *testing.T) {
 		},
 	})
 
-	_, err := shellExec("sleep 2")
+	_, err := shellExec(context.Background(), "sleep 2")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("shellExec() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}

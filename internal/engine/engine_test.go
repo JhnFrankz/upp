@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -17,10 +18,14 @@ type dummyAdapter struct {
 	name string
 }
 
-func (d *dummyAdapter) Name() string                                { return d.name }
-func (d *dummyAdapter) Detect() bool                                { return true }
-func (d *dummyAdapter) Check() (adapters.UpdateInfo, error)         { return adapters.UpdateInfo{}, nil }
-func (d *dummyAdapter) Update(dryRun bool) (adapters.Result, error) { return adapters.Result{}, nil }
+func (d *dummyAdapter) Name() string { return d.name }
+func (d *dummyAdapter) Detect() bool { return true }
+func (d *dummyAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (d *dummyAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{}, nil
+}
 func (d *dummyAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{ID: d.name, Name: d.name}
 }

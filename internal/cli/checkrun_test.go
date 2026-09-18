@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -21,13 +22,13 @@ type fakeDelayedAdapter struct {
 
 func (f *fakeDelayedAdapter) Name() string { return f.name }
 func (f *fakeDelayedAdapter) Detect() bool { return true }
-func (f *fakeDelayedAdapter) Check() (adapters.UpdateInfo, error) {
+func (f *fakeDelayedAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if f.delay > 0 {
 		time.Sleep(f.delay)
 	}
 	return f.info, f.checkErr
 }
-func (f *fakeDelayedAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (f *fakeDelayedAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 func (f *fakeDelayedAdapter) Info() adapters.ToolInfo {
