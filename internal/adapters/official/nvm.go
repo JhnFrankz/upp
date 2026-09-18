@@ -119,13 +119,13 @@ func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'")
+	_, stderr, err := runCmd("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install --lts'")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
 			Before:  before,
 			After:   before,
-			Error:   fmt.Errorf("nvm install stable failed: %w", err),
+			Error:   fmt.Errorf("nvm install --lts failed: %w", err),
 		}, nil
 	}
 
@@ -156,7 +156,7 @@ func (a *NVMAdapter) Info() adapters.ToolInfo {
 		Kind:         adapters.KindTool,
 		// Command is the exact string Update() runs, declared so the plan's
 		// RiskCommand and the confirmation gate see what actually executes.
-		Command: "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'",
+		Command: "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install --lts'",
 	}
 }
 

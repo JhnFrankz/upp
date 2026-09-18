@@ -14,20 +14,20 @@ import (
 // runCmd/runCmdArgs. A mismatch between key and production command is a test
 // failure, never a silent fake miss.
 const (
-	aptUpdateCmd        = "sudo apt install --only-upgrade apt"
-	pacmanUpdateCmd     = "sudo pacman -S --noconfirm pacman"
-	brewUpdateCmd       = "brew update"
-	npmUpdateCmd        = "npm update -g"
-	pnpmUpdateCmd       = "pnpm update -g"
-	pnpmPruneCmd        = "pnpm store prune 2>/dev/null"
-	bunUpdateCmd        = "bun upgrade"
-	goLinuxUpdateCmd    = "curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
-	opencodeUpdateCmd   = "curl -fsSL https://opencode.ai/install | bash"
-	wingetUpdateCmd     = "winget upgrade winget"
-	scoopUpdateCmd      = "scoop update scoop"
-	nvmInstallStableCmd = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install stable'"
-	uvSelfUpdateCmd     = "uv self update"
-	uvToolUpgradeCmd    = "uv tool upgrade --all"
+	aptUpdateCmd      = "sudo apt install --only-upgrade apt"
+	pacmanUpdateCmd   = "sudo pacman -S --noconfirm pacman"
+	brewUpdateCmd     = "brew update"
+	npmUpdateCmd      = "npm update -g"
+	pnpmUpdateCmd     = "pnpm update -g"
+	pnpmPruneCmd      = "pnpm store prune 2>/dev/null"
+	bunUpdateCmd      = "bun upgrade"
+	goLinuxUpdateCmd  = "curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
+	opencodeUpdateCmd = "opencode update"
+	wingetUpdateCmd   = "winget upgrade winget"
+	scoopUpdateCmd    = "scoop update scoop"
+	nvmInstallLtsCmd  = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install --lts'"
+	uvSelfUpdateCmd   = "uv self update"
+	uvToolUpgradeCmd  = "uv tool upgrade --all"
 )
 
 // failIfRun is a fake result that fails loudly: any row that keys a command
@@ -815,8 +815,8 @@ func TestUpdate(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd:       {stdout: "v20.11.0"},
-					nvmInstallStableCmd: failIfRun,
+					nvmCurrentCmd:    {stdout: "v20.11.0"},
+					nvmInstallLtsCmd: failIfRun,
 				},
 			},
 			dryRun: true,
@@ -828,8 +828,8 @@ func TestUpdate(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd:       {stdout: "v20.11.0"},
-					nvmInstallStableCmd: {err: errors.New("nvm: curl failed")},
+					nvmCurrentCmd:    {stdout: "v20.11.0"},
+					nvmInstallLtsCmd: {err: errors.New("nvm: curl failed")},
 				},
 			},
 			want:      adapters.Result{Success: false, Before: "v20.11.0", After: "v20.11.0"},
@@ -841,8 +841,8 @@ func TestUpdate(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd:       {stdout: "v20.11.0"},
-					nvmInstallStableCmd: {stderr: "error: version not found"}},
+					nvmCurrentCmd:    {stdout: "v20.11.0"},
+					nvmInstallLtsCmd: {stderr: "error: version not found"}},
 			},
 			want:      adapters.Result{Success: false, Before: "v20.11.0", After: "v20.11.0"},
 			resultErr: true,
@@ -853,8 +853,8 @@ func TestUpdate(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd:       {stdout: "v20.11.0"},
-					nvmInstallStableCmd: {},
+					nvmCurrentCmd:    {stdout: "v20.11.0"},
+					nvmInstallLtsCmd: {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "v20.11.0", After: "v20.11.0"},

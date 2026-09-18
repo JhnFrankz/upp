@@ -25,7 +25,7 @@ upp detects installed tools, checks for updates, and applies them safely with in
 | pacman | Linux | `sudo pacman -S --noconfirm pacman` | Policy: Gated | Privileges: sudo |
 | winget | Windows | `winget upgrade winget` | Policy: AlwaysUpdate | Privileges: None |
 | scoop | Windows | `scoop update scoop` | Policy: AlwaysUpdate | Privileges: None |
-| nvm | Linux, macOS, Windows | `nvm install stable` | Policy: Gated | Privileges: None |
+| nvm | Linux, macOS, Windows | `nvm install --lts` | Policy: Gated | Privileges: None |
 | npm | Linux, macOS, Windows | `npm update -g` | Policy: Gated | Privileges: None |
 | pnpm | Linux, macOS, Windows | `pnpm update -g` | Policy: Gated | Privileges: None |
 | bun | Linux, macOS, Windows | `bun upgrade` | Policy: AlwaysUpdate | Privileges: None |
@@ -33,7 +33,7 @@ upp detects installed tools, checks for updates, and applies them safely with in
 | gh | Linux, macOS, Windows | `→ apt / brew / winget` | Policy: Gated | Privileges: None |
 | docker | Linux, macOS, Windows | `→ apt / brew / winget` | Policy: Gated | Privileges: None |
 | go | Linux, macOS, Windows | `manual binary replace / → brew / winget` | Policy: AlwaysUpdate | Privileges: None |
-| opencode | Linux, macOS, Windows | `curl installer` | Policy: AlwaysUpdate | Privileges: None |
+| opencode | Linux, macOS, Windows | `opencode update` | Policy: AlwaysUpdate | Privileges: None |
 
 ## Installation
 

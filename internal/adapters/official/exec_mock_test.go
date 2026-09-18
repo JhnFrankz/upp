@@ -17,9 +17,11 @@ type fakeResult struct {
 // binary name (or "name arg1 arg2..." for a specific invocation), lookPath
 // by binary name.
 type execFakes struct {
-	shell    map[string]fakeResult
-	cmdArgs  map[string]fakeResult
-	lookPath map[string]bool
+	shell          map[string]fakeResult
+	cmdArgs        map[string]fakeResult
+	lookPath       map[string]bool
+	opencodeTag    string
+	opencodeTagErr error
 }
 
 // setExecFakes swaps the package exec seam variables (runCmdFn,
@@ -31,6 +33,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 	origRunCmd := runCmdFn
 	origRunCmdArgs := runCmdArgsFn
 	origLookPath := lookPathFn
+	origOpencodeTag := opencodeLatestTagFn
 
 	runCmdFn = func(command string) (stdout, stderr string, err error) {
 		r := f.shell[command]
@@ -52,10 +55,17 @@ func setExecFakes(t *testing.T, f execFakes) {
 	lookPathFn = func(name string) bool {
 		return f.lookPath[name]
 	}
+	opencodeLatestTagFn = func() (string, error) {
+		if f.opencodeTag != "" || f.opencodeTagErr != nil {
+			return f.opencodeTag, f.opencodeTagErr
+		}
+		return "", nil
+	}
 
 	t.Cleanup(func() {
 		runCmdFn = origRunCmd
 		runCmdArgsFn = origRunCmdArgs
 		lookPathFn = origLookPath
+		opencodeLatestTagFn = origOpencodeTag
 	})
 }

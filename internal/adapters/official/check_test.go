@@ -697,6 +697,36 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v0.3.6", UpdateAvailable: false},
 		},
 		{
+			name:    "opencode/update-available",
+			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
+			fakes: execFakes{
+				lookPath:    map[string]bool{"opencode": true},
+				cmdArgs:     map[string]fakeResult{"opencode": {stdout: "opencode v0.3.6"}},
+				opencodeTag: "v1.18.31",
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v1.18.31", UpdateAvailable: true},
+		},
+		{
+			name:    "opencode/already-latest",
+			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
+			fakes: execFakes{
+				lookPath:    map[string]bool{"opencode": true},
+				cmdArgs:     map[string]fakeResult{"opencode": {stdout: "opencode v1.18.31"}},
+				opencodeTag: "v1.18.31",
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v1.18.31", LatestVersion: "v1.18.31", UpdateAvailable: false},
+		},
+		{
+			name:    "opencode/network-error-fallback",
+			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
+			fakes: execFakes{
+				lookPath:       map[string]bool{"opencode": true},
+				cmdArgs:        map[string]fakeResult{"opencode": {stdout: "opencode v0.3.6"}},
+				opencodeTagErr: errors.New("network unreachable"),
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v0.3.6", UpdateAvailable: false},
+		},
+		{
 			name:    "opencode/empty-output",
 			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
 			fakes: execFakes{
