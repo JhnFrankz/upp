@@ -57,6 +57,7 @@ type fakeUpdateAdapter struct {
 	// like a real official manager. Empty for tool fakes.
 	selfUpdateCommand    string
 	packageUpdateCommand string
+	checkCommand         string
 
 	checkPackage    func(pkg string) (adapters.UpdateInfo, error)
 	updatePackage   func(pkg string) (adapters.Result, error)
@@ -71,14 +72,14 @@ func (f *fakeUpdateAdapter) Name() string { return f.name }
 
 func (f *fakeUpdateAdapter) Detect() bool { return !f.noDetect }
 
-func (f *fakeUpdateAdapter) Check() (adapters.UpdateInfo, error) {
+func (f *fakeUpdateAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.checkCount++
 	return f.info, f.checkErr
 }
 
-func (f *fakeUpdateAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (f *fakeUpdateAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updated = true
@@ -102,13 +103,14 @@ func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
 		ManagerPackage:       f.managerPackage,
 		SelfUpdateCommand:    f.selfUpdateCommand,
 		PackageUpdateCommand: f.packageUpdateCommand,
+		CheckCommand:         f.checkCommand,
 	}
 }
 
 // CheckPackage runs the wired per-package availability seam, or defaults to
 // current (no update) when unset — so a fake manager in a group batch reports
 // no availability unless the test declares it.
-func (f *fakeUpdateAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+func (f *fakeUpdateAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	f.mu.Lock()
 	f.checkPkgCount++
 	f.lastCheckPkg = pkg
@@ -122,7 +124,7 @@ func (f *fakeUpdateAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error
 
 // UpdatePackage runs the wired per-package updater seam, or defaults to
 // success with no version change when unset.
-func (f *fakeUpdateAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+func (f *fakeUpdateAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	f.mu.Lock()
 	f.updatePkgCount++
 	f.lastUpdatePkg = pkg
@@ -386,8 +388,9 @@ func TestResolvingOwner(t *testing.T) {
 
 	t.Run("official tool resolves via ResolveOwner", func(t *testing.T) {
 		gh := official.AdapterByName("gh")
-		if got := resolvingOwner(gh, platform.OSLinux); got == nil || got.Name() != "apt" {
-			t.Errorf("resolvingOwner(gh, linux) = %v, want apt", got)
+		wantLinux := gh.Info().Manager[platform.OSLinux]
+		if got := resolvingOwner(gh, platform.OSLinux); got == nil || got.Name() != wantLinux {
+			t.Errorf("resolvingOwner(gh, linux) = %v, want %s", got, wantLinux)
 		}
 		if got := resolvingOwner(gh, platform.OSMacOS); got == nil || got.Name() != "brew" {
 			t.Errorf("resolvingOwner(gh, macos) = %v, want brew", got)
@@ -1466,7 +1469,7 @@ func TestExecutePlannedUpdate_Coverage(t *testing.T) {
 
 			var got output.ToolResult
 			run := func() {
-				got = executePlannedUpdate(gf, tt.planned, tt.fake, 1, 1, r, "linux")
+				got = executePlannedUpdate(context.Background(), gf, tt.planned, tt.fake, 1, 1, r, "linux")
 			}
 			if tt.stdin != "" {
 				withStdin(t, tt.stdin, run)

@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,17 +48,17 @@ func (a *PacmanAdapter) Info() adapters.ToolInfo {
 }
 
 // Check queries for updates to pacman itself.
-func (a *PacmanAdapter) Check() (adapters.UpdateInfo, error) {
-	return a.CheckPackage("pacman")
+func (a *PacmanAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return a.CheckPackage(ctx, "pacman")
 }
 
 // Update updates pacman itself.
-func (a *PacmanAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("pacman is not installed")
 	}
 
-	before, _ := a.CurrentVersion()
+	before, _ := a.CurrentVersion(ctx)
 	if dryRun {
 		return adapters.Result{
 			Success: true,
@@ -66,7 +67,7 @@ func (a *PacmanAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd(pacmanSelfUpdateCmd)
+	_, stderr, err := runCmd(ctx, pacmanSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -87,7 +88,7 @@ func (a *PacmanAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after, _ := a.CurrentVersion()
+	after, _ := a.CurrentVersion(ctx)
 	return adapters.Result{
 		Success:    true,
 		Before:     before,
@@ -126,15 +127,15 @@ func parsePacmanSiOutput(out string) string {
 }
 
 // CheckPackage reports the installed vs candidate version of a package under pacman.
-func (a *PacmanAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
+func (a *PacmanAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("pacman is not installed")
 	}
 
-	qOut := commandOutput("pacman", "-Q", pkg)
+	qOut := commandOutput(ctx, "pacman", "-Q", pkg)
 	current := parsePacmanQOutput(qOut)
 
-	siOut, err := commandOutputErr("pacman", "-Si", pkg)
+	siOut, err := commandOutputErr(ctx, "pacman", "-Si", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -142,7 +143,7 @@ func (a *PacmanAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 
 	updateAvailable := false
 	if current != "unknown" && latest != "unknown" {
-		updateAvailable = a.compareVersions(current, latest)
+		updateAvailable = a.compareVersions(ctx, current, latest)
 	}
 
 	return adapters.UpdateInfo{
@@ -154,12 +155,12 @@ func (a *PacmanAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 
 // compareVersions compares current and latest versions using vercmp if available,
 // falling back to string inequality.
-func (a *PacmanAdapter) compareVersions(current, latest string) bool {
+func (a *PacmanAdapter) compareVersions(ctx context.Context, current, latest string) bool {
 	if current == latest {
 		return false
 	}
 	if lookPath("vercmp") {
-		out := strings.TrimSpace(commandOutput("vercmp", latest, current))
+		out := strings.TrimSpace(commandOutput(ctx, "vercmp", latest, current))
 		if n, err := strconv.Atoi(out); err == nil {
 			return n > 0
 		}
@@ -168,20 +169,20 @@ func (a *PacmanAdapter) compareVersions(current, latest string) bool {
 }
 
 // CurrentVersion returns the currently installed pacman version.
-func (a *PacmanAdapter) CurrentVersion() (string, error) {
-	out := commandOutput("pacman", "-Q", "pacman")
+func (a *PacmanAdapter) CurrentVersion(ctx context.Context) (string, error) {
+	out := commandOutput(ctx, "pacman", "-Q", "pacman")
 	v := parsePacmanQOutput(out)
 	return v, nil
 }
 
 // UpdatePackage updates a single package using pacman.
-func (a *PacmanAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("pacman is not installed")
 	}
 
-	before, _ := a.CurrentVersion()
-	_, stderr, err := runCmd(adapters.RenderPackageCommand(pacmanPackageUpdateTemplate, pkg))
+	before, _ := a.CurrentVersion(ctx)
+	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(pacmanPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -202,7 +203,7 @@ func (a *PacmanAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 		}, nil
 	}
 
-	after, _ := a.CurrentVersion()
+	after, _ := a.CurrentVersion(ctx)
 	return adapters.Result{
 		Success:    true,
 		Before:     before,

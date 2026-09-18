@@ -31,8 +31,11 @@ var (
 // deadline. The returned error is errors.Is-detectable as
 // context.DeadlineExceeded. On Windows only the direct child is terminated.
 // Delegates to the shared RunCommandWithTimeout implementation.
-func defaultShellExecWithTimeout(command string, timeout time.Duration) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func defaultShellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	var cmd *exec.Cmd

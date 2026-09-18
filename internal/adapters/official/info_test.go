@@ -24,9 +24,9 @@ type infoCase struct {
 // site (design D6, spec Update Gating) — the golden value pins the declared
 // policy per adapter. Kind distinguishes manager adapters (apt/brew/winget/
 // scoop) from owned/standalone tools; Manager is a platform→owner map that
-// is nil for standalone tools (spec Tool Ownership Declaration). No exec
-// seam involved — pure static metadata.
+// is nil for standalone tools (spec Tool Ownership Declaration).
 func TestInfo(t *testing.T) {
+	setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": true}})
 	tests := []infoCase{
 		{"apt", func() adapters.Adapter { return &AptAdapter{} }, adapters.ToolInfo{ID: "apt", Name: "APT Package Manager", Platforms: []string{"linux"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindManager, SelfUpdateCommand: aptSelfUpdateCmd, PackageUpdateCommand: aptPackageUpdateTemplate}},
 		{"brew", func() adapters.Adapter { return &BrewAdapter{} }, adapters.ToolInfo{ID: "brew", Name: "Homebrew", Platforms: []string{"linux", "macos"}, Trust: adapters.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: brewSelfUpdateCmd, PackageUpdateCommand: brewPackageUpdateTemplate}},

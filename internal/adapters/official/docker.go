@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 
@@ -17,7 +18,7 @@ func (a *DockerAdapter) Detect() bool {
 	return lookPath("docker")
 }
 
-func (a *DockerAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("docker is not installed")
 	}
@@ -37,7 +38,7 @@ func (a *DockerAdapter) Check() (adapters.UpdateInfo, error) {
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
 			}
-			return checker.CheckPackage(pkg)
+			return checker.CheckPackage(ctx, pkg)
 		}
 		return adapters.UpdateInfo{}, fmt.Errorf("docker's manager %s does not support per-package checks", runtime.GOOS)
 	}
@@ -45,7 +46,7 @@ func (a *DockerAdapter) Check() (adapters.UpdateInfo, error) {
 	return adapters.UpdateInfo{}, fmt.Errorf("docker has no resolving owner on %s", runtime.GOOS)
 }
 
-func (a *DockerAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("docker is not installed")
 	}
@@ -63,7 +64,7 @@ func (a *DockerAdapter) Update(dryRun bool) (adapters.Result, error) {
 			if pkg == "" {
 				return adapters.Result{Success: false}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
 			}
-			return updater.UpdatePackage(pkg)
+			return updater.UpdatePackage(ctx, pkg)
 		}
 		return adapters.Result{Success: false}, fmt.Errorf("docker's manager %s does not support per-package updates", runtime.GOOS)
 	}
@@ -76,6 +77,11 @@ func (a *DockerAdapter) Update(dryRun bool) (adapters.Result, error) {
 }
 
 func (a *DockerAdapter) Info() adapters.ToolInfo {
+	mgr := defaultLinuxManager()
+	pkg := "docker-ce"
+	if mgr == "pacman" {
+		pkg = "docker"
+	}
 	return adapters.ToolInfo{
 		ID:             "docker",
 		Name:           "Docker",
@@ -83,7 +89,7 @@ func (a *DockerAdapter) Info() adapters.ToolInfo {
 		Trust:          adapters.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"linux": "docker-ce", "macos": "docker", "windows": "Docker.Docker"},
+		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"linux": pkg, "macos": "docker", "windows": "Docker.Docker"},
 	}
 }

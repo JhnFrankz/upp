@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -15,11 +16,15 @@ type mockPlanAdapter struct {
 	info adapters.ToolInfo
 }
 
-func (m *mockPlanAdapter) Name() string                                { return m.info.Name }
-func (m *mockPlanAdapter) Detect() bool                                { return true }
-func (m *mockPlanAdapter) Check() (adapters.UpdateInfo, error)         { return adapters.UpdateInfo{}, nil }
-func (m *mockPlanAdapter) Update(dryRun bool) (adapters.Result, error) { return adapters.Result{}, nil }
-func (m *mockPlanAdapter) Info() adapters.ToolInfo                     { return m.info }
+func (m *mockPlanAdapter) Name() string { return m.info.Name }
+func (m *mockPlanAdapter) Detect() bool { return true }
+func (m *mockPlanAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (m *mockPlanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{}, nil
+}
+func (m *mockPlanAdapter) Info() adapters.ToolInfo { return m.info }
 
 func TestPlan_OutcomeSegregation(t *testing.T) {
 	cfg := &config.Config{}
@@ -499,11 +504,17 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 		if pu.ToolName != "GitHub CLI" {
 			t.Errorf("ToolName = %q, want GitHub CLI", pu.ToolName)
 		}
-		if pu.ManagerID != "apt" {
-			t.Errorf("ManagerID = %q, want apt", pu.ManagerID)
+		wantManagerID := official.AdapterByName("gh").Info().Manager[platform.OSLinux]
+		wantPkgName := official.AdapterByName("gh").Info().ManagerPackage[platform.OSLinux]
+		wantRiskCmd := "sudo apt install --only-upgrade gh"
+		if wantManagerID == "pacman" {
+			wantRiskCmd = "sudo pacman -S --noconfirm github-cli"
 		}
-		if pu.PackageName != "gh" {
-			t.Errorf("PackageName = %q, want gh", pu.PackageName)
+		if pu.ManagerID != wantManagerID {
+			t.Errorf("ManagerID = %q, want %s", pu.ManagerID, wantManagerID)
+		}
+		if pu.PackageName != wantPkgName {
+			t.Errorf("PackageName = %q, want %s", pu.PackageName, wantPkgName)
 		}
 		if pu.UpdatePolicy != adapters.PolicyGated {
 			t.Errorf("UpdatePolicy = %v, want PolicyGated", pu.UpdatePolicy)
@@ -514,11 +525,11 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 		if pu.LatestVersion != "2.41.0" {
 			t.Errorf("LatestVersion = %q, want 2.41.0", pu.LatestVersion)
 		}
-		if pu.RiskCommand != "sudo apt install --only-upgrade gh" {
-			t.Errorf("RiskCommand = %q, want sudo apt install --only-upgrade gh", pu.RiskCommand)
+		if pu.RiskCommand != wantRiskCmd {
+			t.Errorf("RiskCommand = %q, want %s", pu.RiskCommand, wantRiskCmd)
 		}
 		if len(pu.Privileges) != 1 || pu.Privileges[0] != "sudo" {
-			t.Errorf("Privileges = %v, want [sudo] from apt owner", pu.Privileges)
+			t.Errorf("Privileges = %v, want [sudo] from owner", pu.Privileges)
 		}
 		if pu.Trust != adapters.TrustOfficial {
 			t.Errorf("Trust = %v, want TrustOfficial", pu.Trust)
@@ -1183,6 +1194,12 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 // are additionally pinned byte-for-byte to prove no prompt churn.
 func TestPlan_RiskCommandEqualsExecutedDeclaration(t *testing.T) {
 	gh := official.AdapterByName("gh")
+	ghLinuxMgr := gh.Info().Manager[platform.OSLinux]
+	ghLinuxPkg := gh.Info().ManagerPackage[platform.OSLinux]
+	ghLinuxLiteral := "sudo apt install --only-upgrade gh"
+	if ghLinuxMgr == "pacman" {
+		ghLinuxLiteral = "sudo pacman -S --noconfirm github-cli"
+	}
 
 	tests := []struct {
 		name        string
@@ -1220,10 +1237,10 @@ func TestPlan_RiskCommandEqualsExecutedDeclaration(t *testing.T) {
 			id:  "pacman", toolName: "Pacman Package Manager", mgrID: "pacman",
 		},
 		{
-			name: "apt owned gh", osName: platform.OSLinux,
-			all: []adapters.Adapter{gh, official.AdapterByName("apt")},
-			id:  "gh", toolName: "GitHub CLI", mgrID: "apt", pkg: "gh",
-			wantLiteral: "sudo apt install --only-upgrade gh",
+			name: "linux owned gh", osName: platform.OSLinux,
+			all: []adapters.Adapter{gh, official.AdapterByName(ghLinuxMgr)},
+			id:  "gh", toolName: "GitHub CLI", mgrID: ghLinuxMgr, pkg: ghLinuxPkg,
+			wantLiteral: ghLinuxLiteral,
 		},
 		{
 			name: "brew owned gh", osName: platform.OSMacOS,

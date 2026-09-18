@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 
@@ -17,7 +18,7 @@ func (a *GhAdapter) Detect() bool {
 	return lookPath("gh")
 }
 
-func (a *GhAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("gh is not installed")
 	}
@@ -38,7 +39,7 @@ func (a *GhAdapter) Check() (adapters.UpdateInfo, error) {
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("gh has no manager package on %s", runtime.GOOS)
 			}
-			return checker.CheckPackage(pkg)
+			return checker.CheckPackage(ctx, pkg)
 		}
 		return adapters.UpdateInfo{}, fmt.Errorf("gh's manager %s does not support per-package checks", runtime.GOOS)
 	}
@@ -46,7 +47,7 @@ func (a *GhAdapter) Check() (adapters.UpdateInfo, error) {
 	return adapters.UpdateInfo{}, fmt.Errorf("gh has no resolving owner on %s", runtime.GOOS)
 }
 
-func (a *GhAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("gh is not installed")
 	}
@@ -64,7 +65,7 @@ func (a *GhAdapter) Update(dryRun bool) (adapters.Result, error) {
 			if pkg == "" {
 				return adapters.Result{Success: false}, fmt.Errorf("gh has no manager package on %s", runtime.GOOS)
 			}
-			return updater.UpdatePackage(pkg)
+			return updater.UpdatePackage(ctx, pkg)
 		}
 		return adapters.Result{Success: false}, fmt.Errorf("gh's manager %s does not support per-package updates", runtime.GOOS)
 	}
@@ -77,6 +78,11 @@ func (a *GhAdapter) Update(dryRun bool) (adapters.Result, error) {
 }
 
 func (a *GhAdapter) Info() adapters.ToolInfo {
+	mgr := defaultLinuxManager()
+	pkg := "gh"
+	if mgr == "pacman" {
+		pkg = "github-cli"
+	}
 	return adapters.ToolInfo{
 		ID:             "gh",
 		Name:           "GitHub CLI",
@@ -84,7 +90,7 @@ func (a *GhAdapter) Info() adapters.ToolInfo {
 		Trust:          adapters.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"linux": "gh", "macos": "gh", "windows": "gh"},
+		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"linux": pkg, "macos": "gh", "windows": "gh"},
 	}
 }

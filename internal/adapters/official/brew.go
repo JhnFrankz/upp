@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -24,12 +25,12 @@ func (a *BrewAdapter) Detect() bool {
 	return lookPath("brew")
 }
 
-func (a *BrewAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *BrewAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("brew is not installed")
 	}
 
-	current := commandOutput("brew", "--version")
+	current := commandOutput(ctx, "brew", "--version")
 	current = extractVersionFromString(current)
 
 	// brew doesn't have a direct "latest version" command for itself,
@@ -49,8 +50,14 @@ func (a *BrewAdapter) Check() (adapters.UpdateInfo, error) {
 // D2). It runs `brew outdated --json <pkg>` and parses the JSON array. brew
 // is an AlwaysUpdate manager, so this is still the real availability signal:
 // a brew formula present in the outdated JSON array has a newer version.
-func (a *BrewAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
-	stdout, err := commandOutputErr("brew", "outdated", "--json", pkg)
+// CheckPackage reports the installed vs latest version of an owned package
+// (e.g. `gh`, `docker`, `golang`) under brew, so an owned tool's delegated
+// Check() and the manager-group bulk path know a real update exists (design
+// D2). It runs `brew outdated --json <pkg>` and parses the JSON array. brew
+// is an AlwaysUpdate manager, so this is still the real availability signal:
+// a brew formula present in the outdated JSON array has a newer version.
+func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErr(ctx, "brew", "outdated", "--json", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -67,15 +74,15 @@ func (a *BrewAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 // bulk path (design D3): it upgrades the owned FORMULA, NOT brew's self-only
 // `brew update`. brew is a non-privileged (no sudo) manager, so the group
 // update may auto-proceed (spec security-model "Non-sudo group proceeds").
-func (a *BrewAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
 	}
 
-	before := commandOutput("brew", "--version")
+	before := commandOutput(ctx, "brew", "--version")
 	before = extractVersionFromString(before)
 
-	_, stderr, err := runCmd(adapters.RenderPackageCommand(brewPackageUpdateTemplate, pkg))
+	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(brewPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -94,7 +101,7 @@ func (a *BrewAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := commandOutput("brew", "--version")
+	after := commandOutput(ctx, "brew", "--version")
 	after = extractVersionFromString(after)
 
 	return adapters.Result{
@@ -104,12 +111,12 @@ func (a *BrewAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 	}, nil
 }
 
-func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
 	}
 
-	before := commandOutput("brew", "--version")
+	before := commandOutput(ctx, "brew", "--version")
 	before = extractVersionFromString(before)
 
 	if dryRun {
@@ -125,7 +132,7 @@ func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// versions of the packages brew manages. `brew upgrade brew` is
 	// intentionally avoided — it is non-canonical and is a known portable-ruby
 	// footgun (Homebrew's ruby shims make it error-prone).
-	_, stderr, err := runCmd(brewSelfUpdateCmd)
+	_, stderr, err := runCmd(ctx, brewSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -144,7 +151,7 @@ func (a *BrewAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := commandOutput("brew", "--version")
+	after := commandOutput(ctx, "brew", "--version")
 	after = extractVersionFromString(after)
 
 	return adapters.Result{

@@ -56,15 +56,15 @@ type ownedCheckerAdapter struct {
 	pkg     string
 }
 
-func (o *ownedCheckerAdapter) Check() (adapters.UpdateInfo, error) {
-	info, err := o.checker.CheckPackage(o.pkg)
+func (o *ownedCheckerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	info, err := o.checker.CheckPackage(ctx, o.pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
 	if info != (adapters.UpdateInfo{}) {
 		return info, nil
 	}
-	return o.Adapter.Check()
+	return o.Adapter.Check(ctx)
 }
 
 // prepareCheckAdapters wraps owned tools whose managers provide a PackageChecker.
@@ -164,7 +164,7 @@ type unconsentedCheckAdapter struct {
 	adapters.Adapter
 }
 
-func (a unconsentedCheckAdapter) Check() (adapters.UpdateInfo, error) {
+func (a unconsentedCheckAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	return adapters.UpdateInfo{}, nil
 }
 
@@ -327,7 +327,7 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 			// The shared executor owns confirm + risk + privilege parity with
 			// the interactive path (design D2/D3); the plan's PlannedUpdate is
 			// the source of policy, not a re-derivation here.
-			results[i] = executePlannedUpdate(gf, u, a, i+1, total, r, osName, allAdapters...)
+			results[i] = executePlannedUpdate(ctx, gf, u, a, i+1, total, r, osName, allAdapters...)
 			if results[i].Status == output.StatusFailed {
 				hasFailure = true
 			}
@@ -372,7 +372,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		return err
 	}
 
-	grouped := output.GroupOrder(filteredAdapters, osName)
+	grouped := engine.GroupOrder(filteredAdapters, osName, allAdapters...)
 	authorized, err := authorizeChecks(gf, grouped, r)
 	if err != nil {
 		return err
@@ -417,7 +417,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		}
 		var group string
 		if a, ok := adapterMap[u.ToolID]; ok {
-			group = output.OwnerGroupLabel(a, osName, grouped)
+			group = engine.OwnerGroupLabel(a, osName, grouped, allAdapters...)
 		}
 		pending = append(pending, output.SelectOption{
 			ID:      u.ToolID,
@@ -500,7 +500,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 			return err
 		}
 		updateIndex++
-		res := executePlannedUpdate(gf, p, a, updateIndex, updateTotal, r, osName, allAdapters...)
+		res := executePlannedUpdate(ctx, gf, p, a, updateIndex, updateTotal, r, osName, allAdapters...)
 		if res.Status == output.StatusFailed {
 			hasFailure = true
 		}
@@ -551,16 +551,19 @@ func enforceRiskFor(trust adapters.TrustLevel, risk security.RiskLevel, ci bool)
 }
 
 // executePlannedUpdate is the single executor shared by the sequential and
-// interactive update paths (design D2). It runs the confirmation gate and the
-// update for one engine.PlannedUpdate, returning that tool's ToolResult. Risk
-// command, privileges, trust, and the EnforceRisk policy all come from the
-// plan — never re-derived here — so the two paths cannot diverge (design D3).
-// A non-empty ManagerID marks a row whose real command risk must decide even
-// for TrustOfficial tools: an owned-package update, or a manager self-row whose
+// interactive update paths. It preserves the exact execution parity between
+// them: (1) --quiet suppression; (2) security risk classification against the
+// planned command; (3) confirm prompt; (4) PackageUpdater delegation for owned
+// tools; (5) timeout wrapping.
+//
+// The single source of truth for the update command is PlannedUpdate.Command
+// (design D2 — declared equals planned). The single source of truth for risk
+// is PlannedUpdate.RiskCommand (design D3 — custom check/update elevated risk
+// prompts on both paths). Manager elevation prompts iff the manager's own
 // Info() declares privileges (design D4 — plan sets ManagerID on a manager
 // self-row iff it declares privileges, so pacman prompts while apt/brew/winget
 // keep their byte-identical auto-proceed decision).
-func executePlannedUpdate(gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Adapter, index, total int, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) output.ToolResult {
+func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Adapter, index, total int, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) output.ToolResult {
 	info := a.Info()
 
 	if !gf.Quiet && total > 1 {
@@ -601,15 +604,15 @@ func executePlannedUpdate(gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Ad
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
 			pkg := engine.OwnedPackage(a, osName)
 			if pkg != "" {
-				result, updateErr = updater.UpdatePackage(pkg)
+				result, updateErr = updater.UpdatePackage(ctx, pkg)
 			} else {
-				result, updateErr = a.Update(false)
+				result, updateErr = a.Update(ctx, false)
 			}
 		} else {
-			result, updateErr = a.Update(false)
+			result, updateErr = a.Update(ctx, false)
 		}
 	} else {
-		result, updateErr = a.Update(false)
+		result, updateErr = a.Update(ctx, false)
 	}
 
 	if updateErr != nil {

@@ -2,7 +2,10 @@
 // Every tool adapter (official or custom) must implement the Adapter interface.
 package adapters
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // TrustLevel represents how much the system trusts a tool adapter.
 type TrustLevel int
@@ -58,9 +61,9 @@ type Adapter interface {
 	// Detect returns true if the tool is installed on the current platform.
 	Detect() bool
 	// Check queries the tool for current and latest versions.
-	Check() (UpdateInfo, error)
+	Check(ctx context.Context) (UpdateInfo, error)
 	// Update performs the update operation.
-	Update(dryRun bool) (Result, error)
+	Update(ctx context.Context, dryRun bool) (Result, error)
 	// Info returns static metadata about the tool.
 	Info() ToolInfo
 }
@@ -75,7 +78,7 @@ type Adapter interface {
 type PackageChecker interface {
 	// CheckPackage reports the current vs latest version of an owned package
 	// and whether an update is available.
-	CheckPackage(packageName string) (UpdateInfo, error)
+	CheckPackage(ctx context.Context, packageName string) (UpdateInfo, error)
 }
 
 // PackageUpdater is implemented by manager adapters (apt/brew/winget) that can
@@ -88,7 +91,7 @@ type PackageChecker interface {
 type PackageUpdater interface {
 	// UpdatePackage runs the package update command for one owned package and
 	// returns the per-tool Result.
-	UpdatePackage(packageName string) (Result, error)
+	UpdatePackage(ctx context.Context, packageName string) (Result, error)
 }
 
 // UpdateInfo holds version information returned by Check().

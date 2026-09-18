@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -25,7 +26,7 @@ func (a *WingetAdapter) Detect() bool {
 	return lookPath("winget")
 }
 
-func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *WingetAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("winget is not installed")
 	}
@@ -34,7 +35,7 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 	// scan `winget upgrade` (no args) for winget's own row to report a real
 	// self-update availability. The version extraction tolerates a leading v
 	// (e.g. "v1.8.2311") through isVersionLike/extractVersionFromString.
-	current := commandOutput("winget", "--version")
+	current := commandOutput(ctx, "winget", "--version")
 	current = extractVersionFromString(current)
 	if current == "" {
 		current = "unknown"
@@ -42,7 +43,7 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 
 	latest := current
 	found := false
-	if out := commandOutput("winget", "upgrade"); out != "" {
+	if out := commandOutput(ctx, "winget", "upgrade"); out != "" {
 		if _, lat, ok := parseWingetUpgradeOutput(out); ok && lat != "" {
 			latest = lat
 			found = true
@@ -68,8 +69,8 @@ func (a *WingetAdapter) Check() (adapters.UpdateInfo, error) {
 // parser anchors on the supplied package Id in that listing. Like winget.Check,
 // a package that lists no row is reported current (fail-closed: no phantom
 // update).
-func (a *WingetAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
-	stdout, err := commandOutputErr("winget", "upgrade")
+func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	stdout, err := commandOutputErr(ctx, "winget", "upgrade")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -86,18 +87,18 @@ func (a *WingetAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 // manager-group bulk path (design D3): it upgrades the owned PACKAGE, NOT
 // winget's self-only `winget upgrade winget`. winget is a non-privileged
 // manager, so the group update may auto-proceed.
-func (a *WingetAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
+func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
 	}
 
-	before := commandOutput("winget", "--version")
+	before := commandOutput(ctx, "winget", "--version")
 	before = extractVersionFromString(before)
 	if before == "" {
 		before = "unknown"
 	}
 
-	_, stderr, err := runCmd(adapters.RenderPackageCommand(wingetPackageUpdateTemplate, pkg))
+	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(wingetPackageUpdateTemplate, pkg))
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -116,7 +117,7 @@ func (a *WingetAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := commandOutput("winget", "--version")
+	after := commandOutput(ctx, "winget", "--version")
 	after = extractVersionFromString(after)
 	if after == "" {
 		after = "unknown"
@@ -129,12 +130,12 @@ func (a *WingetAdapter) UpdatePackage(pkg string) (adapters.Result, error) {
 	}, nil
 }
 
-func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
 	}
 
-	before := commandOutput("winget", "--version")
+	before := commandOutput(ctx, "winget", "--version")
 	before = extractVersionFromString(before)
 	if before == "" {
 		before = "unknown"
@@ -151,7 +152,7 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 	// Self-only: `winget upgrade winget` upgrades Windows Package Manager
 	// itself (equiv. Microsoft.AppInstaller), never the packages it manages.
 	// A bulk `winget upgrade --all` is intentionally avoided.
-	_, stderr, err := runCmd(wingetSelfUpdateCmd)
+	_, stderr, err := runCmd(ctx, wingetSelfUpdateCmd)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -170,7 +171,7 @@ func (a *WingetAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := commandOutput("winget", "--version")
+	after := commandOutput(ctx, "winget", "--version")
 	after = extractVersionFromString(after)
 	if after == "" {
 		after = "unknown"

@@ -309,9 +309,10 @@ func TestResolvingOwner_Helpers(t *testing.T) {
 	npmAdapter := official.AdapterByName("npm")
 
 	t.Run("ResolvingOwner official adapters across platforms", func(t *testing.T) {
-		// gh on linux -> apt
-		if owner := ResolvingOwner(ghAdapter, "linux"); owner == nil || owner.Name() != "apt" {
-			t.Errorf("ResolvingOwner(gh, linux) = %v, want apt", owner)
+		// gh on linux -> manager from gh.Info() (apt or pacman)
+		wantGhLinuxMgr := ghAdapter.Info().Manager["linux"]
+		if owner := ResolvingOwner(ghAdapter, "linux"); owner == nil || owner.Name() != wantGhLinuxMgr {
+			t.Errorf("ResolvingOwner(gh, linux) = %v, want %s", owner, wantGhLinuxMgr)
 		}
 		// gh on darwin / macos -> brew
 		if owner := ResolvingOwner(ghAdapter, "darwin"); owner == nil || owner.Name() != "brew" {
@@ -357,17 +358,19 @@ func TestResolvingOwner_Helpers(t *testing.T) {
 	})
 
 	t.Run("ResolvingOwner allAdapters override", func(t *testing.T) {
-		mockApt := &dummyAdapter{name: "apt"}
-		allAdapters := []adapters.Adapter{mockApt}
-		if owner := ResolvingOwner(ghAdapter, "linux", allAdapters); owner != mockApt {
-			t.Errorf("ResolvingOwner with allAdapters override = %v, want mockApt", owner)
+		wantGhLinuxMgr := ghAdapter.Info().Manager["linux"]
+		mockOwner := &dummyAdapter{name: wantGhLinuxMgr}
+		allAdapters := []adapters.Adapter{mockOwner}
+		if owner := ResolvingOwner(ghAdapter, "linux", allAdapters); owner != mockOwner {
+			t.Errorf("ResolvingOwner with allAdapters override = %v, want mockOwner", owner)
 		}
 	})
 
 	t.Run("OwnedPackage across platforms", func(t *testing.T) {
 		// gh package names
-		if pkg := OwnedPackage(ghAdapter, "linux"); pkg != "gh" {
-			t.Errorf("OwnedPackage(gh, linux) = %q, want gh", pkg)
+		wantGhLinuxPkg := ghAdapter.Info().ManagerPackage["linux"]
+		if pkg := OwnedPackage(ghAdapter, "linux"); pkg != wantGhLinuxPkg {
+			t.Errorf("OwnedPackage(gh, linux) = %q, want %s", pkg, wantGhLinuxPkg)
 		}
 		if pkg := OwnedPackage(ghAdapter, "darwin"); pkg != "gh" {
 			t.Errorf("OwnedPackage(gh, darwin) = %q, want gh", pkg)
@@ -377,8 +380,9 @@ func TestResolvingOwner_Helpers(t *testing.T) {
 		}
 
 		// docker package names
-		if pkg := OwnedPackage(dockerAdapter, "linux"); pkg != "docker-ce" {
-			t.Errorf("OwnedPackage(docker, linux) = %q, want docker-ce", pkg)
+		wantDockerLinuxPkg := dockerAdapter.Info().ManagerPackage["linux"]
+		if pkg := OwnedPackage(dockerAdapter, "linux"); pkg != wantDockerLinuxPkg {
+			t.Errorf("OwnedPackage(docker, linux) = %q, want %s", pkg, wantDockerLinuxPkg)
 		}
 		if pkg := OwnedPackage(dockerAdapter, "darwin"); pkg != "docker" {
 			t.Errorf("OwnedPackage(docker, darwin) = %q, want docker", pkg)

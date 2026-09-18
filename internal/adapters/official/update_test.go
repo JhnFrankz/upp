@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"errors"
 	"runtime"
 	"strings"
@@ -466,6 +467,22 @@ func TestUpdate(t *testing.T) {
 			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 		},
 		{
+			name:    "gh/linux-update-delegates-to-pacman-success",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true, "apt": false, "pacman": true},
+				cmdArgs: map[string]fakeResult{
+					"gh":               {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+				},
+				shell: map[string]fakeResult{
+					"sudo pacman -S --noconfirm github-cli": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+		},
+		{
 			name:    "gh/macos-delegates-to-brew-success",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
@@ -553,6 +570,22 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		{
+			name:    "docker/linux-update-delegates-to-pacman-success",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true, "apt": false, "pacman": true},
+				cmdArgs: map[string]fakeResult{
+					"docker":           {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+				},
+				shell: map[string]fakeResult{
+					"sudo pacman -S --noconfirm docker": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
 		},
 		{
 			name:    "docker/macos-delegates-to-brew-success",
@@ -1037,7 +1070,7 @@ func TestUpdate(t *testing.T) {
 			}
 			setExecFakes(t, tt.fakes)
 
-			got, err := tt.newAdpt().Update(tt.dryRun)
+			got, err := tt.newAdpt().Update(context.Background(), tt.dryRun)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("Update() error = nil, want error when tool is not installed")
@@ -1170,7 +1203,7 @@ func TestUpdateDelegation(t *testing.T) {
 			}
 			setExecFakes(t, tt.fakes)
 
-			got, err := tt.newAdpt().Update(tt.dryRun)
+			got, err := tt.newAdpt().Update(context.Background(), tt.dryRun)
 			if err != nil {
 				t.Fatalf("Update() unexpected error: %v", err)
 			}
@@ -1345,7 +1378,7 @@ func TestUpdatePackage(t *testing.T) {
 			if pkg == "" {
 				pkg = "gh"
 			}
-			res, err := updater.UpdatePackage(pkg)
+			res, err := updater.UpdatePackage(context.Background(), pkg)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("UpdatePackage() error = nil, want error")
@@ -1384,7 +1417,7 @@ func TestPnpmCorruptionRecoveryMessage(t *testing.T) {
 		},
 	})
 
-	result, err := (&PnpmAdapter{}).Update(false)
+	result, err := (&PnpmAdapter{}).Update(context.Background(), false)
 	if err != nil {
 		t.Fatalf("Update() unexpected error: %v", err)
 	}
@@ -1431,11 +1464,11 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 			origRunCmd := runCmdFn
 			origRunCmdArgs := runCmdArgsFn
 			origLookPath := lookPathFn
-			runCmdFn = func(command string) (string, string, error) {
+			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 				captured = append(captured, command)
 				return "", "", nil
 			}
-			runCmdArgsFn = func(string, ...string) (string, string, error) { return "", "", nil }
+			runCmdArgsFn = func(ctx context.Context, s string, strings ...string) (string, string, error) { return "", "", nil }
 			lookPathFn = func(string) bool { return true }
 			t.Cleanup(func() {
 				runCmdFn = origRunCmd
@@ -1452,13 +1485,13 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 			var res adapters.Result
 			var err error
 			if tt.pkg == "" {
-				res, err = tt.newAdpt().Update(false)
+				res, err = tt.newAdpt().Update(context.Background(), false)
 			} else {
 				updater, ok := tt.newAdpt().(adapters.PackageUpdater)
 				if !ok {
 					t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
 				}
-				res, err = updater.UpdatePackage(tt.pkg)
+				res, err = updater.UpdatePackage(context.Background(), tt.pkg)
 			}
 			if err != nil {
 				t.Fatalf("update returned unexpected error: %v", err)

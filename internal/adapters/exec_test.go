@@ -125,7 +125,7 @@ func TestDefaultShellExecWithTimeout_TrimsOutput(t *testing.T) {
 		t.Skip("shell output path skipped on windows")
 	}
 
-	out, err := defaultShellExecWithTimeout("echo hello", 5*time.Second)
+	out, err := defaultShellExecWithTimeout(context.Background(), "echo hello", 5*time.Second)
 	if err != nil {
 		t.Fatalf("defaultShellExecWithTimeout() error = %v", err)
 	}
@@ -141,9 +141,25 @@ func TestDefaultShellExecWithTimeout_KillsOnDeadline(t *testing.T) {
 		t.Skip("process-group kill verification requires unix")
 	}
 
-	_, err := defaultShellExecWithTimeout("sleep 30", 100*time.Millisecond)
+	_, err := defaultShellExecWithTimeout(context.Background(), "sleep 30", 100*time.Millisecond)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("defaultShellExecWithTimeout() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+	}
+}
+
+// TestDefaultShellExecWithTimeout_KillsOnContextCancel proves the default seam body
+// terminates the process immediately when the caller cancels context.
+func TestDefaultShellExecWithTimeout_KillsOnContextCancel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group kill verification requires unix")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before or right away
+
+	_, err := defaultShellExecWithTimeout(ctx, "sleep 30", 5*time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("defaultShellExecWithTimeout() error = %v, want errors.Is(err, context.Canceled)", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,7 +37,7 @@ func (a *NVMAdapter) Detect() bool {
 	return false
 }
 
-func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *NVMAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("nvm is not installed")
 	}
@@ -44,7 +45,7 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 	// Get current node version via nvm. nvm is bash-only, so run through
 	// bash explicitly (POSIX sh — dash/ash — lacks `source`); honor
 	// NVM_DIR installs with a fallback to ~/.nvm.
-	stdout, err := shellOutputErr("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
+	stdout, err := shellOutputErr(ctx, "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -59,7 +60,7 @@ func (a *NVMAdapter) Check() (adapters.UpdateInfo, error) {
 	// after the real versions; grep filters to actual vX.Y.Z lines so the
 	// last one is the newest LTS — tail -1 alone would pick the alias and
 	// silently miss real updates.
-	stdout, err = shellOutputErr("bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'", "nvm")
+	stdout, err = shellOutputErr(ctx, "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -104,12 +105,12 @@ func normalizeVersion(s string) string {
 	return "v" + s
 }
 
-func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *NVMAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("nvm is not installed")
 	}
 
-	before, _ := a.currentVersion()
+	before, _ := a.currentVersion(ctx)
 
 	if dryRun {
 		return adapters.Result{
@@ -119,7 +120,7 @@ func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install --lts'")
+	_, stderr, err := runCmd(ctx, "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install --lts'")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -138,7 +139,7 @@ func (a *NVMAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after, _ := a.currentVersion()
+	after, _ := a.currentVersion(ctx)
 	return adapters.Result{
 		Success: true,
 		Before:  before,
@@ -160,8 +161,8 @@ func (a *NVMAdapter) Info() adapters.ToolInfo {
 	}
 }
 
-func (a *NVMAdapter) currentVersion() (string, error) {
-	stdout := shellOutput("bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'")
+func (a *NVMAdapter) currentVersion(ctx context.Context) (string, error) {
+	stdout := shellOutput(ctx, "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'")
 	v := strings.TrimSpace(stdout)
 	if v == "" {
 		return "unknown", nil

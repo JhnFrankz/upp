@@ -508,12 +508,6 @@ func TestListTools_GroupedHeaderThenChildren(t *testing.T) {
 // present in the set; npm/nvm/pnpm/bun/opencode/go are standalone (go has no
 // linux owner). Manager headers follow official.AllAdapters order.
 func TestGroupByOwner_LinuxGroupsOwnedTools(t *testing.T) {
-	orig := adapterCheckFn
-	adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
-		return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
-	}
-	defer func() { adapterCheckFn = orig }()
-
 	tools := official.AdaptersForPlatform(platform.OSLinux)
 
 	groups := GroupByOwner(tools, platform.OSLinux)
@@ -537,24 +531,27 @@ func TestGroupByOwner_LinuxGroupsOwnedTools(t *testing.T) {
 		t.Errorf("brew manager header missing; got headers %v", gotHeaders)
 	}
 
-	// Docker + gh must be grouped under apt (their linux owner) — find the apt
+	// Docker + gh must be grouped under their linux owner — find the owner
 	// group and confirm it contains both.
-	var aptGroup *Group
+	ghAdapter := official.AdapterByName("gh")
+	ownerMgr := ghAdapter.Info().Manager[platform.OSLinux]
+	ownerHeader := official.AdapterByName(ownerMgr).Info().Name
+	var ownerGroup *Group
 	for i := range groups {
-		if groups[i].Header == "APT Package Manager" {
-			aptGroup = &groups[i]
+		if groups[i].Header == ownerHeader {
+			ownerGroup = &groups[i]
 			break
 		}
 	}
-	if aptGroup == nil {
-		t.Fatalf("no apt group found in %+v", groups)
+	if ownerGroup == nil {
+		t.Fatalf("no %s group found in %+v", ownerMgr, groups)
 	}
-	ids := make([]string, len(aptGroup.Items))
-	for i, item := range aptGroup.Items {
+	ids := make([]string, len(ownerGroup.Items))
+	for i, item := range ownerGroup.Items {
 		ids[i] = item.ID
 	}
 	if !slices.Contains(ids, "docker") || !slices.Contains(ids, "gh") {
-		t.Errorf("apt group must own docker+gh, got ids %v", ids)
+		t.Errorf("%s group must own docker+gh, got ids %v", ownerMgr, ids)
 	}
 
 	// Every tool is placed exactly once across all groups (no lost/duplicated

@@ -150,6 +150,7 @@ func TestAdaptersForPlatformWindows(t *testing.T) {
 // has NO owner on Linux (standalone — manual binary replace); a manager
 // adapter with no owner on a platform resolves to nil.
 func TestResolveOwner(t *testing.T) {
+	setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": true}})
 	tests := []struct {
 		name    string
 		tool    string
@@ -279,6 +280,7 @@ func TestKindManagerConsistency(t *testing.T) {
 // on each platform by scanning owner declarations (spec Manager Owned-Tool
 // Cardinality), not a hardcoded per-platform set.
 func TestManagerOwnedToolCardinality(t *testing.T) {
+	setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": true}})
 	tests := []struct {
 		name      string
 		manager   string
@@ -319,6 +321,24 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("pacman-linux-when-apt-absent", func(t *testing.T) {
+		setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": false, "pacman": true}})
+		var owned []string
+		for _, a := range AllAdapters() {
+			info := a.Info()
+			if info.Kind != adapters.KindTool {
+				continue
+			}
+			if info.Manager["linux"] == "pacman" {
+				owned = append(owned, a.Name())
+			}
+		}
+		wantOwned := []string{"gh", "docker"}
+		if len(owned) != len(wantOwned) {
+			t.Errorf("pacman owns %v on linux when apt absent, want %v", owned, wantOwned)
+		}
+	})
 }
 
 // TestOwnerMetadata verifies the per-Kind count the registry reports: 5

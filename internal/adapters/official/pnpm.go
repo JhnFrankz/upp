@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -18,12 +19,12 @@ func (a *PnpmAdapter) Detect() bool {
 	return lookPath("pnpm")
 }
 
-func (a *PnpmAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("pnpm is not installed")
 	}
 
-	current := commandOutput("pnpm", "--version")
+	current := commandOutput(ctx, "pnpm", "--version")
 	current = strings.TrimSpace(current)
 	if current == "" {
 		current = "unknown"
@@ -36,7 +37,7 @@ func (a *PnpmAdapter) Check() (adapters.UpdateInfo, error) {
 	// detection only when stdout carries the outdated table; exit 1 with
 	// empty stdout is an operational failure, and any other non-zero exit
 	// is a structured failure.
-	stdout, err := commandOutputErr("pnpm", "outdated", "-g")
+	stdout, err := commandOutputErr(ctx, "pnpm", "outdated", "-g")
 	if err != nil {
 		if !isExitCode(err, 1) || !strings.Contains(stdout, "│") {
 			return adapters.UpdateInfo{}, err
@@ -51,12 +52,12 @@ func (a *PnpmAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
-func (a *PnpmAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("pnpm is not installed")
 	}
 
-	before := commandOutput("pnpm", "--version")
+	before := commandOutput(ctx, "pnpm", "--version")
 	before = strings.TrimSpace(before)
 
 	if dryRun {
@@ -68,9 +69,9 @@ func (a *PnpmAdapter) Update(dryRun bool) (adapters.Result, error) {
 	}
 
 	// First attempt: standard update.
-	_, stderr, err := runCmd("pnpm update -g")
+	_, stderr, err := runCmd(ctx, "pnpm update -g")
 	if err == nil {
-		after := commandOutput("pnpm", "--version")
+		after := commandOutput(ctx, "pnpm", "--version")
 		after = strings.TrimSpace(after)
 		return adapters.Result{
 			Success: true,
@@ -81,10 +82,10 @@ func (a *PnpmAdapter) Update(dryRun bool) (adapters.Result, error) {
 
 	// Corruption recovery: remove global store and retry.
 	if stderr != "" && (strings.Contains(stderr, "corrupt") || strings.Contains(stderr, "ENOENT") || strings.Contains(stderr, "EACCES")) {
-		_, _, _ = runCmd("pnpm store prune 2>/dev/null")
-		_, stderr2, err2 := runCmd("pnpm update -g")
+		_, _, _ = runCmd(ctx, "pnpm store prune 2>/dev/null")
+		_, stderr2, err2 := runCmd(ctx, "pnpm update -g")
 		if err2 == nil {
-			after := commandOutput("pnpm", "--version")
+			after := commandOutput(ctx, "pnpm", "--version")
 			after = strings.TrimSpace(after)
 			return adapters.Result{
 				Success: true,

@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -16,12 +17,12 @@ func (a *NpmAdapter) Detect() bool {
 	return lookPath("npm")
 }
 
-func (a *NpmAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *NpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("npm is not installed")
 	}
 
-	current := commandOutput("npm", "--version")
+	current := commandOutput(ctx, "npm", "--version")
 	current = strings.TrimSpace(current)
 	if current == "" {
 		current = "unknown"
@@ -34,7 +35,7 @@ func (a *NpmAdapter) Check() (adapters.UpdateInfo, error) {
 	// valid detection only when stdout carries the outdated table; exit 1
 	// with empty stdout is an operational failure (EACCES, unreachable
 	// registry), and any other non-zero exit is a structured failure.
-	stdout, err := commandOutputErr("npm", "outdated", "-g", "--depth=0")
+	stdout, err := commandOutputErr(ctx, "npm", "outdated", "-g", "--depth=0")
 	if err != nil {
 		if !isExitCode(err, 1) || strings.TrimSpace(stdout) == "" {
 			return adapters.UpdateInfo{}, err
@@ -49,12 +50,12 @@ func (a *NpmAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
-func (a *NpmAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("npm is not installed")
 	}
 
-	before := commandOutput("npm", "--version")
+	before := commandOutput(ctx, "npm", "--version")
 	before = strings.TrimSpace(before)
 
 	if dryRun {
@@ -65,7 +66,7 @@ func (a *NpmAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("npm update -g")
+	_, stderr, err := runCmd(ctx, "npm update -g")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -84,7 +85,7 @@ func (a *NpmAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := commandOutput("npm", "--version")
+	after := commandOutput(ctx, "npm", "--version")
 	after = strings.TrimSpace(after)
 
 	return adapters.Result{

@@ -79,6 +79,7 @@ func TestCatalogPlatformsMatchAdapterPlatforms(t *testing.T) {
 // registries (catalog for display, adapter for canonical behavior) cannot
 // silently drift (design: catalog carries a display copy; parity pins both).
 func TestCatalogOwnershipMatchesAdapter(t *testing.T) {
+	setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": true}})
 	catalog := catalogIndex(t)
 	for _, a := range AllAdapters() {
 		id := a.Name()
@@ -109,6 +110,7 @@ func TestCatalogOwnershipMatchesAdapter(t *testing.T) {
 // must agree (TestCatalogOwnershipMatchesAdapter). The docker->docker-ce row
 // on apt is the highest-risk entry: a typo would run a wrong sudo command.
 func TestCatalogPackageMapping(t *testing.T) {
+	setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": true}})
 	catalog := catalogIndex(t)
 	for _, a := range AllAdapters() {
 		id := a.Name()

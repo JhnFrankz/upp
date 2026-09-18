@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -24,11 +25,14 @@ var goBinaryPathFn = func() string {
 // Swapped in tests via setExecFakes.
 var goDevVersionFn = fetchGoDevVersion
 
-func fetchGoDevVersion() (string, error) {
+func fetchGoDevVersion(ctx context.Context) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	client := &http.Client{
 		Timeout: adapters.CheckTimeout,
 	}
-	req, err := http.NewRequest(http.MethodGet, "https://go.dev/VERSION?m=text", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://go.dev/VERSION?m=text", nil)
 	if err != nil {
 		return "", err
 	}
@@ -74,7 +78,7 @@ func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
 	return nil, ""
 }
 
-func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("go is not installed")
 	}
@@ -94,18 +98,18 @@ func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
 			}
-			return checker.CheckPackage(pkg)
+			return checker.CheckPackage(ctx, pkg)
 		}
 		return adapters.UpdateInfo{}, fmt.Errorf("go's manager %s does not support per-package checks", runtime.GOOS)
 	}
 
-	current := commandOutput("go", "version")
+	current := commandOutput(ctx, "go", "version")
 	current = extractGoVersion(current)
 
 	latest := current
 	updateAvailable := false
 
-	if raw, err := goDevVersionFn(); err == nil && raw != "" {
+	if raw, err := goDevVersionFn(ctx); err == nil && raw != "" {
 		if v := extractGoVersion(raw); v != "" {
 			latest = v
 			updateAvailable = current != "" && semverCompare(current, latest)
@@ -119,7 +123,7 @@ func (a *GoAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
-func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
 	}
@@ -139,12 +143,12 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 			if pkg == "" {
 				return adapters.Result{Success: false}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
 			}
-			return updater.UpdatePackage(pkg)
+			return updater.UpdatePackage(ctx, pkg)
 		}
 		return adapters.Result{Success: false}, fmt.Errorf("go's manager %s does not support per-package updates", runtime.GOOS)
 	}
 
-	before := extractGoVersion(commandOutput("go", "version"))
+	before := extractGoVersion(commandOutput(ctx, "go", "version"))
 
 	if dryRun {
 		return adapters.Result{
@@ -171,7 +175,7 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd(cmd)
+	_, stderr, err := runCmd(ctx, cmd)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -192,7 +196,7 @@ func (a *GoAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := extractGoVersion(commandOutput("go", "version"))
+	after := extractGoVersion(commandOutput(ctx, "go", "version"))
 	return adapters.Result{
 		Success:    true,
 		Before:     before,

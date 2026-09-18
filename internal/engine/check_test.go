@@ -37,7 +37,7 @@ func (a *testDelayedAdapter) Detect() bool {
 	return !a.notDetected
 }
 
-func (a *testDelayedAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *testDelayedAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	a.checkCalled.Store(true)
 	if a.delay > 0 {
 		time.Sleep(a.delay)
@@ -45,7 +45,7 @@ func (a *testDelayedAdapter) Check() (adapters.UpdateInfo, error) {
 	return a.info, a.checkErr
 }
 
-func (a *testDelayedAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *testDelayedAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 
@@ -80,14 +80,14 @@ func (a *testPanickingAdapter) Detect() bool {
 	return true
 }
 
-func (a *testPanickingAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *testPanickingAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if a.panicCheck {
 		panic(fmt.Sprintf("%s panicked in Check", a.Name()))
 	}
 	return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
 }
 
-func (a *testPanickingAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *testPanickingAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 
@@ -120,7 +120,7 @@ func (a *testConcurrencyTrackingAdapter) Detect() bool {
 	return true
 }
 
-func (a *testConcurrencyTrackingAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *testConcurrencyTrackingAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	cur := atomic.AddInt32(a.active, 1)
 	for {
 		p := atomic.LoadInt32(a.peak)
@@ -135,7 +135,7 @@ func (a *testConcurrencyTrackingAdapter) Check() (adapters.UpdateInfo, error) {
 	return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
 }
 
-func (a *testConcurrencyTrackingAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *testConcurrencyTrackingAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	return adapters.Result{Success: true}, nil
 }
 

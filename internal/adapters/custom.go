@@ -2,6 +2,7 @@
 package adapters
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -57,7 +58,7 @@ func (c *CustomAdapter) Detect() bool {
 }
 
 // Check executes the check_cmd and parses version output.
-func (c *CustomAdapter) Check() (UpdateInfo, error) {
+func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 	if c.checkCmd == "" {
 		return UpdateInfo{}, nil
 	}
@@ -66,7 +67,7 @@ func (c *CustomAdapter) Check() (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command))
 	}
 
-	stdout, err := shellExecWithTimeout(c.checkCmd, CheckTimeout)
+	stdout, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("check command failed for %s: %w", c.id, err)
 	}
@@ -81,14 +82,14 @@ func (c *CustomAdapter) Check() (UpdateInfo, error) {
 }
 
 // Update executes the tool's update command.
-func (c *CustomAdapter) Update(dryRun bool) (Result, error) {
+func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error) {
 	// Delegated update path (WU2, spec Resolved Owner Update Delegation): a
 	// custom tool with a resolving owner manager delegates to the manager's
 	// Update() instead of running its own command. The manager's self-update
 	// (and its command/privileges) governs; the custom tool's own command is
 	// never invoked on the delegated path.
 	if c.manager != nil {
-		return c.manager.Update(dryRun)
+		return c.manager.Update(ctx, dryRun)
 	}
 
 	privileges := detectPrivileges(c.command)
@@ -110,7 +111,7 @@ func (c *CustomAdapter) Update(dryRun bool) (Result, error) {
 		}, nil
 	}
 
-	_, err := shellExec(c.command)
+	_, err := shellExec(ctx, c.command)
 	if err != nil {
 		return Result{
 			Success:    false,
@@ -175,13 +176,13 @@ func extractBaseCommand(cmd string) string {
 }
 
 // shellExec runs a command via the platform shell, bounded by UpdateTimeout.
-func shellExec(command string) (string, error) {
-	return shellExecWithTimeout(command, UpdateTimeout)
+func shellExec(ctx context.Context, command string) (string, error) {
+	return shellExecWithTimeout(ctx, command, UpdateTimeout)
 }
 
 // shellExecWithTimeout delegates to the shellExecWithTimeoutFn seam variable.
-func shellExecWithTimeout(command string, timeout time.Duration) (string, error) {
-	return shellExecWithTimeoutFn(command, timeout)
+func shellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, error) {
+	return shellExecWithTimeoutFn(ctx, command, timeout)
 }
 
 // extractVersionFromOutput extracts a version-like string from command output.

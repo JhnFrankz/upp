@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -34,12 +35,12 @@ func (a *UvAdapter) Info() adapters.ToolInfo {
 	}
 }
 
-func (a *UvAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *UvAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("uv is not installed")
 	}
 
-	rawVersion, _, _ := runCmdArgs("uv", "--version")
+	rawVersion, _, _ := runCmdArgs(ctx, "uv", "--version")
 	current := extractUvVersion(rawVersion)
 	if current == "" {
 		current = "unknown"
@@ -47,7 +48,7 @@ func (a *UvAdapter) Check() (adapters.UpdateInfo, error) {
 
 	latest := current
 	selfUpdateAvailable := false
-	stdout, stderr, err := runCmdArgs("uv", "self", "update", "--dry-run")
+	stdout, stderr, err := runCmdArgs(ctx, "uv", "self", "update", "--dry-run")
 	if err != nil {
 		if !isExternalManagerError(err, stdout+" "+stderr) {
 			return adapters.UpdateInfo{}, commandFailureErr("uv", stderr, err)
@@ -61,7 +62,7 @@ func (a *UvAdapter) Check() (adapters.UpdateInfo, error) {
 		}
 	}
 
-	stdout, stderr, err = runCmdArgs("uv", "tool", "list", "--outdated")
+	stdout, stderr, err = runCmdArgs(ctx, "uv", "tool", "list", "--outdated")
 	if err != nil {
 		return adapters.UpdateInfo{}, commandFailureErr("uv", stderr, err)
 	}
@@ -144,12 +145,12 @@ func parseUvToolListOutdatedOutput(output string) bool {
 	return true
 }
 
-func (a *UvAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *UvAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("uv is not installed")
 	}
 
-	before := extractUvVersion(commandOutput("uv", "--version"))
+	before := extractUvVersion(commandOutput(ctx, "uv", "--version"))
 	if before == "" {
 		before = "unknown"
 	}
@@ -162,7 +163,7 @@ func (a *UvAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	stdout, stderr, err := runCmd("uv self update")
+	stdout, stderr, err := runCmd(ctx, "uv self update")
 	if err != nil {
 		if !isExternalManagerError(err, stdout+" "+stderr) {
 			return adapters.Result{
@@ -174,7 +175,7 @@ func (a *UvAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}
 	}
 
-	_, _, err = runCmd("uv tool upgrade --all")
+	_, _, err = runCmd(ctx, "uv tool upgrade --all")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -184,7 +185,7 @@ func (a *UvAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := extractUvVersion(commandOutput("uv", "--version"))
+	after := extractUvVersion(commandOutput(ctx, "uv", "--version"))
 	if after == "" {
 		after = before
 	}

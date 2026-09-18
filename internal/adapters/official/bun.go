@@ -1,6 +1,7 @@
 package official
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -16,12 +17,12 @@ func (a *BunAdapter) Detect() bool {
 	return lookPath("bun")
 }
 
-func (a *BunAdapter) Check() (adapters.UpdateInfo, error) {
+func (a *BunAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("bun is not installed")
 	}
 
-	current := commandOutput("bun", "--version")
+	current := commandOutput(ctx, "bun", "--version")
 	current = strings.TrimSpace(current)
 	if current == "" {
 		current = "unknown"
@@ -34,12 +35,12 @@ func (a *BunAdapter) Check() (adapters.UpdateInfo, error) {
 	}, nil
 }
 
-func (a *BunAdapter) Update(dryRun bool) (adapters.Result, error) {
+func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("bun is not installed")
 	}
 
-	before := commandOutput("bun", "--version")
+	before := commandOutput(ctx, "bun", "--version")
 	before = strings.TrimSpace(before)
 
 	if dryRun {
@@ -50,7 +51,7 @@ func (a *BunAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	_, stderr, err := runCmd("bun upgrade")
+	_, stderr, err := runCmd(ctx, "bun upgrade")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -69,7 +70,7 @@ func (a *BunAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	after := commandOutput("bun", "--version")
+	after := commandOutput(ctx, "bun", "--version")
 	after = strings.TrimSpace(after)
 
 	return adapters.Result{
