@@ -662,6 +662,56 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "1.22.0", LatestVersion: "1.22.0", UpdateAvailable: false},
 		},
 		{
+			name:    "go/linux-standalone-update-available",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath:     map[string]bool{"go": true},
+				cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				goDevVersion: "go1.27.1\ntime 2026-08-28T16:20:06Z",
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "1.22.0", LatestVersion: "1.27.1", UpdateAvailable: true},
+		},
+		{
+			name:    "go/linux-standalone-already-latest",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath:     map[string]bool{"go": true},
+				cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.27.1 linux/amd64"}},
+				goDevVersion: "go1.27.1\ntime 2026-08-28T16:20:06Z",
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "1.27.1", LatestVersion: "1.27.1", UpdateAvailable: false},
+		},
+		{
+			name:    "go/linux-apt-delegation-available",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				goBinaryPath: "/usr/bin/go",
+				lookPath:     map[string]bool{"go": true, "apt": true},
+				shell: map[string]fakeResult{
+					aptPolicyCmd("golang-go", "Installed"): {stdout: "1.22.0"},
+					aptPolicyCmd("golang-go", "Candidate"): {stdout: "1.23.0"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "1.22.0", LatestVersion: "1.23.0", UpdateAvailable: true},
+		},
+		{
+			name:    "go/linux-pacman-delegation-available",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				goBinaryPath: "/usr/bin/go",
+				lookPath:     map[string]bool{"go": true, "pacman": true},
+				shell: map[string]fakeResult{
+					"bash -o pipefail -c 'pacman -Q go 2>/dev/null | awk \"{print \\$2}\"'":                                   {stdout: "1.22.0-1"},
+					"bash -o pipefail -c 'pacman -Si go 2>/dev/null | grep -E \"^Version\" | head -1 | awk \"{print \\$3}\"'": {stdout: "1.23.0-1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "1.22.0-1", LatestVersion: "1.23.0-1", UpdateAvailable: true},
+		},
+		{
 			name:    "go/macos-delegates-brew-available",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "darwin",
@@ -693,6 +743,36 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"opencode": true},
 				cmdArgs:  map[string]fakeResult{"opencode": {stdout: "opencode v0.3.6"}},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v0.3.6", UpdateAvailable: false},
+		},
+		{
+			name:    "opencode/update-available",
+			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
+			fakes: execFakes{
+				lookPath:    map[string]bool{"opencode": true},
+				cmdArgs:     map[string]fakeResult{"opencode": {stdout: "opencode v0.3.6"}},
+				opencodeTag: "v1.18.31",
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v1.18.31", UpdateAvailable: true},
+		},
+		{
+			name:    "opencode/already-latest",
+			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
+			fakes: execFakes{
+				lookPath:    map[string]bool{"opencode": true},
+				cmdArgs:     map[string]fakeResult{"opencode": {stdout: "opencode v1.18.31"}},
+				opencodeTag: "v1.18.31",
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "v1.18.31", LatestVersion: "v1.18.31", UpdateAvailable: false},
+		},
+		{
+			name:    "opencode/network-error-fallback",
+			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
+			fakes: execFakes{
+				lookPath:       map[string]bool{"opencode": true},
+				cmdArgs:        map[string]fakeResult{"opencode": {stdout: "opencode v0.3.6"}},
+				opencodeTagErr: errors.New("network unreachable"),
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v0.3.6", UpdateAvailable: false},
 		},
@@ -938,7 +1018,7 @@ func TestCheck(t *testing.T) {
 					"uv tool list --outdated":  {stdout: "No outdated tools"},
 				},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "0.5.0", LatestVersion: "0.5.0", UpdateAvailable: true},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.0", LatestVersion: "0.5.11", UpdateAvailable: true},
 		},
 		{
 			name:    "uv/tools-outdated",
@@ -980,7 +1060,7 @@ func TestCheck(t *testing.T) {
 					"uv tool list --outdated":  {stdout: "ruff v0.8.0 (latest: v0.9.0)"},
 				},
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "0.5.0", LatestVersion: "0.5.0", UpdateAvailable: true},
+			want: adapters.UpdateInfo{CurrentVersion: "0.5.0", LatestVersion: "0.5.11", UpdateAvailable: true},
 		},
 		{
 			name:    "uv/all-clean",

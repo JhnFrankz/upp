@@ -2,12 +2,48 @@ package official
 
 import (
 	"fmt"
+	"net/http"
+	"path"
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
-// OpenCodeAdapter manages OpenCode on all platforms via the curl installer.
+// opencodeLatestTagFn is the seam for fetching the latest OpenCode release tag.
+// Swapped in tests via setExecFakes.
+var opencodeLatestTagFn = fetchOpenCodeLatestTag
+
+func fetchOpenCodeLatestTag() (string, error) {
+	client := &http.Client{
+		Timeout: adapters.CheckTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req, err := http.NewRequest(http.MethodHead, "https://github.com/anomalyco/opencode/releases/latest", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "upp")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusFound ||
+		resp.StatusCode == http.StatusMovedPermanently ||
+		resp.StatusCode == http.StatusTemporaryRedirect ||
+		resp.StatusCode == http.StatusSeeOther {
+		loc := resp.Header.Get("Location")
+		if loc != "" {
+			return path.Base(loc), nil
+		}
+	}
+	return "", fmt.Errorf("unexpected status %d or missing Location header", resp.StatusCode)
+}
+
+// OpenCodeAdapter manages OpenCode on all platforms.
 type OpenCodeAdapter struct{}
 
 func (a *OpenCodeAdapter) Name() string { return "opencode" }
@@ -24,10 +60,20 @@ func (a *OpenCodeAdapter) Check() (adapters.UpdateInfo, error) {
 	current := commandOutput("opencode", "--version")
 	current = extractVersion(current)
 
+	latest := current
+	updateAvailable := false
+
+	if tag, err := opencodeLatestTagFn(); err == nil && tag != "" {
+		if v := extractVersion(tag); v != "" {
+			latest = v
+			updateAvailable = current != "" && semverCompare(current, latest)
+		}
+	}
+
 	return adapters.UpdateInfo{
 		CurrentVersion:  current,
-		LatestVersion:   current,
-		UpdateAvailable: false,
+		LatestVersion:   latest,
+		UpdateAvailable: updateAvailable,
 	}, nil
 }
 
@@ -46,8 +92,7 @@ func (a *OpenCodeAdapter) Update(dryRun bool) (adapters.Result, error) {
 		}, nil
 	}
 
-	// OpenCode uses the same installer for updates and installs.
-	cmd := "curl -fsSL https://opencode.ai/install | bash"
+	cmd := "opencode update"
 
 	_, stderr, err := runCmd(cmd)
 	if err != nil {
@@ -84,12 +129,7 @@ func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
 		Trust:        adapters.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 		Kind:         adapters.KindTool,
-		// Command is the exact string Update() runs, declared so the plan's
-		// RiskCommand and the confirmation gate see what actually executes.
-		// Classifying this command is the point: it is RiskHigh (curl piped to
-		// a shell from an external source), where the previous synthesized
-		// "OpenCode update" classified RiskLow.
-		Command: "curl -fsSL https://opencode.ai/install | bash",
+		Command:      "opencode update",
 	}
 }
 

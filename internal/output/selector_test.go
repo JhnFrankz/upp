@@ -408,3 +408,41 @@ func TestSelector_GranularOwnedToolTogglingUnderManagerHeaders(t *testing.T) {
 		t.Errorf("expected npm to remain checked, got:\n%s", out)
 	}
 }
+
+func TestSelector_ColorRepositioningAndCursorControl(t *testing.T) {
+	var buf bytes.Buffer
+	opts := []SelectOption{
+		{ID: "gh", Label: "GitHub CLI", Version: "2.45.0 → 2.46.0", Group: "APT Package Manager"},
+		{ID: "docker", Label: "Docker CE", Version: "26.1.4 → 27.0.0", Group: "APT Package Manager"},
+		{ID: "npm", Label: "npm", Version: "10.0.0 → 10.1.0"},
+	}
+
+	// Down arrow (\x1b[B), Space (deselect docker), Enter (\r)
+	// Total lines = 1 header ("APT Package Manager") + 3 options = 4 lines.
+	sel := NewCheckboxSelector(&buf, strings.NewReader("\x1b[B \r"), opts).WithColor(true)
+	res, err := sel.Run()
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if res.Canceled {
+		t.Fatal("Run must not report canceled")
+	}
+
+	out := buf.String()
+	// Must hide cursor on start and restore cursor on exit.
+	if !strings.Contains(out, "\x1b[?25l") {
+		t.Errorf("expected cursor hide sequence \\x1b[?25l in output, got:\n%q", out)
+	}
+	if !strings.Contains(out, "\x1b[?25h") {
+		t.Errorf("expected cursor restore sequence \\x1b[?25h in output, got:\n%q", out)
+	}
+
+	// Must reposition cursor up by 4 lines on redraw (\x1b[4A).
+	if !strings.Contains(out, "\x1b[4A") {
+		t.Errorf("expected cursor up repositioning \\x1b[4A in output, got:\n%q", out)
+	}
+	// Must clear line with \r\x1b[K.
+	if !strings.Contains(out, "\r\x1b[K") {
+		t.Errorf("expected line clear sequence \\r\\x1b[K in output, got:\n%q", out)
+	}
+}

@@ -24,7 +24,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Apply updates to enabled tools",
 		Long:  "Process each enabled tool: detect, check, confirm, and update.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdate(gf, uf, cliDeps.update)
+			return runUpdateContext(cmd.Context(), gf, uf, cliDeps.update)
 		},
 	}
 
@@ -91,6 +91,17 @@ func prepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdap
 }
 
 func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
+	return runUpdateContext(context.Background(), gf, uf, deps)
+}
+
+func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("cannot load config: %w", err)
@@ -135,10 +146,10 @@ func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 		deps.stdinIsTTY = stdinIsTTY
 	}
 	if deps.stdinIsTTY() && !gf.CI && !gf.Quiet && !uf.DryRun {
-		return runUpdateInteractive(gf, uf, deps, filteredAdapters, r, p.OS, eng, allAdapters)
+		return runUpdateInteractive(ctx, gf, uf, deps, filteredAdapters, r, p.OS, eng, allAdapters)
 	}
 
-	return runUpdateSequential(gf, uf, filteredAdapters, r, p.OS, eng, allAdapters)
+	return runUpdateSequential(ctx, gf, uf, filteredAdapters, r, p.OS, eng, allAdapters)
 }
 
 // unconsentedCheckAdapter delegates every Adapter method to the wrapped adapter
@@ -204,11 +215,15 @@ func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.
 // runs standard Check and Update. Per-tool errors are isolated.
 //
 // osName is the canonical platform key (platform.OSLinux/OSMacOS/OSWindows).
-func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
+func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
 	total := len(filteredAdapters)
 	if total == 0 {
 		r.UpdateSummary(output.Summary{Results: nil, DryRun: uf.DryRun})
 		return nil
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	if eng == nil {
@@ -224,7 +239,7 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 	if err != nil {
 		return err
 	}
-	outcomes, err := eng.Check(context.Background(), checkAdapters, nil)
+	outcomes, err := eng.Check(ctx, checkAdapters, nil)
 	if err != nil {
 		return err
 	}
@@ -244,6 +259,9 @@ func runUpdateSequential(gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []ad
 	hasFailure := false
 
 	for i, a := range filteredAdapters {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		info := a.Info()
 		oc := outcomes[i]
 
@@ -341,13 +359,17 @@ func timeoutErr(name, op string, err error) error {
 // plan-derived pending set (engine.Plan, so PolicyAlwaysUpdate tools appear
 // even when current), and the carried-outcome loop that updates the user's
 // selection while reporting every deselected pending tool distinctly.
-func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
+func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
 	if eng == nil {
 		var opts []engine.Option
 		if len(allAdapters) > 0 && allAdapters[0] != nil {
 			opts = append(opts, engine.WithAdapters(allAdapters[0]))
 		}
 		eng = engine.New(nil, osName, opts...)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	grouped := output.GroupOrder(filteredAdapters, osName)
@@ -362,10 +384,14 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 	}
 	board := output.NewCheckBoard(os.Stdout, r.Color(), names)
 	board.Start()
-	outcomes, _ := eng.Check(context.Background(), grouped, func(prog engine.CheckProgress) {
+	outcomes, _ := eng.Check(ctx, grouped, func(prog engine.CheckProgress) {
 		board.Complete(prog.Index, outcomeToToolResult(prog.Outcome))
 	})
 	board.Finish()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// The engine's plan is the single source of truth for identity, pending
 	// eligibility, and execution metadata for the interactive path (design
@@ -469,6 +495,9 @@ func runUpdateInteractive(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, fil
 			})
 			hasFailure = true
 			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		updateIndex++
 		res := executePlannedUpdate(gf, p, a, updateIndex, updateTotal, r, osName, allAdapters...)

@@ -62,7 +62,7 @@ The `uv` adapter MUST be registered as an official tool adapter across Linux, ma
 | pacman | `sudo pacman -S --noconfirm pacman` | N/A | N/A |
 | winget | N/A | N/A | `winget upgrade winget` |
 | scoop | N/A | N/A | `scoop update scoop` |
-| nvm | `nvm install stable` | `nvm install stable` | `nvm install stable` |
+| nvm | `nvm install --lts` | `nvm install --lts` | `nvm install --lts` |
 | npm | `npm update -g` | `npm update -g` | `npm update -g` |
 | pnpm | `pnpm update -g` | `pnpm update -g` | `pnpm update -g` |
 | bun | `bun upgrade` | `bun upgrade` | `bun upgrade` |
@@ -70,7 +70,7 @@ The `uv` adapter MUST be registered as an official tool adapter across Linux, ma
 | gh | → apt | → brew | → winget |
 | docker | → apt | → brew | → winget |
 | go | manual binary replace | → brew | → winget |
-| opencode | curl installer | curl installer | curl installer |
+| opencode | `opencode update` | `opencode update` | `opencode update` |
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|

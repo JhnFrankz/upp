@@ -483,3 +483,57 @@ func TestSave_NeverWritesManager(t *testing.T) {
 		t.Errorf("Save must never write the optional manager key, got:\n%s", data)
 	}
 }
+
+func TestSave_AtomicPersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	cfg := DefaultConfigWithDefaults()
+	cfg.Custom["initial"] = CustomTool{Command: "echo 1"}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() initial error: %v", err)
+	}
+
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(path)
+
+	// Check no leftover tmp files
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "config-") && strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("temporary config file leaked: %s", e.Name())
+		}
+	}
+
+	// Update config and verify file exists with updated content
+	cfg.Custom["second"] = CustomTool{Command: "echo 2"}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() updated error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "second") {
+		t.Errorf("saved content missing updated entry, got:\n%s", data)
+	}
+
+	// Ensure still no leftover tmp files
+	entries, err = os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "config-") && strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("temporary config file leaked: %s", e.Name())
+		}
+	}
+}
