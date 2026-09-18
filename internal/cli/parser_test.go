@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -17,10 +18,12 @@ import (
 // config stays hermetic and fast.
 func writeCheckConfig(t *testing.T, settingsBody string) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	tmpDir := probeHome(t)
 
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
+	cfgDir, err := config.ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

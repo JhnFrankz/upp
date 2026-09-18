@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -46,12 +47,7 @@ func TestConfigVersion_DefaultValue(t *testing.T) {
 
 func TestConfigVersion_PreservedOnLoad(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	cfgDir := testConfigDir(t, tmpDir)
 
 	// Write config with version 1
 	tomlContent := `version = 1
@@ -149,10 +145,10 @@ func TestValidate_MultipleTools(t *testing.T) {
 
 func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg := DefaultConfig()
-	cfg.Tools["apt"] = ToolConfig{Enabled: true}
+	cfg.Tools["npm"] = ToolConfig{Enabled: true}
 	cfg.Custom["test"] = CustomTool{Command: "test --update", Trusted: true}
 
 	if err := Save(cfg); err != nil {
@@ -164,8 +160,8 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if !loaded.Tools["apt"].Enabled {
-		t.Error("apt should be enabled")
+	if !loaded.Tools["npm"].Enabled {
+		t.Error("npm should be enabled")
 	}
 	if !loaded.Custom["test"].Trusted {
 		t.Error("test should be trusted")
@@ -174,7 +170,7 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 
 func TestSave_CreatesDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg := DefaultConfig()
 	if err := Save(cfg); err != nil {
@@ -189,12 +185,7 @@ func TestSave_CreatesDirectories(t *testing.T) {
 
 func TestLoad_InvalidTOML(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
-
-	cfgDir := filepath.Join(tmpDir, ".config", "upp")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	cfgDir := testConfigDir(t, tmpDir)
 
 	badToml := `this is not valid toml {{{`
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(badToml), 0o644); err != nil {
@@ -209,7 +200,7 @@ func TestLoad_InvalidTOML(t *testing.T) {
 
 func TestLoad_MissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	testConfigDir(t, tmpDir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -237,6 +228,9 @@ func TestDefaultConfigWithDefaults_AllPlatforms(t *testing.T) {
 // --- Config Path Tests ---
 
 func TestConfigPath_Linux(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Linux path test on Windows")
+	}
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -252,6 +246,9 @@ func TestConfigPath_Linux(t *testing.T) {
 }
 
 func TestConfigDir_Linux(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Linux path test on Windows")
+	}
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 
@@ -261,6 +258,44 @@ func TestConfigDir_Linux(t *testing.T) {
 	}
 
 	expected := filepath.Join(tmpDir, ".config", "upp")
+	if dir != expected {
+		t.Errorf("ConfigDir() = %q, want %q", dir, expected)
+	}
+}
+
+func TestConfigPath_Windows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("skipping Windows path test on non-Windows")
+	}
+	tmpDir := t.TempDir()
+	appData := filepath.Join(tmpDir, "AppData", "Roaming")
+	t.Setenv("APPDATA", appData)
+
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath() error: %v", err)
+	}
+
+	expected := filepath.Join(appData, "upp", "config.toml")
+	if path != expected {
+		t.Errorf("ConfigPath() = %q, want %q", path, expected)
+	}
+}
+
+func TestConfigDir_Windows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("skipping Windows path test on non-Windows")
+	}
+	tmpDir := t.TempDir()
+	appData := filepath.Join(tmpDir, "AppData", "Roaming")
+	t.Setenv("APPDATA", appData)
+
+	dir, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("ConfigDir() error: %v", err)
+	}
+
+	expected := filepath.Join(appData, "upp")
 	if dir != expected {
 		t.Errorf("ConfigDir() = %q, want %q", dir, expected)
 	}

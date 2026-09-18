@@ -57,6 +57,19 @@ func TestDiscoverTargets_SymlinkAndBackups(t *testing.T) {
 		t.Fatalf("DiscoverTargets failed: %v", err)
 	}
 
+	realBinResolved, err := filepath.EvalSymlinks(realBin)
+	if err != nil {
+		t.Fatalf("eval realBin: %v", err)
+	}
+	backup1Resolved, err := filepath.EvalSymlinks(backup1)
+	if err != nil {
+		t.Fatalf("eval backup1: %v", err)
+	}
+	backup2Resolved, err := filepath.EvalSymlinks(backup2)
+	if err != nil {
+		t.Fatalf("eval backup2: %v", err)
+	}
+
 	// Should have:
 	// 1 binary (resolved to realBin)
 	// 2 backups
@@ -67,7 +80,7 @@ func TestDiscoverTargets_SymlinkAndBackups(t *testing.T) {
 	}
 
 	// Verify main binary resolved to realBin
-	if targets[0].Type != uninstall.TargetBinary || targets[0].Path != realBin || !targets[0].Exists {
+	if targets[0].Type != uninstall.TargetBinary || targets[0].Path != realBinResolved || !targets[0].Exists {
 		t.Errorf("unexpected binary target: %+v", targets[0])
 	}
 
@@ -78,7 +91,7 @@ func TestDiscoverTargets_SymlinkAndBackups(t *testing.T) {
 		switch target.Type {
 		case uninstall.TargetBackup:
 			backupCount++
-			if target.Path != backup1 && target.Path != backup2 {
+			if target.Path != backup1Resolved && target.Path != backup2Resolved {
 				t.Errorf("unexpected backup path: %s", target.Path)
 			}
 		case uninstall.TargetConfig:
