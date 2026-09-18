@@ -28,64 +28,46 @@ func (a *AptAdapter) Check() (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("apt is not installed")
 	}
+	return a.CheckPackage("apt")
+}
 
-	// Get installed version. bash -o pipefail makes the pipeline exit
-	// non-zero when apt-cache itself fails (a POSIX pipeline would exit 0
-	// through awk even on failure, silently masking it).
-	stdout, err := shellOutputErr("bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'", "apt")
-	if err != nil {
-		return adapters.UpdateInfo{}, err
+// parseAptPolicyOutput parses the stdout of `apt-cache policy <pkg>`.
+func parseAptPolicyOutput(out string) (string, string) {
+	var current, latest string
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Installed:") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				current = parts[1]
+			}
+		} else if strings.HasPrefix(trimmed, "Candidate:") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				latest = parts[1]
+			}
+		}
 	}
-	current := strings.TrimSpace(stdout)
 	if current == "" || current == "(none)" {
 		current = "unknown"
 	}
-
-	// Get latest version.
-	stdout, err = shellOutputErr("bash -o pipefail -c 'apt-cache policy apt 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'", "apt")
-	if err != nil {
-		return adapters.UpdateInfo{}, err
-	}
-	latest := strings.TrimSpace(stdout)
 	if latest == "" {
 		latest = "unknown"
 	}
-
-	updateAvailable := current != "unknown" && latest != "unknown" && current != latest
-
-	return adapters.UpdateInfo{
-		CurrentVersion:  current,
-		LatestVersion:   latest,
-		UpdateAvailable: updateAvailable,
-	}, nil
+	return current, latest
 }
 
 // CheckPackage reports the installed vs candidate version of an owned package
 // (e.g. `gh`, `docker-ce`) under apt, so an owned tool's delegated Check() and
 // the manager-group bulk path know a real update exists (design D2). It
-// queries `apt-cache policy <pkg>` with the same bash -o pipefail pipeline
-// apt.Check uses, so a real apt-cache failure is a structured error, not a
-// silent (none) — an owned package that is absent (not installed) is
-// "unknown" and never an update.
+// queries `apt-cache policy <pkg>` directly via structured execution, not
+// through bash or awk.
 func (a *AptAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
-	stdout, err := shellOutputErr(fmt.Sprintf("bash -o pipefail -c 'apt-cache policy %s 2>/dev/null | grep \"Installed:\" | awk \"{print \\$2}\"'", pkg), "apt")
+	stdout, err := commandOutputErrFor("apt", "apt-cache", "policy", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
-	current := strings.TrimSpace(stdout)
-	if current == "" || current == "(none)" {
-		current = "unknown"
-	}
-
-	stdout, err = shellOutputErr(fmt.Sprintf("bash -o pipefail -c 'apt-cache policy %s 2>/dev/null | grep \"Candidate:\" | awk \"{print \\$2}\"'", pkg), "apt")
-	if err != nil {
-		return adapters.UpdateInfo{}, err
-	}
-	latest := strings.TrimSpace(stdout)
-	if latest == "" {
-		latest = "unknown"
-	}
-
+	current, latest := parseAptPolicyOutput(stdout)
 	updateAvailable := current != "unknown" && latest != "unknown" && current != latest
 
 	return adapters.UpdateInfo{

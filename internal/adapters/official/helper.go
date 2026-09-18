@@ -157,17 +157,23 @@ func shellOutput(command string) string {
 	return strings.TrimSpace(stdout)
 }
 
+// commandOutputErrFor runs a command and returns its trimmed stdout, labeling
+// errors with the given tool name rather than the binary name.
+func commandOutputErrFor(tool, name string, args ...string) (string, error) {
+	stdout, stderr, err := runCmdArgsFn(name, args...)
+	if err != nil {
+		return strings.TrimSpace(stdout), commandFailureErr(tool, stderr, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
 // commandOutputErr runs a command and returns its trimmed stdout, or a
 // structured failure when the subprocess fails (design D3). Delegates to the
 // same runCmdArgsFn seam variable as commandOutput, so seam fakes keep
 // working. stdout is preserved on failure: the npm/pnpm exit-1 convention
 // (D4) needs it to decide availability.
 func commandOutputErr(name string, args ...string) (string, error) {
-	stdout, stderr, err := runCmdArgsFn(name, args...)
-	if err != nil {
-		return strings.TrimSpace(stdout), commandFailureErr(name, stderr, err)
-	}
-	return strings.TrimSpace(stdout), nil
+	return commandOutputErrFor(name, name, args...)
 }
 
 // shellOutputErr runs a shell command and returns its trimmed stdout, or a

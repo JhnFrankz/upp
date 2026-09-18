@@ -1664,3 +1664,69 @@ func TestExtractUvVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestAptCheckPackage_StructuredExecution(t *testing.T) {
+	apt := &AptAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"apt": true},
+		cmdArgs: map[string]fakeResult{
+			"apt-cache policy gh": {
+				stdout: "gh:\n  Installed: 2.45.0-1\n  Candidate: 2.46.0-1\n  Version table:\n",
+			},
+		},
+	})
+	var shellCalled bool
+	origRunCmd := runCmdFn
+	runCmdFn = func(command string) (string, string, error) {
+		shellCalled = true
+		return "", "", nil
+	}
+	t.Cleanup(func() { runCmdFn = origRunCmd })
+
+	info, err := apt.CheckPackage("gh")
+	if err != nil {
+		t.Fatalf("CheckPackage() unexpected error: %v", err)
+	}
+	if shellCalled {
+		t.Errorf("CheckPackage() invoked shell runner; structured commandOutputErr must be used instead")
+	}
+	if info.CurrentVersion != "2.45.0-1" || info.LatestVersion != "2.46.0-1" || !info.UpdateAvailable {
+		t.Errorf("CheckPackage() = %+v, want 2.45.0-1 -> 2.46.0-1 (available)", info)
+	}
+}
+
+func TestPacmanCheckPackage_StructuredExecution(t *testing.T) {
+	pac := &PacmanAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"pacman": true, "vercmp": true},
+		cmdArgs: map[string]fakeResult{
+			"pacman -Q ripgrep": {
+				stdout: "ripgrep 14.1.0-1\n",
+			},
+			"pacman -Si ripgrep": {
+				stdout: "Repository      : extra\nName            : ripgrep\nVersion         : 14.1.2-1\n",
+			},
+			"vercmp 14.1.2-1 14.1.0-1": {
+				stdout: "1\n",
+			},
+		},
+	})
+	var shellCalled bool
+	origRunCmd := runCmdFn
+	runCmdFn = func(command string) (string, string, error) {
+		shellCalled = true
+		return "", "", nil
+	}
+	t.Cleanup(func() { runCmdFn = origRunCmd })
+
+	info, err := pac.CheckPackage("ripgrep")
+	if err != nil {
+		t.Fatalf("CheckPackage() unexpected error: %v", err)
+	}
+	if shellCalled {
+		t.Errorf("CheckPackage() invoked shell runner; structured commandOutputErr must be used instead")
+	}
+	if info.CurrentVersion != "14.1.0-1" || info.LatestVersion != "14.1.2-1" || !info.UpdateAvailable {
+		t.Errorf("CheckPackage() = %+v, want 14.1.0-1 -> 14.1.2-1 (available)", info)
+	}
+}
