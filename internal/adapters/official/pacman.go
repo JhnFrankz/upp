@@ -96,30 +96,49 @@ func (a *PacmanAdapter) Update(dryRun bool) (adapters.Result, error) {
 	}, nil
 }
 
+// parsePacmanQOutput extracts the package version from `pacman -Q <pkg>` output.
+func parsePacmanQOutput(out string) string {
+	fields := strings.Fields(out)
+	if len(fields) >= 2 {
+		return fields[1]
+	}
+	if len(fields) == 1 {
+		return fields[0]
+	}
+	return "unknown"
+}
+
+// parsePacmanSiOutput extracts the candidate version from `pacman -Si <pkg>` output.
+func parsePacmanSiOutput(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Version") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				val := strings.TrimSpace(parts[1])
+				if val != "" {
+					return val
+				}
+			}
+		}
+	}
+	return "unknown"
+}
+
 // CheckPackage reports the installed vs candidate version of a package under pacman.
 func (a *PacmanAdapter) CheckPackage(pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("pacman is not installed")
 	}
 
-	installedCmd := fmt.Sprintf("bash -o pipefail -c 'pacman -Q %s 2>/dev/null | awk \"{print \\$2}\"'", pkg)
-	current := strings.TrimSpace(shellOutput(installedCmd))
-	if current == "" {
-		current = "unknown"
-	}
+	qOut := commandOutput("pacman", "-Q", pkg)
+	current := parsePacmanQOutput(qOut)
 
-	candidateCmd := fmt.Sprintf("bash -o pipefail -c 'pacman -Si %s 2>/dev/null | grep -E \"^Version\" | head -1 | awk \"{print \\$3}\"'", pkg)
-	stdout, err := shellOutputErr(candidateCmd, "pacman")
+	siOut, err := commandOutputErr("pacman", "-Si", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
-	latest := strings.TrimSpace(stdout)
-	if idx := strings.IndexByte(latest, '\n'); idx != -1 {
-		latest = strings.TrimSpace(latest[:idx])
-	}
-	if latest == "" {
-		latest = "unknown"
-	}
+	latest := parsePacmanSiOutput(siOut)
 
 	updateAvailable := false
 	if current != "unknown" && latest != "unknown" {
@@ -150,11 +169,8 @@ func (a *PacmanAdapter) compareVersions(current, latest string) bool {
 
 // CurrentVersion returns the currently installed pacman version.
 func (a *PacmanAdapter) CurrentVersion() (string, error) {
-	stdout := shellOutput("bash -o pipefail -c 'pacman -Q pacman 2>/dev/null | awk \"{print \\$2}\"'")
-	v := strings.TrimSpace(stdout)
-	if v == "" {
-		return "unknown", nil
-	}
+	out := commandOutput("pacman", "-Q", "pacman")
+	v := parsePacmanQOutput(out)
 	return v, nil
 }
 
