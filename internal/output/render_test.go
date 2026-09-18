@@ -508,12 +508,6 @@ func TestListTools_GroupedHeaderThenChildren(t *testing.T) {
 // present in the set; npm/nvm/pnpm/bun/opencode/go are standalone (go has no
 // linux owner). Manager headers follow official.AllAdapters order.
 func TestGroupByOwner_LinuxGroupsOwnedTools(t *testing.T) {
-	orig := adapterCheckFn
-	adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
-		return adapters.UpdateInfo{CurrentVersion: "1.0.0"}, nil
-	}
-	defer func() { adapterCheckFn = orig }()
-
 	tools := official.AdaptersForPlatform(platform.OSLinux)
 
 	groups := GroupByOwner(tools, platform.OSLinux)

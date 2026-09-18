@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // NewListCommand creates the `upp list` command.
@@ -43,11 +45,16 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 		return fmt.Errorf("cannot detect platform: %w", err)
 	}
 
+	var allAdapters []adapters.Adapter
 	var opts []engine.Option
 	if deps.buildAdapterList != nil {
-		opts = append(opts, engine.WithAdapters(deps.buildAdapterList(cfg, p.OS)))
+		allAdapters = deps.buildAdapterList(cfg, p.OS)
+		opts = append(opts, engine.WithAdapters(allAdapters))
 	}
 	eng := engine.New(cfg, p.OS, opts...)
+	if allAdapters == nil {
+		allAdapters, _ = eng.Resolve(engine.Filter{})
+	}
 
 	only := ParseFilter(gf.Only)
 	adapterList, err := eng.Resolve(engine.Filter{Only: only})
@@ -72,7 +79,25 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 		return nil
 	}
 
-	groups := output.GroupByOwner(adapterList, p.OS)
+	toolGroups := engine.GroupByOwner(adapterList, p.OS, allAdapters)
+	if len(toolGroups) == 0 {
+		r.NoToolsConfigured()
+		return nil
+	}
+
+	checkAdapters := prepareCheckAdapters(adapterList, p.OS, allAdapters)
+	for i, a := range checkAdapters {
+		if security.CheckNeedsConsent(a.Info()) {
+			checkAdapters[i] = unconsentedCheckAdapter{Adapter: a}
+		}
+	}
+
+	outcomes, err := eng.Check(context.Background(), checkAdapters, nil)
+	if err != nil {
+		return fmt.Errorf("cannot check tools: %w", err)
+	}
+
+	groups := output.PresentGroups(toolGroups, outcomes)
 	if len(groups) == 0 {
 		r.NoToolsConfigured()
 		return nil

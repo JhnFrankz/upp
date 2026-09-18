@@ -1,11 +1,8 @@
 package output
 
 import (
-	"context"
-
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
-	"github.com/JhnFrankz/upp/internal/security"
+	"github.com/JhnFrankz/upp/internal/engine"
 )
 
 // Group is a section of the list/selector output: a manager header line
@@ -20,178 +17,85 @@ type Group struct {
 	Items  []ListEntry
 }
 
-// GroupByOwner buckets the given adapters into manager-grouped output rows in
-// canonical discovery order: (1) manager headers first, in official.AllAdapters
-// order (apt, brew, winget, scoop); (2) each manager's owned tools (KindTool
-// whose Manager[os] resolves to that manager); (3) standalone tools (KindTool
-// with no resolving owner on this platform).
-//
-// It is display-only: it never reorders or mutates the input, and a manager
-// that was filtered out (not present in tools) never produces a phantom header
-// — its owned tools fall through to the standalone group. For each adapter it
-// builds a ListEntry exactly like the list command did (Detect → Check),
-// so the returned groups carry Status/Version for rendering.
-func GroupByOwner(tools []adapters.Adapter, osName string) []Group {
-	entryByID := make(map[string]ListEntry, len(tools))
-	presentManagers := make(map[string]bool)
-	for _, a := range tools {
-		entryByID[a.Name()] = listEntryFor(a)
-		if a.Info().Kind == adapters.KindManager {
-			presentManagers[a.Name()] = true
+// PresentGroups maps domain ToolGroup slices and their corresponding CheckOutcome
+// results into presentation Group items with status and version populated,
+// without performing any command execution or I/O.
+func PresentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome) []Group {
+	outcomeByID := make(map[string]engine.CheckOutcome, len(outcomes))
+	for _, oc := range outcomes {
+		if oc.ToolID != "" {
+			outcomeByID[oc.ToolID] = oc
+		}
+		if oc.ToolName != "" {
+			outcomeByID[oc.ToolName] = oc
 		}
 	}
 
-	ownerItems := make(map[string][]ListEntry)
-	var standalone []ListEntry
-	for _, a := range tools {
-		if a.Info().Kind == adapters.KindManager {
-			continue
-		}
-		entry := entryByID[a.Name()]
-		if ownerID := ownerIDOf(a, osName); ownerID != "" && presentManagers[ownerID] {
-			ownerItems[ownerID] = append(ownerItems[ownerID], entry)
-		} else {
-			standalone = append(standalone, entry)
-		}
-	}
+	groups := make([]Group, 0, len(toolGroups))
+	for _, tg := range toolGroups {
+		items := make([]ListEntry, 0, len(tg.Adapters))
+		for _, a := range tg.Adapters {
+			info := a.Info()
+			id := info.ID
+			if id == "" {
+				id = a.Name()
+			}
+			name := info.Name
+			if name == "" {
+				name = a.Name()
+			}
 
-	var groups []Group
-	for _, m := range official.AllAdapters() {
-		mi := m.Info()
-		if mi.Kind != adapters.KindManager || !presentManagers[mi.ID] {
-			continue
+			oc, ok := outcomeByID[id]
+			if !ok {
+				oc, ok = outcomeByID[a.Name()]
+			}
+
+			status := StatusSkipped
+			version := ""
+			if ok {
+				switch oc.Status {
+				case engine.StatusAvailable:
+					status = StatusAvailable
+					version = oc.CurrentVersion
+				case engine.StatusCurrent:
+					status = StatusCurrent
+					version = oc.CurrentVersion
+				case engine.StatusSkipped:
+					status = StatusSkipped
+				case engine.StatusFailed:
+					status = StatusFailed
+				}
+			}
+
+			items = append(items, ListEntry{
+				ID:      id,
+				Name:    name,
+				Status:  status,
+				Version: version,
+			})
 		}
-		items := make([]ListEntry, 0, 1+len(ownerItems[mi.ID]))
-		items = append(items, entryByID[mi.ID]) // the manager's own row leads its group
-		items = append(items, ownerItems[mi.ID]...)
-		groups = append(groups, Group{Header: mi.Name, Items: items})
-	}
-	if len(standalone) > 0 {
-		groups = append(groups, Group{Items: standalone})
+		groups = append(groups, Group{
+			Header: tg.Header,
+			Items:  items,
+		})
 	}
 	return groups
 }
 
-// GroupOrder returns the given adapters reordered into group order (manager
-// rows first in canonical AllAdapters order, then their owned tools, then
-// standalone tools) WITHOUT computing status. It is used by the interactive
-// update board/selector so display order is grouped while each tool's status
-// is computed exactly once by the engine's concurrent Check. Filtered-out
-// managers never produce a phantom group: owned tools whose manager is absent
-// fall to the standalone tail, preserving the flat --only round-trip.
-func GroupOrder(tools []adapters.Adapter, osName string) []adapters.Adapter {
-	presentManagers := make(map[string]bool)
-	for _, a := range tools {
-		if a.Info().Kind == adapters.KindManager {
-			presentManagers[a.Name()] = true
-		}
-	}
-
-	var ordered []adapters.Adapter
-	for _, m := range official.AllAdapters() {
-		mi := m.Info()
-		if mi.Kind != adapters.KindManager || !presentManagers[mi.ID] {
-			continue
-		}
-		for _, a := range tools {
-			if a.Name() == mi.ID {
-				ordered = append(ordered, a)
-				break
-			}
-		}
-		for _, a := range tools {
-			if a.Info().Kind == adapters.KindManager {
-				continue
-			}
-			if ownerIDOf(a, osName) == mi.ID {
-				ordered = append(ordered, a)
-			}
-		}
-	}
-
-	for _, a := range tools {
-		if a.Info().Kind == adapters.KindManager {
-			continue
-		}
-		if ownerID := ownerIDOf(a, osName); ownerID != "" && presentManagers[ownerID] {
-			continue
-		}
-		ordered = append(ordered, a)
-	}
-	return ordered
+// GroupByOwner is a backward-compatible presentation helper that delegates grouping
+// to engine.GroupByOwner without subprocess I/O.
+func GroupByOwner(tools []adapters.Adapter, osName string) []Group {
+	return PresentGroups(engine.GroupByOwner(tools, osName), nil)
 }
 
-// OwnerGroupLabel returns the manager display label that owns a on osName, or
-// "" when a is standalone or its owning manager is not among the given tools
-// (so a filtered-out manager never creates a phantom group header in the
-// selector). tools is the current run's adapter set used to decide presence.
-func OwnerGroupLabel(a adapters.Adapter, osName string, tools []adapters.Adapter) string {
-	presentManagers := make(map[string]bool)
-	for _, t := range tools {
-		if t.Info().Kind == adapters.KindManager {
-			presentManagers[t.Name()] = true
-		}
-	}
-	ownerID := ownerIDOf(a, osName)
-	if ownerID == "" || !presentManagers[ownerID] {
-		return ""
-	}
-	return managerDisplayName(ownerID)
+// GroupOrder delegates to engine.GroupOrder.
+// Deprecated: use engine.GroupOrder.
+func GroupOrder(tools []adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) []adapters.Adapter {
+	return engine.GroupOrder(tools, osName, allAdapters...)
 }
 
-// managerDisplayName resolves an owner manager ID to its display name, falling
-// back to the ID itself for an unknown owner (custom-injected manager).
-func managerDisplayName(ownerID string) string {
-	if owner := official.AdapterByName(ownerID); owner != nil {
-		return owner.Info().Name
-	}
-	return ownerID
-}
-
-// ownerIDOf returns the ID of the manager currently owning a on osName, or ""
-// when a is standalone. An official tool reads its canonical Info().Manager
-// map; a custom tool exposes its injected manager via ManagerAdapter.
-func ownerIDOf(a adapters.Adapter, osName string) string {
-	if custom, ok := a.(*adapters.CustomAdapter); ok {
-		if m := custom.ManagerAdapter(); m != nil {
-			return m.Name()
-		}
-		return ""
-	}
-	return a.Info().Manager[osName]
-}
-
-// listEntryFor builds the ListEntry for a single adapter, matching the list
-// command's Detect → Check logic: an uninstalled tool is Skipped with no
-// version; an installed tool is Current with its detected version (a failed
-// Check leaves the version empty).
-//
-// A custom tool's check command is arbitrary shell, and `list` is a read-only
-// surface that MUST NOT modify the system (spec command-interface). A check
-// command classified above RiskLow is therefore not run here: the tool still
-// reports as detected, with an empty version.
-// adapterCheckFn is the injectable seam for querying version info in listEntryFor.
-// In production it executes a.Check(); tests stub it to eliminate network and subprocess I/O.
-var adapterCheckFn = func(a adapters.Adapter) (adapters.UpdateInfo, error) {
-	return a.Check(context.Background())
-}
-
-func listEntryFor(a adapters.Adapter) ListEntry {
-	info := a.Info()
-	status := StatusSkipped
-	version := ""
-	if a.Detect() {
-		status = StatusCurrent
-		if !security.CheckNeedsConsent(info) {
-			if updateInfo, err := adapterCheckFn(a); err == nil {
-				version = updateInfo.CurrentVersion
-			}
-		}
-	}
-	return ListEntry{
-		ID:      info.ID,
-		Name:    info.Name,
-		Status:  status,
-		Version: version,
-	}
+// OwnerGroupLabel delegates to engine.OwnerGroupLabel.
+// Deprecated: use engine.OwnerGroupLabel.
+func OwnerGroupLabel(a adapters.Adapter, osName string, tools []adapters.Adapter, allAdapters ...[]adapters.Adapter) string {
+	return engine.OwnerGroupLabel(a, osName, tools, allAdapters...)
 }

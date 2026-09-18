@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // runListWith runs runList with the given global flags against the given
@@ -107,5 +108,73 @@ func TestRunList_EmptyVsFilterMismatch(t *testing.T) {
 				t.Errorf("output must NOT contain %q, got:\n%s", tt.wantAbsent, out)
 			}
 		})
+	}
+}
+
+// TestRunList_GatesCheckCommandByRisk pins that `upp list` never executes check
+// commands requiring consent (RiskAboveLow), neutralizing them while still
+// listing the tool as detected with an empty version.
+func TestRunList_GatesCheckCommandByRisk(t *testing.T) {
+	benignTool := &fakeUpdateAdapter{
+		name:         "benign",
+		checkCommand: "benign --version",
+		trust:        adapters.TrustCustomUntrusted,
+		info:         adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	riskyTool := &fakeUpdateAdapter{
+		name:         "risky",
+		checkCommand: "sudo risky --version",
+		trust:        adapters.TrustCustomUntrusted,
+		info:         adapters.UpdateInfo{CurrentVersion: "2.0.0"},
+	}
+
+	out := runListWith(t, &GlobalFlags{}, benignTool, riskyTool)
+
+	if benignTool.checkCount != 1 {
+		t.Errorf("benign tool checkCount = %d, want 1", benignTool.checkCount)
+	}
+	if riskyTool.checkCount != 0 {
+		t.Errorf("risky tool checkCount = %d, want 0 (must be neutralized)", riskyTool.checkCount)
+	}
+	if !strings.Contains(out, "benign") || !strings.Contains(out, "1.0.0") {
+		t.Errorf("output should list benign tool with version 1.0.0, got:\n%s", out)
+	}
+	if !strings.Contains(out, "risky") {
+		t.Errorf("output should list risky tool, got:\n%s", out)
+	}
+	if strings.Contains(out, "2.0.0") {
+		t.Errorf("risky tool version 2.0.0 must NOT be in output, got:\n%s", out)
+	}
+}
+
+// TestRunList_OwnedToolGroupedUnderManager proves that tools owned by a manager
+// are grouped under that manager's header in list output.
+func TestRunList_OwnedToolGroupedUnderManager(t *testing.T) {
+	p, err := platform.Detect()
+	if err != nil {
+		t.Fatalf("platform.Detect error: %v", err)
+	}
+
+	mgr := &fakeUpdateAdapter{
+		name:     "apt",
+		infoName: "APT Package Manager",
+		kind:     adapters.KindManager,
+		info:     adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	tool := &fakeUpdateAdapter{
+		name:           "gh",
+		kind:           adapters.KindTool,
+		manager:        map[string]string{p.OS: "apt"},
+		managerPackage: map[string]string{p.OS: "gh"},
+		info:           adapters.UpdateInfo{CurrentVersion: "2.4.0"},
+	}
+
+	out := runListWith(t, &GlobalFlags{}, mgr, tool)
+
+	if !strings.Contains(out, "APT Package Manager") {
+		t.Errorf("output missing manager header 'APT Package Manager', got:\n%s", out)
+	}
+	if !strings.Contains(out, "gh") || !strings.Contains(out, "2.4.0") {
+		t.Errorf("output missing owned tool 'gh' 2.4.0, got:\n%s", out)
 	}
 }

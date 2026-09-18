@@ -57,6 +57,7 @@ type fakeUpdateAdapter struct {
 	// like a real official manager. Empty for tool fakes.
 	selfUpdateCommand    string
 	packageUpdateCommand string
+	checkCommand         string
 
 	checkPackage    func(pkg string) (adapters.UpdateInfo, error)
 	updatePackage   func(pkg string) (adapters.Result, error)
@@ -102,6 +103,7 @@ func (f *fakeUpdateAdapter) Info() adapters.ToolInfo {
 		ManagerPackage:       f.managerPackage,
 		SelfUpdateCommand:    f.selfUpdateCommand,
 		PackageUpdateCommand: f.packageUpdateCommand,
+		CheckCommand:         f.checkCommand,
 	}
 }
 

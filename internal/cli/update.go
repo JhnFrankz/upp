@@ -372,7 +372,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		return err
 	}
 
-	grouped := output.GroupOrder(filteredAdapters, osName)
+	grouped := engine.GroupOrder(filteredAdapters, osName, allAdapters...)
 	authorized, err := authorizeChecks(gf, grouped, r)
 	if err != nil {
 		return err
@@ -417,7 +417,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		}
 		var group string
 		if a, ok := adapterMap[u.ToolID]; ok {
-			group = output.OwnerGroupLabel(a, osName, grouped)
+			group = engine.OwnerGroupLabel(a, osName, grouped, allAdapters...)
 		}
 		pending = append(pending, output.SelectOption{
 			ID:      u.ToolID,
