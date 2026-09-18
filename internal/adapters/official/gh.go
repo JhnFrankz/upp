@@ -78,6 +78,11 @@ func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 }
 
 func (a *GhAdapter) Info() adapters.ToolInfo {
+	mgr := defaultLinuxManager()
+	pkg := "gh"
+	if mgr == "pacman" {
+		pkg = "github-cli"
+	}
 	return adapters.ToolInfo{
 		ID:             "gh",
 		Name:           "GitHub CLI",
@@ -85,7 +90,7 @@ func (a *GhAdapter) Info() adapters.ToolInfo {
 		Trust:          adapters.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"linux": "gh", "macos": "gh", "windows": "gh"},
+		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"linux": pkg, "macos": "gh", "windows": "gh"},
 	}
 }

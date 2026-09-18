@@ -10,12 +10,12 @@ Define how each tool adapter declares its owning manager per platform, and how a
 
 ### Requirement: Tool Ownership Declaration
 
-Every tool adapter MUST declare its owning manager per platform through `ToolInfo`. A tool's `ToolInfo` MUST carry a `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` for owned tools). Ownership is per-platform: the same tool MAY be owned by different managers on different platforms.
+Every tool adapter MUST declare its owning manager per platform through `ToolInfo`. A tool's `ToolInfo` MUST carry a `Manager` map keyed by platform and a `Kind` (`KindManager` for manager adapters, `KindTool` for owned tools). Ownership is per-platform: the same tool MAY be owned by different managers on different platforms. On Linux, `gh` and `docker` dynamically resolve their package manager: when `apt` is absent and `pacman` is present on PATH, they resolve to `pacman` (with package names `github-cli` and `docker` respectively); otherwise they default to `apt` (with package names `gh` and `docker-ce`).
 
 | Tool | Linux | macOS | Windows |
 |------|-------|-------|---------|
-| gh | apt | brew | winget |
-| docker | apt | brew | winget |
+| gh | apt / pacman | brew | winget |
+| docker | apt / pacman | brew | winget |
 | go | (none) | brew | winget |
 
 Manager adapters (apt, brew, pacman, winget, scoop) MUST declare `KindManager`. Tools with no resolving owner on a platform (nvm, npm, pnpm, bun, opencode, go-on-Linux) MUST remain standalone (`KindTool`, no `Manager` entry).
@@ -24,6 +24,10 @@ Manager adapters (apt, brew, pacman, winget, scoop) MUST declare `KindManager`. 
 |----------|-------|------|------|
 | gh owner per platform | Platform is macOS | `gh.list()` | `Manager["macos"]="brew"` |
 | docker owner per platform | Platform is Windows | `docker.list()` | `Manager["windows"]="winget"` |
+| gh Linux apt default | Platform is Linux, apt is present | `gh.Info()` | `Manager["linux"]="apt"`, `ManagerPackage["linux"]="gh"` |
+| gh Linux pacman fallback | Platform is Linux, apt is absent and pacman is present | `gh.Info()` | `Manager["linux"]="pacman"`, `ManagerPackage["linux"]="github-cli"` |
+| docker Linux apt default | Platform is Linux, apt is present | `docker.Info()` | `Manager["linux"]="apt"`, `ManagerPackage["linux"]="docker-ce"` |
+| docker Linux pacman fallback | Platform is Linux, apt is absent and pacman is present | `docker.Info()` | `Manager["linux"]="pacman"`, `ManagerPackage["linux"]="docker"` |
 | go Linux standalone | Platform is Linux | `go.list()` | `Kind=KindTool`; no `Manager["linux"]` |
 | apt declares manager | apt adapter queried | `apt.list()` | `Kind=KindManager` |
 | pacman declares manager | pacman adapter queried | `pacman.list()` | `Kind=KindManager` |
@@ -35,17 +39,20 @@ A manager adapter MUST report the set and count of tools it owns on the current 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | brew owns three on macOS | Platform macOS | brew ownership resolved | Owns gh, docker, go |
-| apt owns two on Linux | Platform Linux | apt ownership resolved | Owns gh, docker |
+| apt owns two on Linux | Platform Linux, apt present | apt ownership resolved | Owns gh, docker |
 | winget owns three on Windows | Platform Windows | winget ownership resolved | Owns gh, docker, go |
-| pacman owns zero official tools on Linux | Platform Linux | pacman ownership resolved | Owns 0 official tools |
+| pacman owns zero official tools when apt is present | Platform Linux, apt present | pacman ownership resolved | Owns 0 official tools |
+| pacman owns two official tools when apt is absent | Platform Linux, apt absent, pacman present | pacman ownership resolved | Owns gh, docker |
 
 ### Requirement: Resolved Owner Update Delegation
 
-Given an owned tool (`gh`, `docker`, `go`, or custom tool declaring `manager`) and host platform, the application engine MUST resolve the owning manager adapter during adapter discovery (`Resolve`) and update planning (`Plan`); the owned tool's `Update()` method MUST delegate execution to the resolved manager adapter's `PackageUpdater` interface via `UpdatePackage(pkg)`, supplying the platform-resolved package name mapped for that manager (e.g. `gh` on apt/brew/winget, `docker-ce-cli`/`docker`/`Docker.DockerCLI`, `go`/`golang-go`/`GoLang.Go`, or configured custom package name). Package manager adapters declaring `KindManager` that own packages (`apt`, `brew`, `pacman`, `winget`) MUST implement `PackageChecker` (`CheckPackage(pkg)`) and `PackageUpdater` (`UpdatePackage(pkg)`). Scoop is a self-only manager adapter on Windows that manages its own update and does not declare ownership over other tools. A tool with no resolving owner on the host platform (such as `go` on Linux, or standalone tools like `nvm`, `pnpm`, `bun`) MUST use its own adapter's update path.
+Given an owned tool (`gh`, `docker`, `go`, or custom tool declaring `manager`) and host platform, the application engine MUST resolve the owning manager adapter during adapter discovery (`Resolve`) and update planning (`Plan`); the owned tool's `Update()` method MUST delegate execution to the resolved manager adapter's `PackageUpdater` interface via `UpdatePackage(pkg)`, supplying the platform-resolved package name mapped for that manager (e.g. `gh` on apt/brew/winget, `github-cli` on pacman, `docker-ce` on apt, `docker` on pacman/brew, `Docker.Docker` on winget, `go`/`golang-go`/`GoLang.Go`, or configured custom package name). Package manager adapters declaring `KindManager` that own packages (`apt`, `brew`, `pacman`, `winget`) MUST implement `PackageChecker` (`CheckPackage(pkg)`) and `PackageUpdater` (`UpdatePackage(pkg)`). Scoop is a self-only manager adapter on Windows that manages its own update and does not declare ownership over other tools. A tool with no resolving owner on the host platform (such as `go` on Linux, or standalone tools like `nvm`, `pnpm`, `bun`) MUST use its own adapter's update path.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| gh delegates on Linux | Platform Linux, gh enabled, owned by apt | `gh.Update()` | Delegates to `apt.(PackageUpdater).UpdatePackage("gh")` with package name `gh` |
+| gh delegates on Linux (apt) | Platform Linux, gh enabled, owned by apt | `gh.Update()` | Delegates to `apt.(PackageUpdater).UpdatePackage("gh")` with package name `gh` |
+| gh delegates on Linux (pacman) | Platform Linux, gh enabled, owned by pacman | `gh.Update()` | Delegates to `pacman.(PackageUpdater).UpdatePackage("github-cli")` with package name `github-cli` |
+| docker delegates on Linux (pacman) | Platform Linux, docker enabled, owned by pacman | `docker.Update()` | Delegates to `pacman.(PackageUpdater).UpdatePackage("docker")` with package name `docker` |
 | docker delegates on macOS | Platform macOS, docker enabled, owned by brew | `docker.Update()` | Delegates to `brew.(PackageUpdater).UpdatePackage("docker")` with formula `docker` |
 | docker delegates on Windows | Platform Windows, docker enabled, owned by winget | `docker.Update()` | Delegates to `winget.(PackageUpdater).UpdatePackage("Docker.DockerCLI")` with package ID `Docker.DockerCLI` |
 | go delegates on macOS | Platform macOS, go enabled, owned by brew | `go.Update()` | Delegates to `brew.(PackageUpdater).UpdatePackage("go")` with formula `go` |
@@ -86,7 +93,8 @@ Given a manager and platform, the system MUST be able to update that manager's r
 | brew group on macOS | Platform macOS, brew owns gh, docker, go | Group update for brew | Runs brew's package commands for gh, docker, go |
 | apt group on Linux | Platform Linux, apt owns gh, docker | Default `upp update` group update for apt | Group updates gh and docker |
 | Manager self distinct | Platform Linux, apt group update | Group update for apt | Owned tools updated via package commands; apt self handled separately |
-| pacman empty group | Platform Linux, pacman owns 0 official tools, no custom pacman tools | `upp update` group update for pacman | Group update skipped without error |
+| pacman empty group when apt present | Platform Linux, apt present, pacman owns 0 official tools, no custom pacman tools | `upp update` group update for pacman | Group update skipped without error |
+| pacman group when apt absent | Platform Linux, apt absent, pacman owns gh and docker | `upp update` group update for pacman | Group updates gh (github-cli) and docker |
 | pacman custom tools group | Platform Linux, custom tools configured with `manager = "pacman"` | Group update for pacman | Runs `pacman.UpdatePackage(pkg)` for each outdated tool; pacman self-update handled separately |
 
 (Previously: the group update excluded any owned tool named by `--skip`; the `--skip` flag is removed and the exclusion clause is dropped with it.)

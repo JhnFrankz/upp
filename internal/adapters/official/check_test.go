@@ -547,6 +547,20 @@ func TestCheck(t *testing.T) {
 			wantErrContains: "apt check failed",
 		},
 		{
+			name:    "gh/linux-delegates-pacman-available",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true, "apt": false, "pacman": true, "vercmp": true},
+				cmdArgs: map[string]fakeResult{
+					"pacman -Q github-cli":     {stdout: "github-cli 2.45.0-1"},
+					"pacman -Si github-cli":    {stdout: "Repository : extra\nName : github-cli\nVersion : 2.46.0-1\n"},
+					"vercmp 2.46.0-1 2.45.0-1": {stdout: "1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "2.45.0-1", LatestVersion: "2.46.0-1", UpdateAvailable: true},
+		},
+		{
 			name:    "gh/macos-delegates-brew-available",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
@@ -615,6 +629,20 @@ func TestCheck(t *testing.T) {
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "26.1.4", LatestVersion: "26.1.4", UpdateAvailable: false},
+		},
+		{
+			name:    "docker/linux-delegates-pacman-available",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true, "apt": false, "pacman": true, "vercmp": true},
+				cmdArgs: map[string]fakeResult{
+					"pacman -Q docker":         {stdout: "docker 26.1.4-1"},
+					"pacman -Si docker":        {stdout: "Repository : extra\nName : docker\nVersion : 26.2.0-1\n"},
+					"vercmp 26.2.0-1 26.1.4-1": {stdout: "1"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "26.1.4-1", LatestVersion: "26.2.0-1", UpdateAvailable: true},
 		},
 		{
 			name:    "docker/macos-delegates-brew-available",

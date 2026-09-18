@@ -83,6 +83,15 @@ func lookPath(name string) bool {
 	return lookPathFn(name)
 }
 
+// defaultLinuxManager resolves the default Linux package manager for official tools.
+// It returns "pacman" if apt is absent and pacman is present on PATH, otherwise "apt".
+func defaultLinuxManager() string {
+	if !lookPath("apt") && lookPath("pacman") {
+		return "pacman"
+	}
+	return "apt"
+}
+
 // extractVersion attempts to extract a version string from command output.
 // It looks for semver-like patterns (v1.2.3, 1.2.3, 1.2.3-rc1, etc.).
 func extractVersion(output string) string {

@@ -388,8 +388,9 @@ func TestResolvingOwner(t *testing.T) {
 
 	t.Run("official tool resolves via ResolveOwner", func(t *testing.T) {
 		gh := official.AdapterByName("gh")
-		if got := resolvingOwner(gh, platform.OSLinux); got == nil || got.Name() != "apt" {
-			t.Errorf("resolvingOwner(gh, linux) = %v, want apt", got)
+		wantLinux := gh.Info().Manager[platform.OSLinux]
+		if got := resolvingOwner(gh, platform.OSLinux); got == nil || got.Name() != wantLinux {
+			t.Errorf("resolvingOwner(gh, linux) = %v, want %s", got, wantLinux)
 		}
 		if got := resolvingOwner(gh, platform.OSMacOS); got == nil || got.Name() != "brew" {
 			t.Errorf("resolvingOwner(gh, macos) = %v, want brew", got)

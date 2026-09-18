@@ -77,6 +77,11 @@ func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 }
 
 func (a *DockerAdapter) Info() adapters.ToolInfo {
+	mgr := defaultLinuxManager()
+	pkg := "docker-ce"
+	if mgr == "pacman" {
+		pkg = "docker"
+	}
 	return adapters.ToolInfo{
 		ID:             "docker",
 		Name:           "Docker",
@@ -84,7 +89,7 @@ func (a *DockerAdapter) Info() adapters.ToolInfo {
 		Trust:          adapters.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"linux": "docker-ce", "macos": "docker", "windows": "Docker.Docker"},
+		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},
+		ManagerPackage: map[string]string{"linux": pkg, "macos": "docker", "windows": "Docker.Docker"},
 	}
 }

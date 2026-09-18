@@ -467,6 +467,22 @@ func TestUpdate(t *testing.T) {
 			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
 		},
 		{
+			name:    "gh/linux-update-delegates-to-pacman-success",
+			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"gh": true, "apt": false, "pacman": true},
+				cmdArgs: map[string]fakeResult{
+					"gh":               {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+				},
+				shell: map[string]fakeResult{
+					"sudo pacman -S --noconfirm github-cli": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+		},
+		{
 			name:    "gh/macos-delegates-to-brew-success",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
@@ -554,6 +570,22 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+		},
+		{
+			name:    "docker/linux-update-delegates-to-pacman-success",
+			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"docker": true, "apt": false, "pacman": true},
+				cmdArgs: map[string]fakeResult{
+					"docker":           {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+				},
+				shell: map[string]fakeResult{
+					"sudo pacman -S --noconfirm docker": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
 		},
 		{
 			name:    "docker/macos-delegates-to-brew-success",

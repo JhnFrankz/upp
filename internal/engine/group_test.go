@@ -42,15 +42,20 @@ func TestGroupOrder_OwnedToolGroupedUnderManager(t *testing.T) {
 // input order. On linux both apt and brew are present and gh+docker are owned by
 // apt, so apt's group leads even though brew appears after them in the input.
 func TestGroupOrder_ManagersFollowCanonicalAllAdaptersOrder(t *testing.T) {
+	mgrID := official.AdapterByName("gh").Info().Manager[platform.OSLinux]
 	tools := []adapters.Adapter{
 		official.AdapterByName("brew"),
 		official.AdapterByName("gh"),
 		official.AdapterByName("docker"),
-		official.AdapterByName("apt"),
+		official.AdapterByName(mgrID),
 	}
 	ordered := GroupOrder(tools, platform.OSLinux)
-	if got, want := adapterNames(ordered), []string{"apt", "gh", "docker", "brew"}; !slices.Equal(got, want) {
-		t.Errorf("GroupOrder = %v, want %v (apt group leads per AllAdapters order)", got, want)
+	want := []string{"apt", "gh", "docker", "brew"}
+	if mgrID == "pacman" {
+		want = []string{"brew", "pacman", "gh", "docker"}
+	}
+	if got := adapterNames(ordered); !slices.Equal(got, want) {
+		t.Errorf("GroupOrder = %v, want %v", got, want)
 	}
 }
 
@@ -184,8 +189,9 @@ func TestOwnerIDOf(t *testing.T) {
 
 	t.Run("official tool reads Manager[os] present", func(t *testing.T) {
 		gh := official.AdapterByName("gh")
-		if got := ownerIDOf(gh, platform.OSLinux); got != "apt" {
-			t.Errorf("ownerIDOf(gh, linux) = %q, want %q", got, "apt")
+		wantOwner := gh.Info().Manager[platform.OSLinux]
+		if got := ownerIDOf(gh, platform.OSLinux); got != wantOwner {
+			t.Errorf("ownerIDOf(gh, linux) = %q, want %q", got, wantOwner)
 		}
 		if got := ownerIDOf(gh, platform.OSWindows); got != "winget" {
 			t.Errorf("ownerIDOf(gh, windows) = %q, want %q", got, "winget")
@@ -210,6 +216,8 @@ func TestOwnerIDOf(t *testing.T) {
 // resolving manager per platform, using the official adapters for that platform
 // so the owner manager is actually present in the set.
 func TestGroupByOwner_PerPlatformBuckets(t *testing.T) {
+	mgrID := official.AdapterByName("gh").Info().Manager[platform.OSLinux]
+	mgrHeader := official.AdapterByName(mgrID).Info().Name
 	tests := []struct {
 		name       string
 		os         string
@@ -217,7 +225,7 @@ func TestGroupByOwner_PerPlatformBuckets(t *testing.T) {
 		wantHeader string
 	}{
 		{name: "macos", os: platform.OSMacOS, managerID: "brew", wantHeader: "Homebrew"},
-		{name: "linux", os: platform.OSLinux, managerID: "apt", wantHeader: "APT Package Manager"},
+		{name: "linux", os: platform.OSLinux, managerID: mgrID, wantHeader: mgrHeader},
 		{name: "windows", os: platform.OSWindows, managerID: "winget", wantHeader: "Windows Package Manager"},
 	}
 	for _, tt := range tests {
@@ -263,23 +271,25 @@ func TestGroupByOwner_DeterministicCanonicalOrder(t *testing.T) {
 		t.Errorf("group headers = %v, want [APT Package Manager Homebrew Pacman Package Manager]", gotHeaders)
 	}
 
-	// apt's group: the manager row leads, then its owned tools gh + docker.
-	var aptGroup *ToolGroup
+	// owner's group: the manager row leads, then its owned tools gh + docker.
+	mgrID := official.AdapterByName("gh").Info().Manager[platform.OSLinux]
+	mgrHeader := official.AdapterByName(mgrID).Info().Name
+	var ownerGroup *ToolGroup
 	for i := range groups {
-		if groups[i].Header == "APT Package Manager" {
-			aptGroup = &groups[i]
+		if groups[i].Header == mgrHeader {
+			ownerGroup = &groups[i]
 			break
 		}
 	}
-	if aptGroup == nil {
-		t.Fatalf("no apt group found in %+v", groups)
+	if ownerGroup == nil {
+		t.Fatalf("no %s group found in %+v", mgrID, groups)
 	}
-	if aptGroup.Manager == nil || aptGroup.Manager.Name() != "apt" {
-		t.Errorf("apt group Manager = %v, want apt", aptGroup.Manager)
+	if ownerGroup.Manager == nil || ownerGroup.Manager.Name() != mgrID {
+		t.Errorf("%s group Manager = %v, want %s", mgrID, ownerGroup.Manager, mgrID)
 	}
-	ids := adapterNames(aptGroup.Adapters)
-	if !slices.Equal(ids, []string{"apt", "gh", "docker"}) {
-		t.Errorf("apt group items = %v, want [apt gh docker] (manager row then owned tools)", ids)
+	ids := adapterNames(ownerGroup.Adapters)
+	if !slices.Equal(ids, []string{mgrID, "gh", "docker"}) {
+		t.Errorf("%s group items = %v, want [%s gh docker] (manager row then owned tools)", mgrID, ids, mgrID)
 	}
 
 	// Every tool is placed exactly once, no lost/duplicated rows.
@@ -325,6 +335,10 @@ func TestGroupOrder_DeterministicCanonicalOrder(t *testing.T) {
 
 func groupOrderForFeed(t *testing.T) []string {
 	t.Helper()
+	mgrID := official.AdapterByName("gh").Info().Manager[platform.OSLinux]
+	if mgrID == "pacman" {
+		return []string{"apt", "brew", "pacman", "gh", "docker", "nvm", "npm", "pnpm", "bun", "uv", "go", "opencode"}
+	}
 	return []string{"apt", "gh", "docker", "brew", "pacman", "nvm", "npm", "pnpm", "bun", "uv", "go", "opencode"}
 }
 
