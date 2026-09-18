@@ -19,11 +19,11 @@ import (
 )
 
 func testManagerMap(m string) map[string]string {
-	return map[string]string{"linux": m, "darwin": m, "windows": m}
+	return map[string]string{"linux": m, "darwin": m, "macos": m, "windows": m}
 }
 
 func testManagerPackageMap(pkg string) map[string]string {
-	return map[string]string{"linux": pkg, "darwin": pkg, "windows": pkg}
+	return map[string]string{"linux": pkg, "darwin": pkg, "macos": pkg, "windows": pkg}
 }
 
 // fakeUpdateAdapter is a test double for the update gating matrix. It records
@@ -468,8 +468,11 @@ func TestRunUpdate_OwnedToolInheritsGatedGate(t *testing.T) {
 		},
 		result: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
 	}
+	docker.manager = testManagerMap("apt")
+	docker.managerPackage = testManagerPackageMap("docker-ce")
+	apt := &fakeUpdateAdapter{name: "apt", kind: adapters.KindManager, policy: adapters.PolicyGated, trust: adapters.TrustOfficial, noDetect: true}
 	deps := updateDeps{
-		buildAdapterList: fakeAdapterList(docker),
+		buildAdapterList: fakeAdapterList(docker, apt),
 		stdinIsTTY:       func() bool { return false },
 	}
 	out := withCapturedStdout(func() {

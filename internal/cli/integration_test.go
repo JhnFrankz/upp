@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // --- Helper: inject package-level deps ---
@@ -103,8 +103,7 @@ func TestFilterTools_Integration(t *testing.T) {
 // --- Root Command Integration Tests ---
 
 func TestRootCommand_NoArgs(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
@@ -191,8 +190,7 @@ func TestRootCommand_Version(t *testing.T) {
 // --- Init Command Integration Tests ---
 
 func TestInitCommand_CI_Mode(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -202,7 +200,10 @@ func TestInitCommand_CI_Mode(t *testing.T) {
 	})
 
 	// Config should be written
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+	cfgPath, err := config.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		t.Error("init --ci should create config file")
 	}
@@ -213,8 +214,7 @@ func TestInitCommand_CI_Mode(t *testing.T) {
 }
 
 func TestInitCommand_DetectsTools(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	output := withCapturedStdout(func() {
 		root, gf := BuildRoot()
@@ -248,8 +248,7 @@ func TestPrunedCommands_ExportImportRejected(t *testing.T) {
 // --- List Command Integration Test ---
 
 func TestListCommand_NoConfig(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
@@ -278,8 +277,7 @@ func TestListCommand_NoConfig(t *testing.T) {
 // (usable with --only) even when its owning manager was filtered out —
 // grouping is display-only and never drops or renames a row ID.
 func TestListCommand_FilterRoundTrip_GroupingDisplayOnly(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	// docker is owned by apt on linux. Request --only docker so apt (the
 	// manager) is filtered out; docker must still render a row (round-trip
@@ -314,8 +312,7 @@ func TestListCommand_FilterRoundTrip_GroupingDisplayOnly(t *testing.T) {
 // former TestCheckCommand_NoConfig: the read-only query surface works with
 // no config present (uses defaults) and produces output.
 func TestUpdateDryRunCommand_NoConfig(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
@@ -383,8 +380,7 @@ func TestBuildAdapterList_IncludesCustomAdapters(t *testing.T) {
 // --- CI Mode Integration Test ---
 
 func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	// Untrusted custom tool with command chaining → Medium risk, which CI
 	// rejects under D4 (an untrusted CI low-risk command would auto-proceed).
@@ -414,8 +410,7 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 // --- Dry-Run Integration Test ---
 
 func TestDryRun_NoCommandsExecuted(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
@@ -486,8 +481,7 @@ func TestAdapterByID(t *testing.T) {
 // port of the former check-path quiet test: quiet mode must not contain
 // progress indicators.
 func TestQuietMode_SuppressesProgress(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	// Two tools so progress WOULD print without --quiet (multi-tool loop).
 	fakes := []*fakeUpdateAdapter{
@@ -512,13 +506,13 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 // --- Complex Config Integration Test ---
 
 func TestComplexConfigRoundTrip(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
+	p, _ := platform.Detect()
 	cfg := config.DefaultConfig()
-	cfg.Tools["apt"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux"}}
+	cfg.Tools["apt"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux", p.OS}}
 	cfg.Tools["npm"] = config.ToolConfig{Enabled: false}
-	cfg.Tools["brew"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux", "macos"}}
+	cfg.Tools["brew"] = config.ToolConfig{Enabled: true, Platforms: []string{"linux", "macos", p.OS}}
 	cfg.Custom["deploy"] = config.CustomTool{
 		Command:  "deploy.sh --prod --env=staging",
 		CheckCmd: "deploy.sh --version",
@@ -564,8 +558,7 @@ func TestComplexConfigRoundTrip(t *testing.T) {
 // --- Update Flow End-to-End Test ---
 
 func TestUpdateFlow_ConfigToSummary(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
@@ -594,8 +587,7 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 // --- Edge Case: Empty Config ---
 
 func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	// Create config with all tools explicitly disabled
 	cfg := config.DefaultConfigWithDefaults()
@@ -689,8 +681,7 @@ func TestCustomTool_MissingCommand(t *testing.T) {
 // --- Multiple Custom Tools ---
 
 func TestMultipleCustomTools(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	cfg := config.DefaultConfig()
 	cfg.Custom["tool1"] = config.CustomTool{Command: "tool1 --update", Trusted: true}
@@ -784,8 +775,7 @@ func TestBuildAdapterList_UnknownManagerStaysStandalone(t *testing.T) {
 // --- Init → Update Dry-Run Lifecycle Test ---
 
 func TestInitUpdateDryRunLifecycle(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
@@ -811,7 +801,10 @@ func TestInitUpdateDryRunLifecycle(t *testing.T) {
 	})
 
 	// Verify config exists
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+	cfgPath, err := config.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
 		t.Fatal("config should exist after init")
 	}
@@ -918,8 +911,7 @@ func (f *fakeSkipAdapter) Info() adapters.ToolInfo {
 // installed), the summary counts both ("1 up to date, 1 skipped") and never
 // prints "All tools up to date.".
 func TestUpdateDryRun_WithSkips(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	current := &fakeUpdateAdapter{
 		name:   "apt",
@@ -955,8 +947,7 @@ func TestUpdateDryRun_WithSkips(t *testing.T) {
 // former TestCheckCommand_SummaryOutput: the read-only query produces a
 // summary.
 func TestUpdateDryRun_SummaryOutput(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
@@ -991,14 +982,16 @@ func TestUpdateDryRun_SummaryOutput(t *testing.T) {
 // This test previously asserted "Config written to", pinning the silent
 // overwrite the deny now prevents, and discarded the command error with `_ =`.
 func TestInitCommand_AlreadyExists(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	cfg := config.DefaultConfigWithDefaults()
 	if err := config.Save(cfg); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+	cfgPath, err := config.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
 	before, err := os.ReadFile(cfgPath)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -1054,8 +1047,7 @@ func TestFilterPerformance(t *testing.T) {
 // varying execution times, the dry-run planned actions and summary strictly
 // preserve canonical tool discovery order.
 func TestUpdateDryRun_DeterministicOrderUnderConcurrency(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	fakes := []adapters.Adapter{
 		&fakeDelayedAdapter{name: "alpha", delay: 50 * time.Millisecond, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "1.1.0"}},
@@ -1107,8 +1099,7 @@ func TestUpdateDryRun_DeterministicOrderUnderConcurrency(t *testing.T) {
 // two current, two failing tools (one generic check error, one timeout)
 // produce exact dry-run summary counts with no update executed.
 func TestUpdateDryRun_MixedStatusCounts(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpDir)
+	probeHome(t)
 
 	a0 := &fakeUpdateAdapter{name: "tool-0", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
 	a1 := &fakeDelayedAdapter{name: "tool-1", checkErr: fmt.Errorf("lock frontend held by another process")}

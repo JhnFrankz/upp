@@ -271,7 +271,8 @@ func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
 	if len(e.InstalledVersions) > 0 {
 		current = e.InstalledVersions[0]
 	}
-	return current, e.CurrentVersion, true
+	found = current != e.CurrentVersion && e.CurrentVersion != ""
+	return current, e.CurrentVersion, found
 }
 
 // parseWingetPackageUpgradeOutput scans the no-argument `winget upgrade`

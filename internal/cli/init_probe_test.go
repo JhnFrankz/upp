@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,8 +115,11 @@ func TestInitProbe_ConfigGateMatrix(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tmpDir := probeHome(t)
-			cfgPath := filepath.Join(tmpDir, ".config", "upp", "config.toml")
+			probeHome(t)
+			cfgPath, err := config.ConfigPath()
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			var before []byte
 			if tc.preexisting {

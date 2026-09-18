@@ -62,7 +62,11 @@ func cliTestClient(ts *httptest.Server) *selfupdate.Client {
 // and returns its path (the execPath seam target).
 func fakeBinary(t *testing.T, content string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "upp")
+	dir := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	p := filepath.Join(dir, "upp")
 	if err := os.WriteFile(p, []byte(content), 0o755); err != nil {
 		t.Fatal(err)
 	}
