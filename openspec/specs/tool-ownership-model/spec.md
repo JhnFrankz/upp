@@ -31,6 +31,8 @@ Manager adapters (apt, brew, pacman, winget, scoop) MUST declare `KindManager`. 
 | go Linux standalone | Platform is Linux | `go.list()` | `Kind=KindTool`; no `Manager["linux"]` |
 | apt declares manager | apt adapter queried | `apt.list()` | `Kind=KindManager` |
 | pacman declares manager | pacman adapter queried | `pacman.list()` | `Kind=KindManager` |
+| custom tool with manager declares ownership | Custom tool configured with `manager = "brew"` and `package = "ripgrep"` | `custom.Info()` | `Manager` populated for linux/macos/windows with `"brew"`, `ManagerPackage` populated with `"ripgrep"`, `Platforms` is `["linux", "macos", "windows"]` |
+| custom tool default package | Custom tool `rg` configured with `manager = "brew"` and no `package` | `custom.Info()` | `ManagerPackage` defaults to tool ID `"rg"` |
 
 ### Requirement: Manager Owned-Tool Cardinality
 
@@ -60,6 +62,7 @@ Given an owned tool (`gh`, `docker`, `go`, or custom tool declaring `manager`) a
 | PackageUpdater interface assertion | Owned tool resolved to manager adapter | `tool.Update()` | Asserts manager implements `PackageUpdater` and executes `UpdatePackage(pkg)`, returning error if assertion fails or update errors |
 | pacman implements PackageUpdater | Custom tool configured with `manager = "pacman"` and package `ripgrep` | `tool.Update()` | Asserts pacman implements `PackageUpdater` and delegates to `pacman.UpdatePackage("ripgrep")` |
 | pacman implements PackageChecker | Custom tool configured with `manager = "pacman"` and package `ripgrep` | `tool.Check()` | Asserts pacman implements `PackageChecker` and delegates to `pacman.CheckPackage("ripgrep")` |
+| custom tool dry-run with PackageUpdater | Custom tool configured with `manager = "brew"` | `tool.Update(ctx, true)` | Returns `Result{Success: true, Before: c.command, After: c.command}` without calling manager |
 | Engine centralized resolution | Owned tool evaluated during `Resolve` and `Plan` | `engine.Resolve()` / `engine.Plan()` | Owning manager and effective policies resolved centrally by the application engine |
 
 (Previously: manager resolution and effective update policy derivation were performed ad-hoc across `internal/cli` functions `buildAdapterList`, `resolvingOwner`, and `resolveEffectiveUpdatePolicy` during CLI update execution loops; resolution is now centralized within `internal/engine`.)
@@ -68,7 +71,7 @@ Given an owned tool (`gh`, `docker`, `go`, or custom tool declaring `manager`) a
 
 The application engine MUST centralize custom tool manager binding, owner resolution, and effective update policy inheritance within `internal/engine`.
 
-1. **Custom Tool Manager Binding**: During `engine.Resolve`, when a configured custom tool declares an owning manager (`custom.Manager != ""`), the engine MUST look up the declared manager name among platform official adapters. If a matching official adapter exists and declares `KindManager`, the engine MUST bind the manager adapter as the custom tool's owner (`managerArgs`). If no match exists or the adapter does not declare `KindManager`, the custom tool MUST resolve as standalone.
+1. **Custom Tool Manager Binding**: During `engine.Resolve`, when a configured custom tool declares an owning manager (`custom.Manager != ""`), the engine MUST look up the declared manager name among platform official adapters. If a matching official adapter exists and declares `KindManager`, the engine MUST bind the manager adapter as the custom tool's owner (`managerArgs`) and pass the configured `custom.Package` (defaulting to tool ID). If no match exists or the adapter does not declare `KindManager`, the custom tool MUST resolve as standalone.
 2. **Effective Policy Inheritance**: During `engine.Plan`, for every owned tool (official or custom) that resolves to an owning manager on the host platform, the engine MUST apply the owning manager's `UpdatePolicy` to govern update planning:
    - If the owning manager declares `PolicyGated`, the owned tool MUST be planned for update (`Updates`) only when its check reported `UpdateAvailable == true`; otherwise it MUST be categorized as `Current`.
    - If the owning manager declares `PolicyAlwaysUpdate`, the owned tool MUST be planned for update (`Updates`) unconditionally.
@@ -79,6 +82,7 @@ The application engine MUST centralize custom tool manager binding, owner resolu
 |----------|-------|------|------|
 | Custom tool manager bound in Resolve | Custom tool with `manager = "brew"` on macOS | `engine.Resolve(Filter{})` | `brew` manager adapter bound to custom tool as owner |
 | Custom tool unknown manager in Resolve | Custom tool with `manager = "unknown"` | `engine.Resolve(Filter{})` | Custom tool resolves as standalone |
+| Custom tool package bound in Resolve | Custom tool with `manager = "brew"` and `package = "ripgrep"` | `engine.Resolve(Filter{})` | `custom.Package()` equals `"ripgrep"` on resolved adapter |
 | Owned tool inherits Gated policy in Plan | `gh` owned by `apt` (`PolicyGated`) on Linux with candidate available | `engine.Plan(outcomes, Filter{})` | `gh` planned for update in `UpdatePlan.Updates` |
 | Owned tool inherits Gated policy current | `gh` owned by `apt` (`PolicyGated`) on Linux with candidate current | `engine.Plan(outcomes, Filter{})` | `gh` categorized into `UpdatePlan.Current` |
 | Owned tool inherits AlwaysUpdate in Plan | `gh` owned by `brew` (`PolicyAlwaysUpdate`) on macOS | `engine.Plan(outcomes, Filter{})` | `gh` planned for update unconditionally in `UpdatePlan.Updates` |
