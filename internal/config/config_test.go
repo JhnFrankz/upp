@@ -85,12 +85,38 @@ func TestValidate_DarwinPlatformAliasOnMacOS(t *testing.T) {
 		Command: "mytool --update",
 	}
 
+	cfg.Tools["mytool-upper"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"Darwin"},
+	}
+	cfg.Custom["mytool-upper"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	cfg.Tools["mytool-spaces"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{" darwin "},
+	}
+	cfg.Custom["mytool-spaces"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	cfg.Tools["mytool-macos-upper"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"MacOS"},
+	}
+	cfg.Custom["mytool-macos-upper"] = CustomTool{
+		Command: "mytool --update",
+	}
+
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate() unexpected error: %v", err)
 	}
 
-	if !cfg.Tools["mytool"].Enabled {
-		t.Errorf("tool with platforms=['darwin'] should remain enabled on macOS, got disabled")
+	for _, id := range []string{"mytool", "mytool-upper", "mytool-spaces", "mytool-macos-upper"} {
+		if !cfg.Tools[id].Enabled {
+			t.Errorf("tool %q with platform normalization/alias should remain enabled on macOS, got disabled", id)
+		}
 	}
 }
 

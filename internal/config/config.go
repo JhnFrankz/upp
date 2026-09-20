@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -225,7 +226,8 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 			if len(toolPlatforms) > 0 {
 				supported := false
 				for _, p := range toolPlatforms {
-					if p == currentOS.OS || (p == "darwin" && currentOS.OS == platform.OSMacOS) {
+					normP := strings.ToLower(strings.TrimSpace(p))
+					if normP == currentOS.OS || (normP == "darwin" && currentOS.OS == platform.OSMacOS) {
 						supported = true
 						break
 					}
