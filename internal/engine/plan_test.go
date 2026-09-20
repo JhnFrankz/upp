@@ -995,6 +995,11 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 		t.Fatalf("NewCustomAdapter error: %v", err)
 	}
 
+	customDelegatedScoop, err := adapters.NewCustomAdapter("mytool-scoop", "echo update", "", false, scoop)
+	if err != nil {
+		t.Fatalf("NewCustomAdapter scoop error: %v", err)
+	}
+
 	customStandalone := &mockPlanAdapter{info: adapters.ToolInfo{
 		ID:           "standalone-custom",
 		Name:         "standalone-custom",
@@ -1083,6 +1088,16 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 			wantRisk:  "sudo pacman -S --noconfirm mytool",
 			wantMgrID: "pacman",
 			wantPrivs: []string{"sudo"},
+		},
+		{
+			name:      "custom manager-delegated row with self-only manager inherits manager self command",
+			osName:    platform.OSWindows,
+			all:       []adapters.Adapter{scoop, customDelegatedScoop},
+			id:        "mytool-scoop",
+			toolName:  "mytool-scoop",
+			wantRisk:  "scoop update scoop",
+			wantMgrID: "scoop",
+			wantPrivs: nil,
 		},
 		{
 			name:      "custom standalone keeps its declared command",
