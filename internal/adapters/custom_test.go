@@ -524,3 +524,175 @@ func TestShellExec_UpdateTimeoutKills(t *testing.T) {
 		t.Errorf("shellExec() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
 }
+
+type fakePackageCheckerUpdater struct {
+	name           string
+	checkedPackage string
+	updatedPackage string
+	checkResult    UpdateInfo
+	updateResult   Result
+}
+
+func (f *fakePackageCheckerUpdater) Name() string { return f.name }
+func (f *fakePackageCheckerUpdater) Detect() bool { return true }
+func (f *fakePackageCheckerUpdater) Check(ctx context.Context) (UpdateInfo, error) {
+	return UpdateInfo{}, nil
+}
+func (f *fakePackageCheckerUpdater) Update(ctx context.Context, dryRun bool) (Result, error) {
+	return Result{Success: true}, nil
+}
+func (f *fakePackageCheckerUpdater) Info() ToolInfo {
+	return ToolInfo{ID: f.name, Name: f.name, Kind: KindManager}
+}
+func (f *fakePackageCheckerUpdater) CheckPackage(ctx context.Context, packageName string) (UpdateInfo, error) {
+	f.checkedPackage = packageName
+	return f.checkResult, nil
+}
+func (f *fakePackageCheckerUpdater) UpdatePackage(ctx context.Context, packageName string) (Result, error) {
+	f.updatedPackage = packageName
+	return f.updateResult, nil
+}
+
+func TestCustomAdapter_Package_GetterSetter(t *testing.T) {
+	ca, err := NewCustomAdapter("ripgrep", "rg --update", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ca.Package() != "ripgrep" {
+		t.Errorf("Package() = %q, want default %q", ca.Package(), "ripgrep")
+	}
+
+	ca.SetPackage("rg-pkg")
+	if ca.Package() != "rg-pkg" {
+		t.Errorf("Package() = %q, want %q", ca.Package(), "rg-pkg")
+	}
+
+	ca.SetPackage("")
+	if ca.Package() != "ripgrep" {
+		t.Errorf("Package() = %q, want fallback %q", ca.Package(), "ripgrep")
+	}
+
+	ca.WithPackage("rg-chained")
+	if ca.Package() != "rg-chained" {
+		t.Errorf("WithPackage() = %q, want %q", ca.Package(), "rg-chained")
+	}
+
+	ca2, err := NewCustomAdapterWithPackage("bat", "bat --update", "", "bat-extras", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ca2.Package() != "bat-extras" {
+		t.Errorf("Package() = %q, want %q", ca2.Package(), "bat-extras")
+	}
+
+	ca3, err := NewCustomAdapterWithPackage("fd", "fd --update", "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ca3.Package() != "fd" {
+		t.Errorf("Package() = %q, want %q", ca3.Package(), "fd")
+	}
+}
+
+func TestCustomAdapter_Check_DelegatesToPackageChecker(t *testing.T) {
+	mgr := &fakePackageCheckerUpdater{
+		name: "pacman",
+		checkResult: UpdateInfo{
+			CurrentVersion:  "13.0.0",
+			LatestVersion:   "14.0.0",
+			UpdateAvailable: true,
+		},
+	}
+	ca, err := NewCustomAdapterWithPackage("rg", "rg --version", "", "ripgrep", false, mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := ca.Check(context.Background())
+	if err != nil {
+		t.Fatalf("Check() error: %v", err)
+	}
+	if mgr.checkedPackage != "ripgrep" {
+		t.Errorf("CheckPackage arg = %q, want %q", mgr.checkedPackage, "ripgrep")
+	}
+	if !info.UpdateAvailable || info.CurrentVersion != "13.0.0" || info.LatestVersion != "14.0.0" {
+		t.Errorf("Check() returned %+v, want manager's checkResult", info)
+	}
+}
+
+func TestCustomAdapter_Update_DelegatesToPackageUpdater(t *testing.T) {
+	mgr := &fakePackageCheckerUpdater{
+		name: "pacman",
+		updateResult: Result{
+			Success: true,
+			Before:  "13.0.0",
+			After:   "14.0.0",
+		},
+	}
+	ca, err := NewCustomAdapterWithPackage("rg", "rg --version", "", "ripgrep", false, mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test dryRun == true: should not invoke UpdatePackage and should return Result with Before/After = c.command
+	dryResult, err := ca.Update(context.Background(), true)
+	if err != nil {
+		t.Fatalf("Update(dryRun=true) error: %v", err)
+	}
+	if !dryResult.Success || dryResult.Before != "rg --version" || dryResult.After != "rg --version" {
+		t.Errorf("Update(dryRun=true) = %+v, want Success=true and Before/After='rg --version'", dryResult)
+	}
+	if mgr.updatedPackage != "" {
+		t.Errorf("Update(dryRun=true) must not call UpdatePackage, called with %q", mgr.updatedPackage)
+	}
+
+	// Test dryRun == false: should invoke UpdatePackage("ripgrep")
+	res, err := ca.Update(context.Background(), false)
+	if err != nil {
+		t.Fatalf("Update(dryRun=false) error: %v", err)
+	}
+	if mgr.updatedPackage != "ripgrep" {
+		t.Errorf("UpdatePackage arg = %q, want %q", mgr.updatedPackage, "ripgrep")
+	}
+	if !res.Success || res.Before != "13.0.0" || res.After != "14.0.0" {
+		t.Errorf("Update(dryRun=false) = %+v, want manager's updateResult", res)
+	}
+}
+
+func TestCustomAdapter_Info_ManagerAndPackage(t *testing.T) {
+	mgr := &fakePackageCheckerUpdater{name: "pacman"}
+	ca, err := NewCustomAdapterWithPackage("rg", "rg --update", "", "ripgrep", false, mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info := ca.Info()
+	expectedPlatforms := []string{"linux", "macos", "windows"}
+	if len(info.Platforms) != len(expectedPlatforms) {
+		t.Fatalf("Platforms = %v, want %v", info.Platforms, expectedPlatforms)
+	}
+	for i, p := range expectedPlatforms {
+		if info.Platforms[i] != p {
+			t.Errorf("Platforms[%d] = %q, want %q", i, info.Platforms[i], p)
+		}
+	}
+
+	if info.Manager["linux"] != "pacman" || info.Manager["macos"] != "pacman" || info.Manager["windows"] != "pacman" {
+		t.Errorf("Manager map = %v, want pacman for all platforms", info.Manager)
+	}
+	if info.ManagerPackage["linux"] != "ripgrep" || info.ManagerPackage["macos"] != "ripgrep" || info.ManagerPackage["windows"] != "ripgrep" {
+		t.Errorf("ManagerPackage map = %v, want ripgrep for all platforms", info.ManagerPackage)
+	}
+
+	// Standalone tool platforms
+	standalone, err := NewCustomAdapter("tool", "tool --update", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sInfo := standalone.Info()
+	for _, p := range sInfo.Platforms {
+		if p == "darwin" {
+			t.Errorf("Platforms contains 'darwin', should be 'macos': %v", sInfo.Platforms)
+		}
+	}
+}

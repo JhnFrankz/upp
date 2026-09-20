@@ -552,3 +552,27 @@ func TestSave_AtomicPersistence(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadCustomTool_PackageField(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgDir := testConfigDir(t, tmpDir)
+
+	tomlContent := `version = 1
+
+[custom.rg]
+command = "rg --version"
+manager = "brew"
+package = "ripgrep"
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Custom["rg"].Package != "ripgrep" {
+		t.Errorf("CustomTool.Package = %q, want ripgrep", cfg.Custom["rg"].Package)
+	}
+}

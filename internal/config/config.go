@@ -51,6 +51,7 @@ type CustomTool struct {
 	// field. An unknown or non-manager value is ignored with a warning
 	// (forward-compatible), leaving the tool standalone.
 	Manager string `toml:"manager,omitempty"`
+	Package string `toml:"package,omitempty"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.

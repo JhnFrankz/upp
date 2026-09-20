@@ -69,7 +69,7 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 					}
 				}
 
-				a, err := adapters.NewCustomAdapter(id, custom.Command, custom.CheckCmd, custom.Trusted, managerArgs...)
+				a, err := adapters.NewCustomAdapterWithPackage(id, custom.Command, custom.CheckCmd, custom.Package, custom.Trusted, managerArgs...)
 				if err != nil {
 					continue
 				}

@@ -2301,7 +2301,7 @@ func TestRunUpdate_CustomManagerDelegatedGate(t *testing.T) {
 		return mgr, custom
 	}
 
-	t.Run("interactive approval runs the manager self command", func(t *testing.T) {
+	t.Run("interactive approval runs the manager package command", func(t *testing.T) {
 		mgr, custom := newDelegated(t)
 		out, err := runUpdateDefaultList(t, &GlobalFlags{}, &UpdateFlags{}, "y\n", []adapters.Adapter{mgr, custom})
 		if err != nil {
@@ -2310,14 +2310,14 @@ func TestRunUpdate_CustomManagerDelegatedGate(t *testing.T) {
 		if !strings.Contains(out, "Proceed? [y/N]") {
 			t.Errorf("delegated manager row must prompt; output:\n%s", out)
 		}
-		if !strings.Contains(out, "sudo pacman -S --noconfirm pacman") {
-			t.Errorf("prompt must show the delegated manager's real self command; output:\n%s", out)
+		if !strings.Contains(out, "sudo pacman -S --noconfirm mytool") {
+			t.Errorf("prompt must show the delegated manager's real package command; output:\n%s", out)
 		}
 		if strings.Contains(out, "pacman upgrade mytool") {
 			t.Errorf("synthesized command must never be classified; output:\n%s", out)
 		}
-		if !mgr.updated {
-			t.Error("approved delegated custom row must run the manager's Update()")
+		if !mgr.updatePackageOn || mgr.lastUpdatePkg != "mytool" {
+			t.Errorf("approved delegated custom row must run the manager's UpdatePackage('mytool'), got on=%v pkg=%q", mgr.updatePackageOn, mgr.lastUpdatePkg)
 		}
 	})
 
@@ -2327,7 +2327,7 @@ func TestRunUpdate_CustomManagerDelegatedGate(t *testing.T) {
 		if err == nil {
 			t.Fatal("runUpdate --ci error = nil, want non-zero exit for a delegated privileged manager row")
 		}
-		if mgr.updated {
+		if mgr.updated || mgr.updatePackageOn {
 			t.Error("delegated privileged row must not execute under --ci")
 		}
 	})
