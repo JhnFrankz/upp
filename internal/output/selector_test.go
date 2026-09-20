@@ -90,6 +90,16 @@ func TestSelector_KeyHandling(t *testing.T) {
 			wantCancel: true,
 		},
 		{
+			name:       "ctrl+c after interaction cancels",
+			input:      "\x1b[B \x03",
+			wantCancel: true,
+		},
+		{
+			name:       "ctrl+d after interaction cancels",
+			input:      "\x1b[B \x04",
+			wantCancel: true,
+		},
+		{
 			name:    "unknown keys are ignored",
 			input:   "xyz\r",
 			wantSel: []string{"brew", "npm", "go", "docker"},
