@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 func testConfigDir(t *testing.T, tmpDir string) string {
@@ -64,6 +66,31 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidate_DarwinPlatformAliasOnMacOS(t *testing.T) {
+	oldDetect := detectPlatformFn
+	detectPlatformFn = func() (platform.Platform, error) {
+		return platform.Platform{OS: platform.OSMacOS, Arch: platform.ArchArm64}, nil
+	}
+	defer func() { detectPlatformFn = oldDetect }()
+
+	cfg := DefaultConfig()
+	cfg.Tools["mytool"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"darwin"},
+	}
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() unexpected error: %v", err)
+	}
+
+	if !cfg.Tools["mytool"].Enabled {
+		t.Errorf("tool with platforms=['darwin'] should remain enabled on macOS, got disabled")
 	}
 }
 
