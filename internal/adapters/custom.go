@@ -60,18 +60,20 @@ func NewCustomAdapterWithPackage(id, command, checkCmd, pkg string, trusted bool
 
 // Package returns the package name under the manager, or the tool id if unset.
 func (c *CustomAdapter) Package() string {
-	if c.pkg != "" {
-		return c.pkg
+	trimmed := strings.TrimSpace(c.pkg)
+	if trimmed != "" {
+		return trimmed
 	}
 	return c.id
 }
 
 // SetPackage sets the package name under the manager. If pkg is empty, it defaults to the tool id.
 func (c *CustomAdapter) SetPackage(pkg string) {
-	if pkg == "" {
+	trimmed := strings.TrimSpace(pkg)
+	if trimmed == "" {
 		c.pkg = c.id
 	} else {
-		c.pkg = pkg
+		c.pkg = trimmed
 	}
 }
 

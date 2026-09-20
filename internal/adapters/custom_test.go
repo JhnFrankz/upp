@@ -572,6 +572,16 @@ func TestCustomAdapter_Package_GetterSetter(t *testing.T) {
 		t.Errorf("Package() = %q, want fallback %q", ca.Package(), "ripgrep")
 	}
 
+	ca.SetPackage("   ")
+	if ca.Package() != "ripgrep" {
+		t.Errorf("Package() = %q, want fallback %q when package is whitespace", ca.Package(), "ripgrep")
+	}
+
+	ca.SetPackage("  ripgrep-trimmed  ")
+	if ca.Package() != "ripgrep-trimmed" {
+		t.Errorf("Package() = %q, want %q", ca.Package(), "ripgrep-trimmed")
+	}
+
 	ca.WithPackage("rg-chained")
 	if ca.Package() != "rg-chained" {
 		t.Errorf("WithPackage() = %q, want %q", ca.Package(), "rg-chained")
@@ -694,5 +704,54 @@ func TestCustomAdapter_Info_ManagerAndPackage(t *testing.T) {
 		if p == "darwin" {
 			t.Errorf("Platforms contains 'darwin', should be 'macos': %v", sInfo.Platforms)
 		}
+	}
+}
+
+type fakeNonPackageManager struct {
+	name      string
+	updateRan bool
+	dryRunArg bool
+}
+
+func (f *fakeNonPackageManager) Name() string { return f.name }
+func (f *fakeNonPackageManager) Detect() bool { return true }
+func (f *fakeNonPackageManager) Check(ctx context.Context) (UpdateInfo, error) {
+	return UpdateInfo{CurrentVersion: "1.0", LatestVersion: "1.0"}, nil
+}
+func (f *fakeNonPackageManager) Update(ctx context.Context, dryRun bool) (Result, error) {
+	f.updateRan = true
+	f.dryRunArg = dryRun
+	return Result{Success: true, Before: "1.0", After: "2.0"}, nil
+}
+func (f *fakeNonPackageManager) Info() ToolInfo {
+	return ToolInfo{ID: f.name, Name: f.name, Kind: KindManager, SelfUpdateCommand: f.name + " update " + f.name}
+}
+
+func TestCustomAdapter_ManagerFallback_NonPackageCheckerUpdater(t *testing.T) {
+	mgr := &fakeNonPackageManager{name: "scoop"}
+	ca, err := NewCustomAdapterWithPackage("mytool", "mytool --update", "", "mytool", false, mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check fallback: mgr does not implement PackageChecker and checkCmd is empty, returns empty UpdateInfo
+	info, err := ca.Check(context.Background())
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if info.UpdateAvailable {
+		t.Errorf("Check() UpdateAvailable = true, want false")
+	}
+
+	// Update fallback: mgr does not implement PackageUpdater, delegates to mgr.Update(ctx, dryRun)
+	res, err := ca.Update(context.Background(), true)
+	if err != nil {
+		t.Fatalf("Update(dryRun=true) error = %v", err)
+	}
+	if !mgr.updateRan || !mgr.dryRunArg {
+		t.Errorf("mgr.Update must be called with dryRun=true, got ran=%v dryRun=%v", mgr.updateRan, mgr.dryRunArg)
+	}
+	if !res.Success || res.Before != "1.0" || res.After != "2.0" {
+		t.Errorf("Update(dryRun=true) = %+v, want manager's result", res)
 	}
 }
