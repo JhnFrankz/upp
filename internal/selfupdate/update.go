@@ -215,7 +215,12 @@ func Prepare(ctx context.Context, c *Client, current Version, p platform.Platfor
 	if err := ctx.Err(); err != nil {
 		return Release{}, "", err
 	}
-	asset, checksums, err := c.Download(ctx, assetName)
+	archivePath, checksums, err := c.Download(ctx, assetName)
+	if err != nil {
+		return Release{}, "", err
+	}
+	defer func() { _ = os.Remove(archivePath) }()
+	asset, err := os.ReadFile(archivePath)
 	if err != nil {
 		return Release{}, "", err
 	}
