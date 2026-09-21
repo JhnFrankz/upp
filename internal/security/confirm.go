@@ -5,8 +5,6 @@ import (
 	"io"
 	"os"
 	"strings"
-
-	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 // ConfirmDecision represents the outcome of a confirmation prompt.
@@ -28,7 +26,7 @@ const (
 // ConfirmConfig holds the parameters for a confirmation prompt.
 type ConfirmConfig struct {
 	ToolName   string
-	TrustLevel adapters.TrustLevel // typed: official, custom-trusted, custom-untrusted
+	TrustLevel TrustLevel // typed: official, custom-trusted, custom-untrusted
 	RiskLevel  RiskLevel
 	Command    string
 	Privileges []string
@@ -62,7 +60,7 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 	// This is how a sudo-heavy owned-tool group update (e.g.
 	// `sudo apt install --only-upgrade gh`) prompts despite each owned tool
 	// being TrustOfficial.
-	if cfg.TrustLevel == adapters.TrustOfficial && !cfg.EnforceRisk {
+	if cfg.TrustLevel == TrustOfficial && !cfg.EnforceRisk {
 		return ConfirmAuto
 	}
 
@@ -78,13 +76,13 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 	case RiskMedium:
 		// CI: trusted auto-proceeds, untrusted errors.
 		if cfg.CI {
-			if cfg.TrustLevel == adapters.TrustCustomTrusted {
+			if cfg.TrustLevel == TrustCustomTrusted {
 				return ConfirmAuto
 			}
 			return ConfirmError
 		}
 		// Interactive: trusted shows info, untrusted prompts.
-		if cfg.TrustLevel == adapters.TrustCustomTrusted {
+		if cfg.TrustLevel == TrustCustomTrusted {
 			printInfo(cfg)
 			return ConfirmProceed
 		}

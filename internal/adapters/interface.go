@@ -5,37 +5,21 @@ package adapters
 import (
 	"context"
 	"strings"
+
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // TrustLevel represents how much the system trusts a tool adapter.
-type TrustLevel int
+type TrustLevel = security.TrustLevel
 
 const (
 	// TrustCustomUntrusted is for custom adapters, untrusted by default.
-	// It is the ZERO value on purpose: an unset TrustLevel MUST resolve to the
-	// least-privileged level so unset trust fails closed. The zero value MUST
-	// stay the least-privileged tier — never insert a new level before it.
-	TrustCustomUntrusted TrustLevel = 0
+	TrustCustomUntrusted = security.TrustCustomUntrusted
 	// TrustCustomTrusted is for custom adapters marked trusted=true in config.
-	// It must never alias TrustOfficial: trust level MUST NOT bypass the risk matrix.
-	TrustCustomTrusted TrustLevel = 1
+	TrustCustomTrusted = security.TrustCustomTrusted
 	// TrustOfficial is for official, built-in adapters.
-	TrustOfficial TrustLevel = 2
+	TrustOfficial = security.TrustOfficial
 )
-
-// String returns a human-readable trust label.
-func (t TrustLevel) String() string {
-	switch t {
-	case TrustOfficial:
-		return "official"
-	case TrustCustomTrusted:
-		return "custom-trusted"
-	case TrustCustomUntrusted:
-		return "custom-untrusted"
-	default:
-		return "unknown"
-	}
-}
 
 // UpdatePolicy controls when update() may run for a tool adapter.
 type UpdatePolicy int

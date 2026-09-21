@@ -196,7 +196,7 @@ func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.
 	authorized := make([]adapters.Adapter, 0, len(adapterList))
 	for _, a := range adapterList {
 		info := a.Info()
-		if !security.CheckNeedsConsent(info) {
+		if !security.CheckNeedsConsent(info.CheckCommand) {
 			authorized = append(authorized, a)
 			continue
 		}

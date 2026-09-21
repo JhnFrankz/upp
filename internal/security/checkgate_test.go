@@ -2,8 +2,6 @@ package security
 
 import (
 	"testing"
-
-	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 // TestCheckNeedsConsent covers the custom-tool check-command gate: a declared
@@ -29,7 +27,7 @@ func TestCheckNeedsConsent(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := CheckNeedsConsent(adapters.ToolInfo{CheckCommand: tc.check})
+			got := CheckNeedsConsent(tc.check)
 			if got != tc.want {
 				t.Errorf("CheckNeedsConsent(CheckCommand=%q) = %v, want %v", tc.check, got, tc.want)
 			}

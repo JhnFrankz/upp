@@ -3,8 +3,6 @@ package security
 import (
 	"strings"
 	"testing"
-
-	"github.com/JhnFrankz/upp/internal/adapters"
 )
 
 func TestConfirmAction_OfficialTools(t *testing.T) {
@@ -21,7 +19,7 @@ func TestConfirmAction_OfficialTools(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "brew",
-				TrustLevel: adapters.TrustOfficial,
+				TrustLevel: TrustOfficial,
 				RiskLevel:  tt.riskLevel,
 				Command:    "brew upgrade",
 				CI:         false,
@@ -50,7 +48,7 @@ func TestConfirmAction_CustomUntrusted_CI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: adapters.TrustCustomUntrusted,
+				TrustLevel: TrustCustomUntrusted,
 				RiskLevel:  tt.riskLevel,
 				Command:    "mytool --update",
 				CI:         true,
@@ -78,7 +76,7 @@ func TestConfirmAction_CustomTrusted_CI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
-				TrustLevel: adapters.TrustCustomTrusted,
+				TrustLevel: TrustCustomTrusted,
 				RiskLevel:  tt.riskLevel,
 				Command:    "mytool --update",
 				CI:         true,
@@ -95,14 +93,14 @@ func TestConfirmAction_CustomHighRisk_Interactive(t *testing.T) {
 	// High risk always prompts — regardless of trust.
 	tests := []struct {
 		name  string
-		trust adapters.TrustLevel
+		trust TrustLevel
 		input string
 		want  ConfirmDecision
 	}{
-		{"untrusted yes", adapters.TrustCustomUntrusted, "y\n", ConfirmProceed},
-		{"untrusted no", adapters.TrustCustomUntrusted, "n\n", ConfirmDeny},
-		{"trusted yes", adapters.TrustCustomTrusted, "y\n", ConfirmProceed},
-		{"trusted no", adapters.TrustCustomTrusted, "n\n", ConfirmDeny},
+		{"untrusted yes", TrustCustomUntrusted, "y\n", ConfirmProceed},
+		{"untrusted no", TrustCustomUntrusted, "n\n", ConfirmDeny},
+		{"trusted yes", TrustCustomTrusted, "y\n", ConfirmProceed},
+		{"trusted no", TrustCustomTrusted, "n\n", ConfirmDeny},
 	}
 
 	for _, tt := range tests {
@@ -128,13 +126,13 @@ func TestConfirmAction_CustomMediumRisk_Interactive(t *testing.T) {
 	// Untrusted medium risk prompts; trusted medium risk shows info and proceeds.
 	tests := []struct {
 		name  string
-		trust adapters.TrustLevel
+		trust TrustLevel
 		input string
 		want  ConfirmDecision
 	}{
-		{"untrusted yes", adapters.TrustCustomUntrusted, "y\n", ConfirmProceed},
-		{"untrusted no", adapters.TrustCustomUntrusted, "n\n", ConfirmDeny},
-		{"trusted no input needed", adapters.TrustCustomTrusted, "", ConfirmProceed},
+		{"untrusted yes", TrustCustomUntrusted, "y\n", ConfirmProceed},
+		{"untrusted no", TrustCustomUntrusted, "n\n", ConfirmDeny},
+		{"trusted no input needed", TrustCustomTrusted, "", ConfirmProceed},
 	}
 
 	for _, tt := range tests {
@@ -177,7 +175,7 @@ func TestConfirmAction_EnforceRiskOfficialHigh_Interactive(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:    "gh",
-				TrustLevel:  adapters.TrustOfficial,
+				TrustLevel:  TrustOfficial,
 				RiskLevel:   RiskHigh,
 				Command:     "sudo apt install --only-upgrade gh",
 				Privileges:  []string{"sudo"},
@@ -199,7 +197,7 @@ func TestConfirmAction_EnforceRiskOfficialHigh_CI(t *testing.T) {
 	// short-circuit would.
 	cfg := ConfirmConfig{
 		ToolName:    "gh",
-		TrustLevel:  adapters.TrustOfficial,
+		TrustLevel:  TrustOfficial,
 		RiskLevel:   RiskHigh,
 		Command:     "sudo apt install --only-upgrade gh",
 		Privileges:  []string{"sudo"},
@@ -230,7 +228,7 @@ func TestConfirmAction_EnforceRiskOfficialLow(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ConfirmConfig{
 				ToolName:    "gh",
-				TrustLevel:  adapters.TrustOfficial,
+				TrustLevel:  TrustOfficial,
 				RiskLevel:   RiskLow,
 				Command:     "brew upgrade gh",
 				CI:          tt.ci,
@@ -248,10 +246,10 @@ func TestConfirmAction_CustomLowRisk_Interactive(t *testing.T) {
 	// Low risk always shows info and proceeds — regardless of trust.
 	tests := []struct {
 		name  string
-		trust adapters.TrustLevel
+		trust TrustLevel
 	}{
-		{"untrusted", adapters.TrustCustomUntrusted},
-		{"trusted", adapters.TrustCustomTrusted},
+		{"untrusted", TrustCustomUntrusted},
+		{"trusted", TrustCustomTrusted},
 	}
 
 	for _, tt := range tests {
