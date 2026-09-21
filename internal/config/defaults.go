@@ -1,6 +1,9 @@
 package config
 
-import "github.com/JhnFrankz/upp/internal/platform"
+import (
+	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/platform"
+)
 
 // ApplyDefaults merges the official platform catalog into the config.
 // For each official tool on the current platform that is not already
@@ -14,14 +17,13 @@ func ApplyDefaults(cfg *Config) {
 	if err != nil {
 		return // unsupported platform, skip catalog merge
 	}
-	catalog := platform.CatalogFor(p.OS)
+	adapters := official.AdaptersForPlatform(p.OS)
 
-	for _, tool := range catalog {
-		if _, exists := cfg.Tools[tool.ID]; !exists {
-			cfg.Tools[tool.ID] = ToolConfig{Enabled: true}
+	for _, a := range adapters {
+		if _, exists := cfg.Tools[a.Name()]; !exists {
+			cfg.Tools[a.Name()] = ToolConfig{Enabled: true}
 		}
 	}
-
 }
 
 // DefaultConfigWithDefaults returns a config pre-populated with platform catalog defaults.

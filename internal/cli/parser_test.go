@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -30,8 +31,8 @@ func writeCheckConfig(t *testing.T, settingsBody string) string {
 
 	var tools strings.Builder
 	if p, err := platform.Detect(); err == nil {
-		for _, tool := range platform.CatalogFor(p.OS) {
-			fmt.Fprintf(&tools, "\n[tools.%s]\nenabled = false\n", tool.ID)
+		for _, a := range official.AdaptersForPlatform(p.OS) {
+			fmt.Fprintf(&tools, "\n[tools.%s]\nenabled = false\n", a.Name())
 		}
 	}
 

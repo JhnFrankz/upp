@@ -427,3 +427,103 @@ func TestAdaptersForCurrentPlatform(t *testing.T) {
 		}
 	}
 }
+
+func TestIsOfficial(t *testing.T) {
+	officialIDs := []string{
+		"apt", "brew", "pacman", "winget", "scoop",
+		"nvm", "npm", "pnpm", "bun", "uv",
+		"gh", "docker", "go", "opencode",
+	}
+
+	if len(officialIDs) != 14 {
+		t.Fatalf("expected 14 official IDs, got %d", len(officialIDs))
+	}
+
+	for _, id := range officialIDs {
+		t.Run("official_"+id, func(t *testing.T) {
+			if !IsOfficial(id) {
+				t.Errorf("IsOfficial(%q) = false, want true", id)
+			}
+		})
+	}
+
+	unknownIDs := []string{
+		"unknown", "custom-tool", "pip", "cargo", "", "APT", "Brew", "node",
+	}
+	for _, id := range unknownIDs {
+		t.Run("unknown_"+id, func(t *testing.T) {
+			if IsOfficial(id) {
+				t.Errorf("IsOfficial(%q) = true, want false", id)
+			}
+		})
+	}
+}
+
+func TestIsManager(t *testing.T) {
+	managers := []string{"apt", "brew", "pacman", "winget", "scoop"}
+	for _, id := range managers {
+		t.Run("manager_"+id, func(t *testing.T) {
+			if !IsManager(id) {
+				t.Errorf("IsManager(%q) = false, want true", id)
+			}
+		})
+	}
+
+	nonManagers := []string{
+		"nvm", "npm", "pnpm", "bun", "uv",
+		"gh", "docker", "go", "opencode",
+		"unknown", "custom-tool", "",
+	}
+	for _, id := range nonManagers {
+		t.Run("non_manager_"+id, func(t *testing.T) {
+			if IsManager(id) {
+				t.Errorf("IsManager(%q) = true, want false", id)
+			}
+		})
+	}
+}
+
+func TestPlatformsFor(t *testing.T) {
+	tests := []struct {
+		id       string
+		wantPlat []string
+	}{
+		{"apt", []string{platform.OSLinux}},
+		{"brew", []string{platform.OSLinux, platform.OSMacOS}},
+		{"pacman", []string{platform.OSLinux}},
+		{"winget", []string{platform.OSWindows}},
+		{"scoop", []string{platform.OSWindows}},
+		{"nvm", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"npm", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"pnpm", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"bun", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"uv", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"gh", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"docker", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"go", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"opencode", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"unknown", nil},
+		{"custom-tool", nil},
+		{"", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got := PlatformsFor(tt.id)
+			if tt.wantPlat == nil {
+				if got != nil {
+					t.Errorf("PlatformsFor(%q) = %v, want nil", tt.id, got)
+				}
+				return
+			}
+			if len(got) != len(tt.wantPlat) {
+				t.Fatalf("PlatformsFor(%q) returned %d platforms %v, want %d %v", tt.id, len(got), got, len(tt.wantPlat), tt.wantPlat)
+			}
+			for i, p := range tt.wantPlat {
+				if got[i] != p {
+					t.Errorf("PlatformsFor(%q)[%d] = %q, want %q", tt.id, i, got[i], p)
+				}
+			}
+		})
+	}
+}

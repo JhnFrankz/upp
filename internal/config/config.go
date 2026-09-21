@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -207,7 +208,7 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 
 	// Validate tools reference official catalog where possible
 	for id, tool := range cfg.Tools {
-		if tool.Enabled && !platform.IsOfficialTool(id) && cfg.Custom[id].Command == "" {
+		if tool.Enabled && !official.IsOfficial(id) && cfg.Custom[id].Command == "" {
 			return fmt.Errorf("tool %q is enabled but not official and has no custom command", id)
 		}
 
@@ -216,12 +217,7 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 			toolPlatforms := tool.Platforms
 			if len(toolPlatforms) == 0 {
 				// No platform restriction — check official catalog
-				for _, official := range platform.OfficialTools {
-					if official.ID == id {
-						toolPlatforms = official.Platforms
-						break
-					}
-				}
+				toolPlatforms = official.PlatformsFor(id)
 			}
 			if len(toolPlatforms) > 0 {
 				supported := false
@@ -253,7 +249,7 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 		// manager-kind official tool is IGNORED (the tool proceeds standalone)
 		// and a warning is emitted — forward-compatible. Empty is a valid
 		// "no manager" declaration.
-		if custom.Manager != "" && !platform.IsManager(custom.Manager) {
+		if custom.Manager != "" && !official.IsManager(custom.Manager) {
 			_, _ = fmt.Fprintf(w, "Warning: custom tool %q: unknown manager %q ignored; tool proceeds standalone\n", id, custom.Manager)
 			custom.Manager = ""
 			cfg.Custom[id] = custom
