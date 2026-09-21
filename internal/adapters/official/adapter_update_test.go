@@ -79,6 +79,45 @@ func TestShellOutput(t *testing.T) {
 	}
 }
 
+func TestRunCmdArgsUpdate(t *testing.T) {
+	fakeErr := errors.New("err")
+	t.Run("cmdArgs-key-lookup", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			cmdArgs: map[string]fakeResult{
+				"brew upgrade gh": {stdout: "upgraded", stderr: "", err: nil},
+			},
+		})
+		stdout, stderr, err := runCmdArgsUpdate(context.Background(), "brew", "upgrade", "gh")
+		if err != nil || stdout != "upgraded" || stderr != "" {
+			t.Fatalf("unexpected result: out=%q err=%v", stdout, err)
+		}
+	})
+
+	t.Run("shell-key-lookup-fallback", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			shell: map[string]fakeResult{
+				"brew upgrade gh": {stdout: "from-shell", stderr: "", err: nil},
+			},
+		})
+		stdout, stderr, err := runCmdArgsUpdate(context.Background(), "brew", "upgrade", "gh")
+		if err != nil || stdout != "from-shell" || stderr != "" {
+			t.Fatalf("unexpected result: out=%q err=%v", stdout, err)
+		}
+	})
+
+	t.Run("cmdArgs-binary-fallback", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			cmdArgs: map[string]fakeResult{
+				"brew": {stdout: "from-binary", stderr: "some-err", err: fakeErr},
+			},
+		})
+		stdout, stderr, err := runCmdArgsUpdate(context.Background(), "brew", "upgrade", "gh")
+		if !errors.Is(err, fakeErr) || stdout != "from-binary" || stderr != "some-err" {
+			t.Fatalf("unexpected result: out=%q err=%v", stdout, err)
+		}
+	})
+}
+
 // --- Error-Aware Helper Variants (design D3) ---
 //
 // commandOutputErr/shellOutputErr delegate to the SAME seam vars as their
