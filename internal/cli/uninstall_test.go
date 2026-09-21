@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
@@ -233,5 +234,45 @@ func TestUninstall_CommandHelp(t *testing.T) {
 	}
 	if cmd.Flags().Lookup("dry-run") == nil {
 		t.Errorf("expected --dry-run flag to be registered")
+	}
+}
+
+func TestUninstall_LockAlreadyRunning(t *testing.T) {
+	var buf bytes.Buffer
+	deps := uninstallDeps{
+		acquireLock: func() (*lock.Lock, error) {
+			return nil, &lock.ErrAlreadyRunning{PID: 4242}
+		},
+	}
+	err := runUninstall(context.Background(), &GlobalFlags{}, UninstallFlags{DryRun: false}, &buf, deps)
+	if err == nil {
+		t.Fatal("expected error when lock is already held, got nil")
+	}
+	if !strings.Contains(err.Error(), "another instance of upp is currently running") {
+		t.Errorf("expected error containing 'another instance of upp is currently running', got: %v", err)
+	}
+}
+
+func TestUninstall_DryRunSkipsLock(t *testing.T) {
+	var buf bytes.Buffer
+	lockAcquired := false
+	deps := uninstallDeps{
+		acquireLock: func() (*lock.Lock, error) {
+			lockAcquired = true
+			return nil, nil
+		},
+		execPath:  func() (string, error) { return "/bin/upp", nil },
+		configDir: func() (string, error) { return "/cfg", nil },
+		cacheDir:  func() (string, error) { return "/cache", nil },
+		discover: func(execPath, configDir, cacheDir string) ([]uninstall.Target, error) {
+			return nil, nil
+		},
+	}
+	err := runUninstall(context.Background(), &GlobalFlags{}, UninstallFlags{DryRun: true}, &buf, deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if lockAcquired {
+		t.Error("expected dry-run to not acquire process lock")
 	}
 }

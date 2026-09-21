@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
@@ -22,12 +23,13 @@ type UninstallFlags struct {
 
 // uninstallDeps carries the injectable seams for runUninstall.
 type uninstallDeps struct {
-	execPath  func() (string, error)
-	configDir func() (string, error)
-	cacheDir  func() (string, error)
-	discover  func(execPath, configDir, cacheDir string) ([]uninstall.Target, error)
-	remove    func(string) error
-	removeAll func(string) error
+	acquireLock func() (*lock.Lock, error)
+	execPath    func() (string, error)
+	configDir   func() (string, error)
+	cacheDir    func() (string, error)
+	discover    func(execPath, configDir, cacheDir string) ([]uninstall.Target, error)
+	remove      func(string) error
+	removeAll   func(string) error
 }
 
 // defaultCacheDir resolves the platform-appropriate cache directory for upp.
@@ -103,6 +105,20 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	if !flags.DryRun {
+		acquireLock := deps.acquireLock
+		if acquireLock == nil {
+			acquireLock = defaultAcquireLock
+		}
+		l, err := acquireLock()
+		if err != nil {
+			return err
+		}
+		if l != nil {
+			defer func() { _ = l.Release() }()
+		}
 	}
 
 	targets, err := deps.discover(execPath, cfgDir, cDir)
