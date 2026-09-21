@@ -117,6 +117,8 @@ An owned tool (gh, docker, go) MUST NOT invoke a manager command itself; its upd
 
 Official adapters MUST NOT execute arbitrary user-provided commands.
 
+Official package manager update operations (`apt`, `pacman`, `brew`, `winget`) MUST execute structured command arguments directly (via `exec.CommandContext` without `/bin/sh -c` or `cmd.exe /c` shell evaluation), preventing argument manipulation or shell metacharacter injection in package operations.
+
 The pacman adapter MUST strictly invoke self-only updates (`sudo pacman -S --noconfirm pacman`) or targeted package updates (`sudo pacman -S --noconfirm <pkg>`), and MUST NOT invoke whole-system upgrades (`pacman -Syu`) or mutating sync operations (`pacman -Sy`) during read-only version checks.
 
 Self-update integrity MUST fail closed: the replacement archive's sha256 MUST match `checksums.txt` from the SAME release, both fetched over HTTPS with ~10s timeouts. Mismatch or missing entry MUST abort — original binary untouched, non-zero exit (stricter than install.sh's warn-and-skip). Downloaded bytes MUST be extracted, never executed.
@@ -125,6 +127,7 @@ Self-update integrity MUST fail closed: the replacement archive's sha256 MUST ma
 |----------|-------|------|------|
 | Official brew | Platform macOS | `brew.update()` | Runs `brew update` only |
 | Official pacman self-update | Platform Linux | `pacman.update()` | Runs `sudo pacman -S --noconfirm pacman` only |
+| Structured package execution | Package manager update invoked | Update execution | Arguments passed directly to process; shell metacharacters treated as literal text |
 | Pacman never runs whole system upgrade | Platform Linux | `pacman.update()` | MUST NOT invoke `pacman -Syu` |
 | Pacman check never syncs DB | Platform Linux | `pacman.check()` | Reads local sync DB; MUST NOT invoke `pacman -Sy` |
 | Linux docker delegates | Platform Linux, docker owned by apt | `docker.update()` | The owning manager (apt) updates docker; no hardcoded `apt upgrade docker-ce` |
@@ -157,7 +160,7 @@ The displayed command and privileges MUST be the adapter-declared command that w
 | Custom delegated transparency | Custom tool with `manager = "pacman"` | Action displayed | Shows the manager's real self-update command (`sudo pacman -S --noconfirm pacman`, sudo), not a synthesized string |
 ### Requirement: Zero-Sudo Uninstallation Policy
 
-`upp uninstall` MUST NEVER invoke `sudo` or attempt automatic privilege escalation. If any binary, backup, configuration, or cache directory cannot be removed due to insufficient filesystem permissions, the command MUST perform best-effort removal of all accessible targets, emit actionable manual remediation commands (e.g. `sudo rm -rf <path>`), and exit with status 1.
+`upp uninstall` MUST NEVER invoke `sudo` or attempt automatic privilege escalation. If any binary, backup, configuration, or cache directory cannot be removed due to insufficient filesystem permissions, the command MUST perform best-effort removal of all accessible targets, emit actionable manual remediation commands (e.g. `sudo rm -rf <path>`), and exit with status 1. Destructive uninstallation requires explicit interactive confirmation or `-y`/`--yes`, and fails closed in CI/headless environments to prevent unintentional data destruction.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|

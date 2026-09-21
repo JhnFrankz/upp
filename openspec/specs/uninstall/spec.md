@@ -23,8 +23,27 @@ The system MUST discover the platform-appropriate user configuration directory (
 | macOS directories | macOS environment | Discovery runs | Discovers `~/.config/upp` and `~/Library/Caches/upp` |
 | Windows directories | Windows environment | Discovery runs | Discovers `%APPDATA%\upp` and `%LOCALAPPDATA%\upp` |
 
+### Requirement: Confirmation and Safety Gates
+
+In destructive mode (without `--dry-run`), `upp uninstall` MUST require explicit confirmation before deleting any binary, configuration, or cache targets.
+- When `-y` / `--yes` is supplied, the command MUST skip confirmation prompts and proceed directly with target removal.
+- When `--dry-run` is supplied, the command MUST list planned targets and exit with status 0 without prompting or deleting files.
+- When neither `-y` nor `--dry-run` is provided:
+  - If `--ci` is active, the command MUST fail closed, emit `uninstall denied in --ci mode; rerun with -y/--yes to confirm`, and exit with a non-zero status.
+  - If stdin is not a TTY (non-interactive environment), the command MUST fail closed, emit `uninstall requires an interactive terminal; run with -y/--yes to confirm`, and exit with a non-zero status.
+  - In an interactive TTY, the command MUST render the planned target list, prompt `Proceed with uninstallation? [y/N]: `, and read user response. If the trimmed lowercase response is not `y` or `yes`, the command MUST render `Uninstall canceled — no files were removed.` and exit with status 0 without removing any files.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Interactive confirmation accepted | Running in TTY, user inputs `y` | `upp uninstall` | Prompts, user confirms, deletes targets, exits 0 |
+| Interactive confirmation declined | Running in TTY, user inputs `n` or EOF | `upp uninstall` | Prompts, renders canceled message, deletes nothing, exits 0 |
+| Headless CI rejected | Running in `--ci` without `-y` | `upp uninstall --ci` | Denied with ErrUninstallDeniedCI, exits 1 |
+| Non-TTY rejected | Running in non-interactive pipeline without `-y` | `echo "" \| upp uninstall` | Denied with ErrUninstallNotTTY, exits 1 |
+| Explicit `-y` flag | Headless or interactive environment | `upp uninstall -y` | Bypasses prompt, deletes targets directly, exits 0 |
+| Dry run preview | Any environment | `upp uninstall --dry-run` | Previews planned targets, does not prompt, deletes nothing, exits 0 |
+
 ### Requirement: Zero-Sudo Best-Effort Deletion
-`upp uninstall` MUST execute best-effort deletion across all discovered targets without ever escalating privileges or invoking `sudo`.
+Following confirmed execution or when `-y`/`--yes` is supplied, `upp uninstall` MUST execute best-effort deletion across all discovered targets without ever escalating privileges or invoking `sudo`.
 - For regular files (binary and backups), `os.Remove` MUST be used.
 - For directories (configuration and cache), `os.RemoveAll` MUST be used.
 - If all targets are removed successfully, the command MUST exit with status 0.

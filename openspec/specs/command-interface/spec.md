@@ -21,7 +21,7 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | `update` | Apply updates to selected tools | Yes | Yes |
 | `update -n` / `--dry-run` | Read-only query: preview pending updates without executing | No | No |
 | `self-update` | Update the upp binary itself | Yes (confirm) | Yes (replaces binary) |
-| `uninstall` | Uninstall upp and remove all binaries, configuration, and caches | No | Yes (deletes binary/config/cache) |
+| `uninstall` | Uninstall upp and remove all binaries, configuration, and caches | Yes (confirm) | Yes (deletes binary/config/cache) |
 | `list` | List installed/detected tools | No | No |
 
 | Scenario | GIVEN | WHEN | THEN |
@@ -34,7 +34,8 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | `update --ci` | User runs `upp update --ci` | Execution | Non-interactive updates, exit non-zero on failure |
 | `list` read-only contract | Custom tool whose `check_cmd` is classified above RiskLow | `upp list` | The check command is not run; the tool is still listed as detected, with an empty version (see security-model: Custom Check-Command Gate) |
 | `self-update` | User runs `upp self-update` | Execution | Checks release, verifies, prompts, replaces binary |
-| `uninstall` | User runs `upp uninstall` | Execution | Removes binary, backups, config, and cache under Zero-Sudo policy |
+| uninstall interactive confirm | User runs upp uninstall in TTY | Execution | Displays target plan, prompts for confirmation [y/N], deletes only upon approval |
+| uninstall -y bypass | User runs upp uninstall -y | Execution | Bypasses confirmation prompt, deletes targets directly under Zero-Sudo policy |
 | `uninstall --dry-run` | User runs `upp uninstall --dry-run` | Execution | Lists planned deletions without modifying disk |
 | Pruned `check` command | User runs `upp check` | Execution | Error: unknown command "check", exit 1 |
 | Pruned `export` command | User runs `upp export` | Execution | Error: unknown command "export", exit 1 |
@@ -183,4 +184,22 @@ In TTY `upp update`, pending tools presented in the selector but not selected by
 | Distinct from skipped | 1 deselected pending tool, 1 not-installed tool | Update finishes | Skipped count includes only the not-installed tool; deselected counted separately |
 | Not silently dropped | Any pending tool deselected | Update finishes | The tool appears in the summary detail; no omission |
 | All pending deselected | User deselects every pending tool | Update finishes | Summary reports all pending tools as deselected; nothing updated |
+
+### Requirement: Single-Instance Process Concurrency Lock
+
+Mutating commands (`update`, `self-update`, and `uninstall`) MUST acquire an exclusive, cross-platform advisory file lock before executing modifications to protect against concurrent execution corruption.
+- The lock file MUST be located at `upp.lock` within the platform cache directory (`~/.cache/upp/upp.lock` on Unix, `%LOCALAPPDATA%\upp\upp.lock` on Windows).
+- The lock file MUST record the acquiring process ID (PID).
+- If another `upp` process currently holds the lock, the command MUST fail immediately, emitting `another instance of upp is currently running (PID: <pid>)`, and exit with a non-zero status.
+- `--dry-run` mode MUST NOT acquire the process lock.
+- Read-only commands (`list`, bare `upp`) MUST NOT acquire the process lock.
+- The lock MUST be released cleanly when the command terminates or encounters an error.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Single mutating run | No other upp process running | `upp update` | Acquires lock, writes PID, executes updates, releases lock |
+| Concurrent run blocked | Instance A holding lock | Instance B runs `upp update` | Instance B fails immediately with ErrAlreadyRunning containing holder PID |
+| Dry-run exempt | Instance A holding lock | Instance B runs `upp update --dry-run` | Instance B proceeds with preview without attempting lock acquisition |
+| Clean release on exit | Mutating command finishes or errors | Process exits | Lock file is released and accessible for subsequent runs |
+
 
