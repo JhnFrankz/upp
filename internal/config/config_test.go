@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 func testConfigDir(t *testing.T, tmpDir string) string {
@@ -64,6 +66,57 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidate_DarwinPlatformAliasOnMacOS(t *testing.T) {
+	oldDetect := detectPlatformFn
+	detectPlatformFn = func() (platform.Platform, error) {
+		return platform.Platform{OS: platform.OSMacOS, Arch: platform.ArchArm64}, nil
+	}
+	defer func() { detectPlatformFn = oldDetect }()
+
+	cfg := DefaultConfig()
+	cfg.Tools["mytool"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"darwin"},
+	}
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	cfg.Tools["mytool-upper"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"Darwin"},
+	}
+	cfg.Custom["mytool-upper"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	cfg.Tools["mytool-spaces"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{" darwin "},
+	}
+	cfg.Custom["mytool-spaces"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	cfg.Tools["mytool-macos-upper"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"MacOS"},
+	}
+	cfg.Custom["mytool-macos-upper"] = CustomTool{
+		Command: "mytool --update",
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() unexpected error: %v", err)
+	}
+
+	for _, id := range []string{"mytool", "mytool-upper", "mytool-spaces", "mytool-macos-upper"} {
+		if !cfg.Tools[id].Enabled {
+			t.Errorf("tool %q with platform normalization/alias should remain enabled on macOS, got disabled", id)
+		}
 	}
 }
 
@@ -523,5 +576,29 @@ func TestSave_AtomicPersistence(t *testing.T) {
 		if strings.HasPrefix(e.Name(), "config-") && strings.HasSuffix(e.Name(), ".tmp") {
 			t.Errorf("temporary config file leaked: %s", e.Name())
 		}
+	}
+}
+
+func TestLoadCustomTool_PackageField(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgDir := testConfigDir(t, tmpDir)
+
+	tomlContent := `version = 1
+
+[custom.rg]
+command = "rg --version"
+manager = "brew"
+package = "ripgrep"
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Custom["rg"].Package != "ripgrep" {
+		t.Errorf("CustomTool.Package = %q, want ripgrep", cfg.Custom["rg"].Package)
 	}
 }

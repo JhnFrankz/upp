@@ -16,6 +16,7 @@ type CustomAdapter struct {
 	checkCmd string
 	trusted  bool
 	manager  Adapter // resolving owner adapter (nil = standalone custom tool)
+	pkg      string  // package name under manager (defaults to id if empty)
 }
 
 // NewCustomAdapter creates a CustomAdapter from config values.
@@ -38,11 +39,48 @@ func NewCustomAdapter(id, command, checkCmd string, trusted bool, manager ...Ada
 		command:  command,
 		checkCmd: checkCmd,
 		trusted:  trusted,
+		pkg:      id,
 	}
 	if len(manager) > 0 {
 		ca.manager = manager[0]
 	}
 	return ca, nil
+}
+
+// NewCustomAdapterWithPackage creates a CustomAdapter with an explicit package name.
+// If pkg is empty, it defaults to id.
+func NewCustomAdapterWithPackage(id, command, checkCmd, pkg string, trusted bool, manager ...Adapter) (*CustomAdapter, error) {
+	ca, err := NewCustomAdapter(id, command, checkCmd, trusted, manager...)
+	if err != nil {
+		return nil, err
+	}
+	ca.SetPackage(pkg)
+	return ca, nil
+}
+
+// Package returns the package name under the manager, or the tool id if unset.
+func (c *CustomAdapter) Package() string {
+	trimmed := strings.TrimSpace(c.pkg)
+	if trimmed != "" {
+		return trimmed
+	}
+	return c.id
+}
+
+// SetPackage sets the package name under the manager. If pkg is empty, it defaults to the tool id.
+func (c *CustomAdapter) SetPackage(pkg string) {
+	trimmed := strings.TrimSpace(pkg)
+	if trimmed == "" {
+		c.pkg = c.id
+	} else {
+		c.pkg = trimmed
+	}
+}
+
+// WithPackage sets the package name and returns the adapter for chaining.
+func (c *CustomAdapter) WithPackage(pkg string) *CustomAdapter {
+	c.SetPackage(pkg)
+	return c
 }
 
 func (c *CustomAdapter) Name() string { return c.id }
@@ -59,6 +97,12 @@ func (c *CustomAdapter) Detect() bool {
 
 // Check executes the check_cmd and parses version output.
 func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
+	if c.manager != nil {
+		if checker, ok := c.manager.(PackageChecker); ok {
+			return checker.CheckPackage(ctx, c.Package())
+		}
+	}
+
 	if c.checkCmd == "" {
 		return UpdateInfo{}, nil
 	}
@@ -85,10 +129,19 @@ func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error) {
 	// Delegated update path (WU2, spec Resolved Owner Update Delegation): a
 	// custom tool with a resolving owner manager delegates to the manager's
-	// Update() instead of running its own command. The manager's self-update
-	// (and its command/privileges) governs; the custom tool's own command is
-	// never invoked on the delegated path.
+	// PackageUpdater interface when supported, or to the manager's Update()
+	// as fallback.
 	if c.manager != nil {
+		if updater, ok := c.manager.(PackageUpdater); ok {
+			if dryRun {
+				return Result{
+					Success: true,
+					Before:  c.command,
+					After:   c.command,
+				}, nil
+			}
+			return updater.UpdatePackage(ctx, c.Package())
+		}
 		return c.manager.Update(ctx, dryRun)
 	}
 
@@ -135,7 +188,7 @@ func (c *CustomAdapter) Info() ToolInfo {
 	info := ToolInfo{
 		ID:           c.id,
 		Name:         c.id,
-		Platforms:    []string{"linux", "darwin", "windows"},
+		Platforms:    []string{"linux", "macos", "windows"},
 		Trust:        trust,
 		UpdatePolicy: PolicyAlwaysUpdate,
 		Kind:         KindTool,
@@ -149,6 +202,10 @@ func (c *CustomAdapter) Info() ToolInfo {
 		// path (spec Update Gating). The declared policy here is INERT for the
 		// CLI gate, which resolves the effective policy from the owner.
 		info.Kind = KindTool
+		mgrID := c.manager.Name()
+		pkg := c.Package()
+		info.Manager = map[string]string{"linux": mgrID, "macos": mgrID, "windows": mgrID}
+		info.ManagerPackage = map[string]string{"linux": pkg, "macos": pkg, "windows": pkg}
 	}
 	return info
 }

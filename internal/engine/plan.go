@@ -145,10 +145,10 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 					// (design D3), rendered from the same declaration the
 					// manager's UpdatePackage() executes.
 					riskCmd = adapters.RenderPackageCommand(ownerInfo.PackageUpdateCommand, packageName)
-				case info.Manager == nil:
-					// Custom manager-delegated row: custom.Update() delegates to
-					// owner.Update(), so the manager's real self-update command
-					// is what actually executes (design D3).
+				case info.Manager == nil || ownerInfo.SelfUpdateCommand != "":
+					// Custom manager-delegated row (or fallback when manager has no per-package command):
+					// custom.Update() delegates to owner.Update(), so the manager's
+					// real self-update command is what actually executes (design D3).
 					riskCmd = ownerInfo.SelfUpdateCommand
 				default:
 					// Official owned tool with no declared package (unreachable

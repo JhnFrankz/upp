@@ -80,6 +80,26 @@ func TestSelector_KeyHandling(t *testing.T) {
 			wantCancel: true,
 		},
 		{
+			name:       "ctrl+c cancels",
+			input:      "\x03",
+			wantCancel: true,
+		},
+		{
+			name:       "ctrl+d cancels",
+			input:      "\x04",
+			wantCancel: true,
+		},
+		{
+			name:       "ctrl+c after interaction cancels",
+			input:      "\x1b[B \x03",
+			wantCancel: true,
+		},
+		{
+			name:       "ctrl+d after interaction cancels",
+			input:      "\x1b[B \x04",
+			wantCancel: true,
+		},
+		{
 			name:    "unknown keys are ignored",
 			input:   "xyz\r",
 			wantSel: []string{"brew", "npm", "go", "docker"},
@@ -275,6 +295,8 @@ func TestSelector_RawMode_RestoreOnCancel(t *testing.T) {
 	}{
 		{name: "esc", input: "\x1b"},
 		{name: "q", input: "q"},
+		{name: "ctrl+c", input: "\x03"},
+		{name: "ctrl+d", input: "\x04"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer

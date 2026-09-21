@@ -195,6 +195,11 @@ func TestResolve_CustomToolManagerBinding(t *testing.T) {
 				Command: "", // invalid custom command, should be skipped safely
 				Manager: "apt",
 			},
+			"custom-pkg": {
+				Command: "echo update",
+				Manager: "apt",
+				Package: "my-package",
+			},
 		},
 	}
 
@@ -256,6 +261,20 @@ func TestResolve_CustomToolManagerBinding(t *testing.T) {
 		}
 		if ca.ManagerAdapter() != nil {
 			t.Errorf("custom-gh ManagerAdapter() = %v, want nil (gh is KindTool)", ca.ManagerAdapter())
+		}
+	})
+
+	t.Run("custom tool with package configured passes package", func(t *testing.T) {
+		a, exists := byName["custom-pkg"]
+		if !exists {
+			t.Fatalf("custom-pkg not found in resolved adapters")
+		}
+		ca, ok := a.(*adapters.CustomAdapter)
+		if !ok {
+			t.Fatalf("custom-pkg is not *adapters.CustomAdapter: %T", a)
+		}
+		if ca.Package() != "my-package" {
+			t.Errorf("custom-pkg Package() = %q, want my-package", ca.Package())
 		}
 	})
 }

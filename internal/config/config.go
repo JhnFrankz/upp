@@ -6,10 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
+
+// Test seam for platform detection.
+var detectPlatformFn = platform.Detect
 
 // ConfigVersion is the current config schema version.
 const ConfigVersion = 1
@@ -48,6 +52,7 @@ type CustomTool struct {
 	// field. An unknown or non-manager value is ignored with a warning
 	// (forward-compatible), leaving the tool standalone.
 	Manager string `toml:"manager,omitempty"`
+	Package string `toml:"package,omitempty"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -198,7 +203,7 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 	}
 
 	// Detect current platform for compatibility checks
-	currentOS, _ := platform.Detect()
+	currentOS, _ := detectPlatformFn()
 
 	// Validate tools reference official catalog where possible
 	for id, tool := range cfg.Tools {
@@ -221,7 +226,8 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 			if len(toolPlatforms) > 0 {
 				supported := false
 				for _, p := range toolPlatforms {
-					if p == currentOS.OS {
+					normP := strings.ToLower(strings.TrimSpace(p))
+					if normP == currentOS.OS || (normP == "darwin" && currentOS.OS == platform.OSMacOS) {
 						supported = true
 						break
 					}

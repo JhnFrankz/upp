@@ -163,7 +163,7 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 			for i := range selected {
 				selected[i] = false
 			}
-		case 'q':
+		case 0x03, 0x04, 'q':
 			return SelectResult{Canceled: true}, nil
 		case 0x1b:
 			// Escape either starts an arrow sequence (\x1b[A / \x1b[B) or
