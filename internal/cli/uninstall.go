@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -54,7 +55,7 @@ func NewUninstallCommand(gf *GlobalFlags) *cobra.Command {
 			"Zero-Sudo policy: upp never escalates privileges. If an unwritable path is encountered, " +
 			"it performs best-effort deletion, emits remediation instructions, and exits with code 1.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUninstall(gf, flags, os.Stdout, cliDeps.uninstall)
+			return runUninstall(cmd.Context(), gf, flags, os.Stdout, cliDeps.uninstall)
 		},
 	}
 
@@ -64,7 +65,11 @@ func NewUninstallCommand(gf *GlobalFlags) *cobra.Command {
 }
 
 // runUninstall executes the uninstallation process or simulates it under --dry-run.
-func runUninstall(gf *GlobalFlags, flags UninstallFlags, w io.Writer, deps uninstallDeps) error {
+func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, out io.Writer, deps uninstallDeps) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if deps.execPath == nil {
 		deps.execPath = os.Executable
 	}
@@ -84,6 +89,10 @@ func runUninstall(gf *GlobalFlags, flags UninstallFlags, w io.Writer, deps unins
 		deps.removeAll = os.RemoveAll
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	execPath, err := deps.execPath()
 	if err != nil {
 		return fmt.Errorf("cannot locate upp binary: %w", err)
@@ -92,22 +101,53 @@ func runUninstall(gf *GlobalFlags, flags UninstallFlags, w io.Writer, deps unins
 	cfgDir, _ := deps.configDir()
 	cDir, _ := deps.cacheDir()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	targets, err := deps.discover(execPath, cfgDir, cDir)
 	if err != nil {
 		return fmt.Errorf("cannot discover uninstall targets: %w", err)
 	}
 
-	r := output.NewRenderer(w, gf.Quiet)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	r := output.NewRenderer(out, gf.Quiet)
 
 	if flags.DryRun {
 		r.UninstallDryRunHeader()
 		for _, t := range targets {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			r.UninstallDryRunTarget(string(t.Type), t.Path)
 		}
 		return nil
 	}
 
-	errs := uninstall.Execute(targets, deps.remove, deps.removeAll)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	removeWrapper := func(p string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return deps.remove(p)
+	}
+	removeAllWrapper := func(p string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return deps.removeAll(p)
+	}
+
+	errs := uninstall.Execute(targets, removeWrapper, removeAllWrapper)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Report successful deletions
 	failedMap := make(map[string]bool)

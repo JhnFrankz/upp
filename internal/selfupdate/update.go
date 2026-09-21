@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -189,7 +190,10 @@ func writeBinary(out string, r io.Reader) error {
 // ErrUpToDate (current >= latest — no download), ErrUnsupportedPlatform
 // (no asset for this platform — no network), ErrChecksumMismatch
 // (mismatch or missing entry — binary untouched).
-func Prepare(c *Client, current Version, p platform.Platform) (Release, string, error) {
+func Prepare(ctx context.Context, c *Client, current Version, p platform.Platform) (Release, string, error) {
+	if err := ctx.Err(); err != nil {
+		return Release{}, "", err
+	}
 	if current.Dev || current.Dirty {
 		return Release{}, "", ErrDevelopmentBuild
 	}
@@ -197,7 +201,7 @@ func Prepare(c *Client, current Version, p platform.Platform) (Release, string, 
 	if err != nil {
 		return Release{}, "", fmt.Errorf("%w: %v", ErrUnsupportedPlatform, err)
 	}
-	rel, err := c.LatestFresh()
+	rel, err := c.LatestFresh(ctx)
 	if err != nil {
 		return Release{}, "", err
 	}
@@ -208,11 +212,17 @@ func Prepare(c *Client, current Version, p platform.Platform) (Release, string, 
 	if current.Compare(latest) >= 0 {
 		return Release{}, "", ErrUpToDate
 	}
-	asset, checksums, err := c.Download(assetName)
+	if err := ctx.Err(); err != nil {
+		return Release{}, "", err
+	}
+	asset, checksums, err := c.Download(ctx, assetName)
 	if err != nil {
 		return Release{}, "", err
 	}
 	if err := verifyChecksum(asset, checksums, assetName); err != nil {
+		return Release{}, "", err
+	}
+	if err := ctx.Err(); err != nil {
 		return Release{}, "", err
 	}
 	tmpDir, err := os.MkdirTemp("", "upp-selfupdate-*")

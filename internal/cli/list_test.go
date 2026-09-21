@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -15,11 +17,31 @@ func runListWith(t *testing.T, gf *GlobalFlags, fakes ...*fakeUpdateAdapter) str
 	probeHome(t)
 	deps := listDeps{buildAdapterList: fakeAdapterList(fakes...)}
 	out := withCapturedStdout(func() {
-		if err := runList(gf, deps); err != nil {
+		if err := runList(context.Background(), gf, deps); err != nil {
 			t.Errorf("runList returned error: %v", err)
 		}
 	})
 	return out
+}
+
+func TestRunList_ContextCanceled(t *testing.T) {
+	probeHome(t)
+	tool := &fakeUpdateAdapter{
+		name:   "apt",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  adapters.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	deps := listDeps{buildAdapterList: fakeAdapterList(tool)}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := runList(ctx, &GlobalFlags{}, deps)
+	if err == nil {
+		t.Fatal("runList(canceled ctx): want error, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("runList(canceled ctx): error = %v, want errors.Is context.Canceled", err)
+	}
 }
 
 // TestRunList_EmptyVsFilterMismatch pins the two "nothing to list" exit

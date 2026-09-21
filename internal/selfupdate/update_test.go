@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -233,7 +234,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		rel, binPath, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		rel, binPath, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
 		if err != nil {
 			t.Fatalf("Prepare: %v", err)
 		}
@@ -255,7 +256,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Dev: true}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Dev: true}, linuxAmd64)
 		if !errors.Is(err, ErrDevelopmentBuild) {
 			t.Fatalf("Prepare(dev) error = %v, want ErrDevelopmentBuild", err)
 		}
@@ -270,7 +271,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}, Dirty: true}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}, Dirty: true}, linuxAmd64)
 		if !errors.Is(err, ErrDevelopmentBuild) {
 			t.Fatalf("Prepare(dirty) error = %v, want ErrDevelopmentBuild", err)
 		}
@@ -286,7 +287,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 1}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 1}}, linuxAmd64)
 		if !errors.Is(err, ErrUpToDate) {
 			t.Fatalf("Prepare(up-to-date) error = %v, want ErrUpToDate", err)
 		}
@@ -300,7 +301,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 2}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 2}}, linuxAmd64)
 		if !errors.Is(err, ErrUpToDate) {
 			t.Fatalf("Prepare(newer) error = %v, want ErrUpToDate", err)
 		}
@@ -312,7 +313,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, unsupported)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, unsupported)
 		if !errors.Is(err, ErrUnsupportedPlatform) {
 			t.Fatalf("Prepare(freebsd) error = %v, want ErrUnsupportedPlatform", err)
 		}
@@ -329,7 +330,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
 		if !errors.Is(err, ErrChecksumMismatch) {
 			t.Fatalf("Prepare(mismatch) error = %v, want ErrChecksumMismatch", err)
 		}
@@ -342,7 +343,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
 		if !errors.Is(err, ErrChecksumMismatch) {
 			t.Fatalf("Prepare(missing entry) error = %v, want ErrChecksumMismatch", err)
 		}
@@ -353,7 +354,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
 		if err == nil || !strings.Contains(err.Error(), "404") {
 			t.Errorf("Prepare(asset 404) error = %v, want visible 404 error", err)
 		}
@@ -366,7 +367,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
 		if err == nil || !strings.Contains(err.Error(), "404") {
 			t.Errorf("Prepare(checksums 404) error = %v, want visible 404 error", err)
 		}
@@ -378,7 +379,7 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
 		if err == nil {
 			t.Fatal("Prepare(malformed tag): want error")
 		}
@@ -391,9 +392,35 @@ func TestPrepare(t *testing.T) {
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
 
-		_, _, err := Prepare(c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
-		if err == nil || !strings.Contains(err.Error(), "upp-linux-amd64/upp") {
+		_, _, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		if err == nil {
+			t.Fatal("Prepare(no binary): want error")
+		}
+		if !strings.Contains(err.Error(), "does not contain upp-linux-amd64/upp") {
 			t.Errorf("Prepare(no binary) error = %v, want error naming the missing binary path", err)
+		}
+	})
+
+	t.Run("canceled context aborts before network", func(t *testing.T) {
+		var reqs atomic.Int32
+		archive := newArchive(t)
+		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`,
+			archive, []byte(checksumLine(t, archive, "upp-linux-amd64.tar.gz")), &reqs)
+		defer ts.Close()
+		c, _ := newTestClient(t, ts)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _, err := Prepare(ctx, c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		if err == nil {
+			t.Fatal("Prepare(canceled): want error, got nil")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Prepare(canceled) error = %v, want errors.Is context.Canceled", err)
+		}
+		if n := reqs.Load(); n != 0 {
+			t.Errorf("canceled context made %d network requests, want 0", n)
 		}
 	})
 }

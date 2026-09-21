@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func TestUninstall_DryRun(t *testing.T) {
 		},
 	}
 
-	err := runUninstall(gf, flags, &buf, deps)
+	err := runUninstall(context.Background(), gf, flags, &buf, deps)
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestUninstall_DryRun(t *testing.T) {
 		t.Errorf("expected dry run header in output, got: %s", out)
 	}
 	if !strings.Contains(out, "Would remove binary: /fake/bin/upp") {
-		t.Errorf("expected binary target in dry run output, got: %s", out)
+		t.Errorf("expected binary target in output, got: %s", out)
 	}
 	if !strings.Contains(out, "Would remove config: /fake/home/.config/upp") {
 		t.Errorf("expected config target in dry run output, got: %s", out)
@@ -68,7 +69,7 @@ func TestUninstall_DryRun(t *testing.T) {
 	}
 }
 
-func TestUninstall_FullSuccess(t *testing.T) {
+func TestUninstall_ExecuteRemovesAll(t *testing.T) {
 	var buf bytes.Buffer
 	gf := &GlobalFlags{}
 	flags := UninstallFlags{DryRun: false}
@@ -87,9 +88,10 @@ func TestUninstall_FullSuccess(t *testing.T) {
 		},
 		discover: func(execPath, configDir, cacheDir string) ([]uninstall.Target, error) {
 			return []uninstall.Target{
-				{Type: uninstall.TargetBinary, Path: execPath, Exists: true},
+				{Type: uninstall.TargetBinary, Path: "/fake/bin/upp", Exists: true},
 				{Type: uninstall.TargetBackup, Path: "/fake/bin/upp.backup.1", Exists: true},
-				{Type: uninstall.TargetConfig, Path: configDir, Exists: true},
+				{Type: uninstall.TargetConfig, Path: "/fake/home/.config/upp", Exists: true},
+				{Type: uninstall.TargetCache, Path: "/fake/home/.cache/upp", Exists: false},
 			}, nil
 		},
 		remove: func(path string) error {
@@ -102,7 +104,7 @@ func TestUninstall_FullSuccess(t *testing.T) {
 		},
 	}
 
-	err := runUninstall(gf, flags, &buf, deps)
+	err := runUninstall(context.Background(), gf, flags, &buf, deps)
 	if err != nil {
 		t.Fatalf("expected nil error on success, got: %v", err)
 	}
@@ -149,7 +151,7 @@ func TestUninstall_PartialFailureWithWarnings(t *testing.T) {
 		},
 	}
 
-	err := runUninstall(gf, flags, &buf, deps)
+	err := runUninstall(context.Background(), gf, flags, &buf, deps)
 	if err == nil {
 		t.Fatalf("expected non-zero error on partial failure, got nil")
 	}
@@ -191,7 +193,7 @@ func TestUninstall_QuietMode(t *testing.T) {
 		},
 	}
 
-	err := runUninstall(gf, flags, &buf, deps)
+	err := runUninstall(context.Background(), gf, flags, &buf, deps)
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
@@ -202,6 +204,19 @@ func TestUninstall_QuietMode(t *testing.T) {
 	}
 	if !strings.Contains(out, "upp has been successfully uninstalled.") {
 		t.Errorf("expected completion message, got: %s", out)
+	}
+}
+
+func TestUninstall_ContextCanceled(t *testing.T) {
+	var buf bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := runUninstall(ctx, &GlobalFlags{}, UninstallFlags{}, &buf, uninstallDeps{})
+	if err == nil {
+		t.Fatal("runUninstall(canceled): want error, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("runUninstall(canceled): error = %v, want errors.Is context.Canceled", err)
 	}
 }
 

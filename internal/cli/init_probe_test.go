@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -172,5 +173,18 @@ func TestInitProbe_ConfigGateMatrix(t *testing.T) {
 				t.Errorf("overwrite must replace the seeded %q tool; file still contains it", initProbeMarker)
 			}
 		})
+	}
+}
+
+func TestInit_ContextCanceled(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := runInit(ctx, &GlobalFlags{})
+	if err == nil {
+		t.Fatal("runInit(canceled): want error, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("runInit(canceled): error = %v, want errors.Is context.Canceled", err)
 	}
 }

@@ -2,6 +2,8 @@ package selfupdate
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -103,7 +105,7 @@ func TestLatestFresh(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		got, err := c.LatestFresh()
+		got, err := c.LatestFresh(context.Background())
 		if err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
@@ -116,7 +118,7 @@ func TestLatestFresh(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusInternalServerError, "", nil, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		_, err := c.LatestFresh()
+		_, err := c.LatestFresh(context.Background())
 		if err == nil {
 			t.Fatal("LatestFresh: want error on HTTP 500")
 		}
@@ -129,7 +131,7 @@ func TestLatestFresh(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, "not json", nil, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, err := c.LatestFresh(); err == nil {
+		if _, err := c.LatestFresh(context.Background()); err == nil {
 			t.Fatal("LatestFresh: want error on malformed JSON body")
 		}
 	})
@@ -138,7 +140,7 @@ func TestLatestFresh(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{}`, nil, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, err := c.LatestFresh(); err == nil {
+		if _, err := c.LatestFresh(context.Background()); err == nil {
 			t.Fatal("LatestFresh: want error when tag_name is missing")
 		}
 	})
@@ -150,7 +152,7 @@ func TestLatestFresh(t *testing.T) {
 		}))
 		defer ts.Close()
 		c := NewClient(ts.URL, "")
-		_, err := c.LatestFresh()
+		_, err := c.LatestFresh(context.Background())
 		if err == nil {
 			t.Fatal("LatestFresh: want error on off-HTTPS redirect")
 		}
@@ -163,7 +165,7 @@ func TestLatestFresh(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, nil)
 		defer ts.Close()
 		c := &Client{BaseURL: ts.URL}
-		got, err := c.LatestFresh()
+		got, err := c.LatestFresh(context.Background())
 		if err != nil {
 			t.Fatalf("LatestFresh with nil HTTP: %v", err)
 		}
@@ -184,7 +186,7 @@ func TestLatestCached(t *testing.T) {
 		if err := os.WriteFile(cachePath, []byte(`{"version":1,"fetched":"2026-08-12T11:00:00Z","tag":"v0.1.1"}`), 0o644); err != nil {
 			t.Fatalf("seed cache fixture: %v", err)
 		}
-		got, ok := c.LatestCached()
+		got, ok := c.LatestCached(context.Background())
 		if !ok {
 			t.Fatal("fresh cache: LatestCached returned false")
 		}
@@ -205,7 +207,7 @@ func TestLatestCached(t *testing.T) {
 		if err := os.WriteFile(cachePath, []byte(`{"version":1,"fetched":"2026-08-11T10:00:00Z","tag":"v0.1.0"}`), 0o644); err != nil {
 			t.Fatalf("seed cache fixture: %v", err)
 		}
-		got, ok := c.LatestCached()
+		got, ok := c.LatestCached(context.Background())
 		if !ok {
 			t.Fatal("stale cache: LatestCached returned false")
 		}
@@ -226,7 +228,7 @@ func TestLatestCached(t *testing.T) {
 		if err := os.WriteFile(cachePath, []byte("garbage{{{"), 0o644); err != nil {
 			t.Fatalf("seed corrupt fixture: %v", err)
 		}
-		got, ok := c.LatestCached()
+		got, ok := c.LatestCached(context.Background())
 		if !ok {
 			t.Fatal("corrupt cache: LatestCached returned false")
 		}
@@ -243,7 +245,7 @@ func TestLatestCached(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusInternalServerError, "", nil, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if got, ok := c.LatestCached(); ok {
+		if got, ok := c.LatestCached(context.Background()); ok {
 			t.Errorf("LatestCached = (%q, true) on API 500, want silent false", got)
 		}
 	})
@@ -252,7 +254,7 @@ func TestLatestCached(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, "not json", nil, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if got, ok := c.LatestCached(); ok {
+		if got, ok := c.LatestCached(context.Background()); ok {
 			t.Errorf("LatestCached = (%q, true) on malformed body, want silent false", got)
 		}
 	})
@@ -262,7 +264,7 @@ func TestLatestCached(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, &reqs)
 		defer ts.Close()
 		c := NewClient(ts.URL, "")
-		got, ok := c.LatestCached()
+		got, ok := c.LatestCached(context.Background())
 		if !ok {
 			t.Fatal("empty cache path: LatestCached returned false")
 		}
@@ -285,7 +287,7 @@ func TestLatestCached(t *testing.T) {
 			t.Fatalf("create blocker file: %v", err)
 		}
 		c := NewClient(ts.URL, filepath.Join(blocker, "self-update-cache.json"))
-		if got, ok := c.LatestCached(); ok {
+		if got, ok := c.LatestCached(context.Background()); ok {
 			t.Errorf("LatestCached = (%q, true) despite unwritable cache path, want silent false", got)
 		}
 		if n := reqs.Load(); n != 1 {
@@ -302,10 +304,10 @@ func TestDownload(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, asset, checksums, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, err := c.LatestFresh(); err != nil {
+		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		gotAsset, gotChecksums, err := c.Download("upp-linux-amd64.tar.gz")
+		gotAsset, gotChecksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err != nil {
 			t.Fatalf("Download: %v", err)
 		}
@@ -321,10 +323,10 @@ func TestDownload(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, checksums, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, err := c.LatestFresh(); err != nil {
+		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		_, _, err := c.Download("upp-linux-amd64.tar.gz")
+		_, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on asset 404")
 		}
@@ -337,10 +339,10 @@ func TestDownload(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, asset, nil, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, err := c.LatestFresh(); err != nil {
+		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		_, _, err := c.Download("upp-linux-amd64.tar.gz")
+		_, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on checksums 404")
 		}
@@ -350,7 +352,7 @@ func TestDownload(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, asset, checksums, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, _, err := c.Download("upp-linux-amd64.tar.gz"); err == nil {
+		if _, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz"); err == nil {
 			t.Fatal("Download before LatestFresh: want error")
 		}
 	})
@@ -367,10 +369,10 @@ func TestDownload(t *testing.T) {
 		}))
 		defer ts.Close()
 		c := NewClient(ts.URL, "")
-		if _, err := c.LatestFresh(); err != nil {
+		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		_, _, err := c.Download("upp-linux-amd64.tar.gz")
+		_, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on off-HTTPS redirect")
 		}
@@ -394,10 +396,10 @@ func TestDownloadDownloadBaseURL(t *testing.T) {
 	defer web.Close()
 
 	c := &Client{BaseURL: api.URL, DownloadBaseURL: web.URL}
-	if _, err := c.LatestFresh(); err != nil {
+	if _, err := c.LatestFresh(context.Background()); err != nil {
 		t.Fatalf("LatestFresh: %v", err)
 	}
-	asset, checksums, err := c.Download("upp-linux-amd64.tar.gz")
+	asset, checksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 	if err != nil {
 		t.Fatalf("Download with DownloadBaseURL: %v", err)
 	}
@@ -437,7 +439,7 @@ func TestRedirectToHTTPSAccepted(t *testing.T) {
 	hc.CheckRedirect = checkRedirect
 	c := &Client{BaseURL: origin.URL, HTTP: hc}
 
-	got, err := c.LatestFresh()
+	got, err := c.LatestFresh(context.Background())
 	if err != nil {
 		t.Fatalf("LatestFresh across http→https redirect: %v", err)
 	}
@@ -455,7 +457,7 @@ func TestClientTimeouts(t *testing.T) {
 
 	t.Run("LatestFresh fails on a slow server", func(t *testing.T) {
 		c := &Client{BaseURL: ts.URL, HTTP: &http.Client{Timeout: 50 * time.Millisecond}}
-		_, err := c.LatestFresh()
+		_, err := c.LatestFresh(context.Background())
 		if err == nil {
 			t.Fatal("LatestFresh: want timeout error")
 		}
@@ -466,8 +468,70 @@ func TestClientTimeouts(t *testing.T) {
 
 	t.Run("LatestCached stays silent on timeout", func(t *testing.T) {
 		c := &Client{BaseURL: ts.URL, HTTP: &http.Client{Timeout: 50 * time.Millisecond}}
-		if got, ok := c.LatestCached(); ok {
+		if got, ok := c.LatestCached(context.Background()); ok {
 			t.Errorf("LatestCached = (%q, true) on timeout, want silent false", got)
+		}
+	})
+}
+
+func TestClientCancellation(t *testing.T) {
+	var reqs atomic.Int32
+	ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, []byte("asset-bytes"), []byte("checksum-bytes"), &reqs)
+	defer ts.Close()
+
+	t.Run("LatestFresh honors pre-canceled context", func(t *testing.T) {
+		reqs.Store(0)
+		c, _ := newTestClient(t, ts)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := c.LatestFresh(ctx)
+		if err == nil {
+			t.Fatal("LatestFresh: want error on canceled context, got nil")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("LatestFresh: error = %v, want errors.Is context.Canceled", err)
+		}
+		if n := reqs.Load(); n != 0 {
+			t.Errorf("pre-canceled context made %d network requests, want 0", n)
+		}
+	})
+
+	t.Run("LatestCached honors pre-canceled context silently", func(t *testing.T) {
+		reqs.Store(0)
+		c, _ := newTestClient(t, ts)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if got, ok := c.LatestCached(ctx); ok {
+			t.Errorf("LatestCached = (%q, true) on canceled context, want silent false", got)
+		}
+		if n := reqs.Load(); n != 0 {
+			t.Errorf("pre-canceled context made %d network requests, want 0", n)
+		}
+	})
+
+	t.Run("Download honors pre-canceled context", func(t *testing.T) {
+		reqs.Store(0)
+		c, _ := newTestClient(t, ts)
+		// Prime resolved release
+		if _, err := c.LatestFresh(context.Background()); err != nil {
+			t.Fatalf("setup LatestFresh: %v", err)
+		}
+		reqs.Store(0)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _, err := c.Download(ctx, "upp-linux-amd64.tar.gz")
+		if err == nil {
+			t.Fatal("Download: want error on canceled context, got nil")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Download: error = %v, want errors.Is context.Canceled", err)
+		}
+		if n := reqs.Load(); n != 0 {
+			t.Errorf("pre-canceled Download made %d network requests, want 0", n)
 		}
 	})
 }
