@@ -10,6 +10,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/engine"
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -38,6 +39,7 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 // behavior: the production adapter list builder, real TTY detection, and
 // the real CheckboxSelector.
 type updateDeps struct {
+	acquireLock      func() (*lock.Lock, error)
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
 	// stdinIsTTY reports whether stdin is a TTY — the interactive gate
 	// (design D2: TTY && !ci && !quiet && !dry-run). Zero value = production
@@ -100,6 +102,20 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	if !uf.DryRun {
+		acquireLock := deps.acquireLock
+		if acquireLock == nil {
+			acquireLock = defaultAcquireLock
+		}
+		l, err := acquireLock()
+		if err != nil {
+			return err
+		}
+		if l != nil {
+			defer func() { _ = l.Release() }()
+		}
 	}
 
 	cfg, err := config.Load()

@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/selfupdate"
@@ -51,11 +52,12 @@ func NewSelfUpdateCommand(gf *GlobalFlags) *cobra.Command {
 // prompt input), platform.Detect, os.Executable, and the production
 // GitHub client.
 type selfUpdateDeps struct {
-	stdin    io.Reader
-	isTTY    func() bool
-	detect   func() (platform.Platform, error)
-	execPath func() (string, error)
-	client   *selfupdate.Client
+	acquireLock func() (*lock.Lock, error)
+	stdin       io.Reader
+	isTTY       func() bool
+	detect      func() (platform.Platform, error)
+	execPath    func() (string, error)
+	client      *selfupdate.Client
 }
 
 // runSelfUpdate implements `upp self-update` (design data flow (a);
@@ -64,7 +66,11 @@ type selfUpdateDeps struct {
 // detect → latest lookup → download → verify → extract; the TTY
 // confirmation gate precedes the atomic replace; the user declining
 // exits 0 with nothing modified. The CLI layer only orchestrates — all
-// pipeline logic lives in internal/selfupdate.
+// runSelfUpdateContext is an alias for runSelfUpdate.
+func runSelfUpdateContext(ctx context.Context, gf *GlobalFlags, version string, deps selfUpdateDeps) error {
+	return runSelfUpdate(ctx, gf, version, deps)
+}
+
 func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -107,6 +113,18 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 	if c == nil {
 		c = selfupdate.NewClient(selfUpdateAPIBase, "")
 		c.DownloadBaseURL = selfUpdateWebBase
+	}
+
+	acquireLock := deps.acquireLock
+	if acquireLock == nil {
+		acquireLock = defaultAcquireLock
+	}
+	l, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	if l != nil {
+		defer func() { _ = l.Release() }()
 	}
 
 	rel, newPath, err := selfupdate.Prepare(ctx, c, current, p)

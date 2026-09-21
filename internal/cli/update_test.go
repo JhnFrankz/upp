@@ -14,6 +14,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/engine"
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -2360,5 +2361,42 @@ func TestRunUpdate_ContextCanceledAborts(t *testing.T) {
 	}
 	if fake.updated {
 		t.Error("fake adapter Update() must not be invoked when context is canceled")
+	}
+}
+
+func TestRunUpdate_LockAlreadyRunning(t *testing.T) {
+	probeHome(t)
+	deps := updateDeps{
+		acquireLock: func() (*lock.Lock, error) {
+			return nil, &lock.ErrAlreadyRunning{PID: 4242}
+		},
+	}
+	err := runUpdateContext(context.Background(), &GlobalFlags{}, &UpdateFlags{DryRun: false}, deps)
+	if err == nil {
+		t.Fatal("expected error when lock is already held, got nil")
+	}
+	if !strings.Contains(err.Error(), "another instance of upp is currently running") {
+		t.Errorf("expected error containing 'another instance of upp is currently running', got: %v", err)
+	}
+}
+
+func TestRunUpdate_DryRunSkipsLock(t *testing.T) {
+	probeHome(t)
+	lockAcquired := false
+	deps := updateDeps{
+		acquireLock: func() (*lock.Lock, error) {
+			lockAcquired = true
+			return nil, nil
+		},
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return nil
+		},
+	}
+	err := runUpdateContext(context.Background(), &GlobalFlags{}, &UpdateFlags{DryRun: true}, deps)
+	if err != nil {
+		t.Fatalf("unexpected error in dry-run: %v", err)
+	}
+	if lockAcquired {
+		t.Error("expected dry-run to not acquire process lock")
 	}
 }
