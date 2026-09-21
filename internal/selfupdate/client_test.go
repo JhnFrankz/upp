@@ -307,9 +307,20 @@ func TestDownload(t *testing.T) {
 		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		gotAsset, gotChecksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
+		archivePath, gotChecksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err != nil {
 			t.Fatalf("Download: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Remove(archivePath) })
+		if archivePath == "" {
+			t.Fatal("archivePath is empty")
+		}
+		if _, err := os.Stat(archivePath); err != nil {
+			t.Fatalf("archive file does not exist: %v", err)
+		}
+		gotAsset, err := os.ReadFile(archivePath)
+		if err != nil {
+			t.Fatalf("read archive file: %v", err)
 		}
 		if !bytes.Equal(gotAsset, asset) {
 			t.Errorf("asset bytes = %q, want %q", gotAsset, asset)
@@ -326,9 +337,12 @@ func TestDownload(t *testing.T) {
 		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		_, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
+		archivePath, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on asset 404")
+		}
+		if archivePath != "" {
+			t.Errorf("archivePath = %q on error, want empty", archivePath)
 		}
 		if !strings.Contains(err.Error(), "404") {
 			t.Errorf("error %q does not mention the HTTP status", err)
@@ -342,9 +356,12 @@ func TestDownload(t *testing.T) {
 		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		_, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
+		archivePath, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on checksums 404")
+		}
+		if archivePath != "" {
+			t.Errorf("archivePath = %q on error, want empty", archivePath)
 		}
 	})
 
@@ -352,8 +369,10 @@ func TestDownload(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, asset, checksums, nil)
 		defer ts.Close()
 		c, _ := newTestClient(t, ts)
-		if _, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz"); err == nil {
+		if archivePath, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz"); err == nil {
 			t.Fatal("Download before LatestFresh: want error")
+		} else if archivePath != "" {
+			t.Errorf("archivePath = %q on error, want empty", archivePath)
 		}
 	})
 
@@ -372,9 +391,12 @@ func TestDownload(t *testing.T) {
 		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
-		_, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
+		archivePath, _, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on off-HTTPS redirect")
+		}
+		if archivePath != "" {
+			t.Errorf("archivePath = %q on error, want empty", archivePath)
 		}
 		if !strings.Contains(err.Error(), "refusing redirect") {
 			t.Errorf("error %q does not mention the redirect refusal", err)
@@ -399,12 +421,17 @@ func TestDownloadDownloadBaseURL(t *testing.T) {
 	if _, err := c.LatestFresh(context.Background()); err != nil {
 		t.Fatalf("LatestFresh: %v", err)
 	}
-	asset, checksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
+	archivePath, checksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
 	if err != nil {
 		t.Fatalf("Download with DownloadBaseURL: %v", err)
 	}
-	if string(asset) != "asset-bytes" {
-		t.Errorf("asset = %q, want %q", asset, "asset-bytes")
+	t.Cleanup(func() { _ = os.Remove(archivePath) })
+	gotAsset, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+	if string(gotAsset) != "asset-bytes" {
+		t.Errorf("asset = %q, want %q", gotAsset, "asset-bytes")
 	}
 	if string(checksums) != "checksum-bytes" {
 		t.Errorf("checksums = %q, want %q", checksums, "checksum-bytes")
@@ -523,9 +550,12 @@ func TestClientCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, _, err := c.Download(ctx, "upp-linux-amd64.tar.gz")
+		archivePath, _, err := c.Download(ctx, "upp-linux-amd64.tar.gz")
 		if err == nil {
 			t.Fatal("Download: want error on canceled context, got nil")
+		}
+		if archivePath != "" {
+			t.Errorf("archivePath = %q on error, want empty", archivePath)
 		}
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("Download: error = %v, want errors.Is context.Canceled", err)

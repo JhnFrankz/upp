@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -201,27 +202,52 @@ func (c *Client) LatestCached(ctx context.Context) (string, bool) {
 
 // Download fetches the release asset name and checksums.txt from the
 // same release that LatestFresh (or LatestCached) most recently
-// resolved, both over HTTPS. It returns the asset bytes and the
-// checksums bytes; sha256 verification happens in the update pipeline,
-// not here (spec R4). A non-200 response for either file fails the whole
-// download — nothing is returned partially.
-func (c *Client) Download(ctx context.Context, name string) ([]byte, []byte, error) {
+// resolved, both over HTTPS. It streams the asset directly to a temporary
+// file on disk and returns the file path and checksums bytes.
+func (c *Client) Download(ctx context.Context, name string) (archivePath string, checksums []byte, err error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return "", nil, err
 	}
 	if c.release.Tag == "" {
-		return nil, nil, fmt.Errorf("selfupdate: no release resolved: call LatestFresh before Download")
+		return "", nil, fmt.Errorf("selfupdate: no release resolved: call LatestFresh before Download")
 	}
 	base := c.downloadBase()
-	asset, err := c.get(ctx, base+name)
+	checksums, err = c.get(ctx, base+"checksums.txt")
 	if err != nil {
-		return nil, nil, err
+		return "", nil, err
 	}
-	checksums, err := c.get(ctx, base+"checksums.txt")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+name, nil)
 	if err != nil {
-		return nil, nil, err
+		return "", nil, err
 	}
-	return asset, checksums, nil
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return "", nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", nil, fmt.Errorf("selfupdate: download failed: HTTP %d", resp.StatusCode)
+	}
+
+	tmpFile, err := os.CreateTemp("", "upp-download-*.tar.gz")
+	if err != nil {
+		return "", nil, err
+	}
+	tmpName := tmpFile.Name()
+
+	_, copyErr := io.Copy(tmpFile, resp.Body)
+	closeErr := tmpFile.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpName)
+		return "", nil, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpName)
+		return "", nil, closeErr
+	}
+
+	return tmpName, checksums, nil
 }
 
 // downloadBase returns the base URL for release-asset downloads of the
