@@ -85,3 +85,25 @@ func AdapterByName(id string) adapters.Adapter {
 	}
 	return nil
 }
+
+// IsOfficial reports whether the given tool ID belongs to an official adapter.
+func IsOfficial(id string) bool {
+	return AdapterByName(id) != nil
+}
+
+// IsManager reports whether the given tool ID belongs to a declared manager-kind
+// official adapter (apt, brew, pacman, winget, scoop).
+func IsManager(id string) bool {
+	a := AdapterByName(id)
+	return a != nil && a.Info().Kind == adapters.KindManager
+}
+
+// PlatformsFor returns the slice of platform names supported by the official
+// adapter with the given tool ID, or nil if the tool is unknown.
+func PlatformsFor(id string) []string {
+	a := AdapterByName(id)
+	if a == nil {
+		return nil
+	}
+	return a.Info().Platforms
+}
