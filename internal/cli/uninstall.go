@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -16,9 +18,15 @@ import (
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
+var (
+	ErrUninstallDeniedCI = errors.New("uninstall denied in --ci mode; rerun with -y/--yes to confirm")
+	ErrUninstallNotTTY   = errors.New("uninstall requires an interactive terminal; run with -y/--yes to confirm")
+)
+
 // UninstallFlags holds flags specific to the uninstall command.
 type UninstallFlags struct {
 	DryRun bool
+	Yes    bool
 }
 
 // uninstallDeps carries the injectable seams for runUninstall.
@@ -30,6 +38,8 @@ type uninstallDeps struct {
 	discover    func(execPath, configDir, cacheDir string) ([]uninstall.Target, error)
 	remove      func(string) error
 	removeAll   func(string) error
+	stdin       io.Reader
+	isTTY       func() bool
 }
 
 // defaultCacheDir resolves the platform-appropriate cache directory for upp.
@@ -62,6 +72,7 @@ func NewUninstallCommand(gf *GlobalFlags) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "preview targets to be removed without deleting anything")
+	cmd.Flags().BoolVarP(&flags.Yes, "yes", "y", false, "confirm uninstallation without interactive prompt")
 
 	return cmd
 }
@@ -89,6 +100,21 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 	}
 	if deps.removeAll == nil {
 		deps.removeAll = os.RemoveAll
+	}
+	if deps.stdin == nil {
+		deps.stdin = os.Stdin
+	}
+	if deps.isTTY == nil {
+		deps.isTTY = stdinIsTTY
+	}
+
+	if !flags.DryRun && !flags.Yes {
+		if gf.CI {
+			return ErrUninstallDeniedCI
+		}
+		if deps.isTTY != nil && !deps.isTTY() {
+			return ErrUninstallNotTTY
+		}
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -141,6 +167,20 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 			r.UninstallDryRunTarget(string(t.Type), t.Path)
 		}
 		return nil
+	}
+
+	if !flags.Yes {
+		r.UninstallPlan(targets)
+		_, _ = fmt.Fprint(out, "Proceed with uninstallation? [y/N]: ")
+		scanner := bufio.NewScanner(deps.stdin)
+		var ans string
+		if scanner.Scan() {
+			ans = strings.ToLower(strings.TrimSpace(scanner.Text()))
+		}
+		if ans != "y" && ans != "yes" {
+			r.UninstallCanceled()
+			return nil
+		}
 	}
 
 	if err := ctx.Err(); err != nil {

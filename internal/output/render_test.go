@@ -11,6 +11,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
 func TestStatusIcons_ColorMode(t *testing.T) {
@@ -1079,5 +1080,41 @@ func TestUpdateSummary_NoMisleadingAllCleanWithPending(t *testing.T) {
 	}
 	if strings.Contains(out, "All tools up to date.") {
 		t.Errorf("dry-run with pending updates must not claim all tools up to date, got:\n%s", out)
+	}
+}
+
+func TestRenderer_UninstallCanceled(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+	r.UninstallCanceled()
+
+	expected := "Uninstall canceled — no files were removed.\n"
+	if buf.String() != expected {
+		t.Errorf("UninstallCanceled() = %q, want %q", buf.String(), expected)
+	}
+}
+
+func TestRenderer_UninstallPlan(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+	targets := []uninstall.Target{
+		{Type: uninstall.TargetBinary, Path: "/usr/local/bin/upp", Exists: true},
+		{Type: uninstall.TargetConfig, Path: "/home/user/.config/upp", Exists: true},
+		{Type: uninstall.TargetCache, Path: "/home/user/.cache/upp", Exists: false},
+	}
+	r.UninstallPlan(targets)
+
+	out := buf.String()
+	if !strings.Contains(out, "The following targets will be removed:") {
+		t.Errorf("expected plan header, got: %s", out)
+	}
+	if !strings.Contains(out, "  - Binary: /usr/local/bin/upp") {
+		t.Errorf("expected binary target in plan, got: %s", out)
+	}
+	if !strings.Contains(out, "  - Config: /home/user/.config/upp") {
+		t.Errorf("expected config target in plan, got: %s", out)
+	}
+	if strings.Contains(out, "/home/user/.cache/upp") {
+		t.Errorf("non-existent cache target should not be in plan, got: %s", out)
 	}
 }
