@@ -1,4 +1,4 @@
-// Package platform handles OS/architecture detection and tool catalog management.
+// Package platform handles OS/architecture detection.
 package platform
 
 import (
