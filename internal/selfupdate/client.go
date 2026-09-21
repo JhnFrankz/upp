@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -120,9 +121,16 @@ func (c *Client) httpClient() *http.Client {
 // fetchLatest queries the latest-release endpoint and parses the tag. It
 // never consults the cache (design D4: explicit self-update is always
 // fresh; the hint path applies the TTL itself in LatestCached).
-func (c *Client) fetchLatest() (Release, error) {
+func (c *Client) fetchLatest(ctx context.Context) (Release, error) {
+	if err := ctx.Err(); err != nil {
+		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: %w", err)
+	}
 	url := strings.TrimRight(c.BaseURL, "/") + latestPath
-	resp, err := c.httpClient().Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: %w", err)
+	}
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: %w", err)
 	}
@@ -145,8 +153,11 @@ func (c *Client) fetchLatest() (Release, error) {
 // LatestFresh returns the latest release, always over the network
 // (design D4). Errors propagate: on `upp self-update` an API failure
 // must be visible and exit non-zero (spec R2).
-func (c *Client) LatestFresh() (Release, error) {
-	r, err := c.fetchLatest()
+func (c *Client) LatestFresh(ctx context.Context) (Release, error) {
+	if err := ctx.Err(); err != nil {
+		return Release{}, err
+	}
+	r, err := c.fetchLatest(ctx)
 	if err != nil {
 		return Release{}, err
 	}
@@ -161,14 +172,17 @@ func (c *Client) LatestFresh() (Release, error) {
 // is silent: it returns false, never an error, so the hint can never
 // fail the run (spec R2: offline silent). An empty CachePath disables
 // caching entirely.
-func (c *Client) LatestCached() (string, bool) {
+func (c *Client) LatestCached(ctx context.Context) (string, bool) {
+	if err := ctx.Err(); err != nil {
+		return "", false
+	}
 	now := c.now()
 	if c.CachePath != "" {
 		if cached, ok := LoadDetectionCache(c.CachePath); ok && cached.Fresh(now) {
 			return cached.Tag, true
 		}
 	}
-	r, err := c.fetchLatest()
+	r, err := c.fetchLatest(ctx)
 	if err != nil {
 		return "", false
 	}
@@ -191,16 +205,19 @@ func (c *Client) LatestCached() (string, bool) {
 // checksums bytes; sha256 verification happens in the update pipeline,
 // not here (spec R4). A non-200 response for either file fails the whole
 // download — nothing is returned partially.
-func (c *Client) Download(name string) ([]byte, []byte, error) {
+func (c *Client) Download(ctx context.Context, name string) ([]byte, []byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	if c.release.Tag == "" {
 		return nil, nil, fmt.Errorf("selfupdate: no release resolved: call LatestFresh before Download")
 	}
 	base := c.downloadBase()
-	asset, err := c.get(base + name)
+	asset, err := c.get(ctx, base+name)
 	if err != nil {
 		return nil, nil, err
 	}
-	checksums, err := c.get(base + "checksums.txt")
+	checksums, err := c.get(ctx, base+"checksums.txt")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -219,8 +236,15 @@ func (c *Client) downloadBase() string {
 }
 
 // get performs a single GET and returns the body on HTTP 200.
-func (c *Client) get(url string) ([]byte, error) {
-	resp, err := c.httpClient().Get(url)
+func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("selfupdate: download failed: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("selfupdate: download failed: %w", err)
+	}
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("selfupdate: download failed: %w", err)
 	}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -104,7 +105,7 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 		c.DownloadBaseURL = selfUpdateWebBase
 	}
 
-	rel, newPath, err := selfupdate.Prepare(c, current, p)
+	rel, newPath, err := selfupdate.Prepare(context.Background(), c, current, p)
 	switch {
 	case errors.Is(err, selfupdate.ErrUpToDate):
 		// Up to date: latest lookup happened (1 request), no download
