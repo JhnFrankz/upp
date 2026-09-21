@@ -57,8 +57,8 @@ func TestDetectPrivileges(t *testing.T) {
 			want: []string{"su"},
 		},
 		{
-			name: "su substring in benign word is ignored",
-			cmd:  "supertool --version && submit-job",
+			name: "su substring in benign words is ignored",
+			cmd:  "supertool --version && submit-job && issue-tracker && visual-studio",
 			want: nil,
 		},
 		{
