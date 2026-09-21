@@ -123,12 +123,21 @@ func TestVerifyChecksum(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := verifyChecksum(tt.asset, []byte(tt.checksums), asset)
+			archivePath := filepath.Join(t.TempDir(), asset)
+			writeFile(t, archivePath, tt.asset, 0o644)
+			err := verifyChecksum(archivePath, []byte(tt.checksums), asset)
 			if got := errName(err); got != tt.wantErr {
 				t.Errorf("verifyChecksum error = %v (sentinel %q), want %q", err, got, tt.wantErr)
 			}
 		})
 	}
+
+	t.Run("missing archive file returns error", func(t *testing.T) {
+		err := verifyChecksum(filepath.Join(t.TempDir(), "nonexistent"), []byte(hex+"  "+asset+"\n"), asset)
+		if err == nil {
+			t.Fatal("verifyChecksum with nonexistent file: want error")
+		}
+	})
 }
 
 func TestExtract(t *testing.T) {
@@ -178,8 +187,10 @@ func TestExtract(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), assetName)
+			writeFile(t, archivePath, tt.archive, 0o644)
 			dest := t.TempDir()
-			got, err := extract(tt.archive, assetName, dest)
+			got, err := extract(archivePath, assetName, dest)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("extract: want error, got %q", got)
@@ -216,6 +227,14 @@ func TestExtract(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("missing archive file returns error", func(t *testing.T) {
+		dest := t.TempDir()
+		_, err := extract(filepath.Join(t.TempDir(), "nonexistent"), assetName, dest)
+		if err == nil {
+			t.Fatal("extract with nonexistent file: want error")
+		}
+	})
 }
 
 func TestPrepare(t *testing.T) {
@@ -421,6 +440,62 @@ func TestPrepare(t *testing.T) {
 		}
 		if n := reqs.Load(); n != 0 {
 			t.Errorf("canceled context made %d network requests, want 0", n)
+		}
+	})
+
+	t.Run("cleans up downloaded archive file on success and failure", func(t *testing.T) {
+		archive := newArchive(t)
+		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`,
+			archive, []byte(checksumLine(t, archive, "upp-linux-amd64.tar.gz")), nil)
+		defer ts.Close()
+		c, _ := newTestClient(t, ts)
+
+		before, err := filepath.Glob(filepath.Join(os.TempDir(), "upp-download-*.tar.gz"))
+		if err != nil {
+			t.Fatalf("glob temp downloads: %v", err)
+		}
+
+		rel, binPath, err := Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		if err != nil {
+			t.Fatalf("Prepare: %v", err)
+		}
+		if rel.Tag != "v0.1.1" {
+			t.Errorf("Prepare release = %+v, want tag v0.1.1", rel)
+		}
+		_ = binPath
+
+		after, err := filepath.Glob(filepath.Join(os.TempDir(), "upp-download-*.tar.gz"))
+		if err != nil {
+			t.Fatalf("glob temp downloads: %v", err)
+		}
+		if len(after) > len(before) {
+			t.Errorf("Prepare left behind %d temp download files: %v", len(after)-len(before), after)
+		}
+	})
+
+	t.Run("cleans up downloaded archive file on checksum mismatch failure", func(t *testing.T) {
+		archive := newArchive(t)
+		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`,
+			archive, []byte(strings.Repeat("0", 64)+"  upp-linux-amd64.tar.gz\n"), nil)
+		defer ts.Close()
+		c, _ := newTestClient(t, ts)
+
+		before, err := filepath.Glob(filepath.Join(os.TempDir(), "upp-download-*.tar.gz"))
+		if err != nil {
+			t.Fatalf("glob temp downloads: %v", err)
+		}
+
+		_, _, err = Prepare(context.Background(), c, Version{Tag: [3]int{0, 1, 0}}, linuxAmd64)
+		if !errors.Is(err, ErrChecksumMismatch) {
+			t.Fatalf("Prepare error = %v, want ErrChecksumMismatch", err)
+		}
+
+		after, err := filepath.Glob(filepath.Join(os.TempDir(), "upp-download-*.tar.gz"))
+		if err != nil {
+			t.Fatalf("glob temp downloads: %v", err)
+		}
+		if len(after) > len(before) {
+			t.Errorf("Prepare left behind %d temp download files on error: %v", len(after)-len(before), after)
 		}
 	})
 }

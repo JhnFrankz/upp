@@ -2,7 +2,6 @@ package selfupdate
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -45,16 +44,21 @@ var (
 	ErrNotTTY = errors.New("selfupdate: self-update requires an interactive terminal")
 )
 
-// verifyChecksum verifies asset against the checksums.txt bytes fetched
-// from the SAME release (spec R4 + security-model delta). The file uses
-// the sha256sum(1) format produced by `make release`: "<hex>  <name>",
-// or "<hex> *<name>" in binary mode. The entry for name must exist and
-// equal sha256(asset); a missing, malformed, or mismatched entry fails
-// closed with ErrChecksumMismatch — the archive is never extracted.
-// Lines that cannot name a file are ignored: they cannot weaken the
-// check, because the asset's own entry must still parse and match.
-func verifyChecksum(asset, checksums []byte, name string) error {
-	want := fmt.Sprintf("%x", sha256.Sum256(asset))
+// verifyChecksum verifies the archive file at archivePath against the checksums.txt
+// bytes by streaming the file through sha256.New() without loading it entirely into RAM.
+func verifyChecksum(archivePath string, checksums []byte, name string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return err
+	}
+	want := fmt.Sprintf("%x", hasher.Sum(nil))
+
 	for _, line := range strings.Split(string(checksums), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -85,21 +89,22 @@ func verifyChecksum(asset, checksums []byte, name string) error {
 // "upp-{os}-{arch}/upp".
 const binarySuffix = "/upp"
 
-// extract writes ONLY the known binary entry (upp-{os}-{arch}/upp,
-// derived from assetName) from a tar.gz archive into destDir as "upp",
-// mode 0755, and returns its path. Every other entry is ignored (spec
-// R5: extra paths are not written), but dangerous entries — absolute
-// paths, path traversal (".." components), symlinks, hardlinks — abort
-// the whole extraction. The downloaded bytes are read only by
-// archive/tar; nothing is ever executed.
-func extract(asset []byte, assetName, destDir string) (string, error) {
+// extract writes ONLY the known binary entry (upp-{os}-{arch}/upp) from
+// the tar.gz archive on disk into destDir as "upp", mode 0755, and returns its path.
+func extract(archivePath, assetName, destDir string) (string, error) {
 	dir := strings.TrimSuffix(assetName, ".tar.gz")
 	if dir == assetName {
 		return "", fmt.Errorf("selfupdate: %s is not a .tar.gz asset name", assetName)
 	}
 	binaryPath := dir + binarySuffix
 
-	gz, err := gzip.NewReader(bytes.NewReader(asset))
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return "", fmt.Errorf("selfupdate: release archive is not gzip: %w", err)
 	}
@@ -220,11 +225,7 @@ func Prepare(ctx context.Context, c *Client, current Version, p platform.Platfor
 		return Release{}, "", err
 	}
 	defer func() { _ = os.Remove(archivePath) }()
-	asset, err := os.ReadFile(archivePath)
-	if err != nil {
-		return Release{}, "", err
-	}
-	if err := verifyChecksum(asset, checksums, assetName); err != nil {
+	if err := verifyChecksum(archivePath, checksums, assetName); err != nil {
 		return Release{}, "", err
 	}
 	if err := ctx.Err(); err != nil {
@@ -234,7 +235,7 @@ func Prepare(ctx context.Context, c *Client, current Version, p platform.Platfor
 	if err != nil {
 		return Release{}, "", fmt.Errorf("selfupdate: cannot create temp dir: %w", err)
 	}
-	binPath, err := extract(asset, assetName, tmpDir)
+	binPath, err := extract(archivePath, assetName, tmpDir)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return Release{}, "", err
