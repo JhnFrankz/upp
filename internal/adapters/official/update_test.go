@@ -1463,16 +1463,26 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 			var captured []string
 			origRunCmd := runCmdFn
 			origRunCmdArgs := runCmdArgsFn
+			origRunCmdArgsUpdate := runCmdArgsUpdateFn
 			origLookPath := lookPathFn
 			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 				captured = append(captured, command)
 				return "", "", nil
 			}
 			runCmdArgsFn = func(ctx context.Context, s string, strings ...string) (string, string, error) { return "", "", nil }
+			runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+				cmd := name
+				if len(args) > 0 {
+					cmd = name + " " + strings.Join(args, " ")
+				}
+				captured = append(captured, cmd)
+				return "", "", nil
+			}
 			lookPathFn = func(string) bool { return true }
 			t.Cleanup(func() {
 				runCmdFn = origRunCmd
 				runCmdArgsFn = origRunCmdArgs
+				runCmdArgsUpdateFn = origRunCmdArgsUpdate
 				lookPathFn = origLookPath
 			})
 
@@ -1510,6 +1520,95 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 			if !found {
 				t.Errorf("executed shell commands %v; declared command %q not executed byte-exactly",
 					captured, wantCmd)
+			}
+		})
+	}
+}
+
+// TestUpdatePackage_StructuredArgumentSecurity asserts that calling UpdatePackage
+// with shell metacharacters passes them as a single literal argument rather than
+// evaluating them via a shell.
+func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
+	payload := "my-pkg;touch /tmp/pwn"
+
+	tests := []struct {
+		name     string
+		newAdpt  func() adapters.Adapter
+		wantBin  string
+		wantArgs []string
+	}{
+		{
+			name:     "apt",
+			newAdpt:  func() adapters.Adapter { return &AptAdapter{} },
+			wantBin:  "sudo",
+			wantArgs: []string{"apt", "install", "--only-upgrade", payload},
+		},
+		{
+			name:     "pacman",
+			newAdpt:  func() adapters.Adapter { return &PacmanAdapter{} },
+			wantBin:  "sudo",
+			wantArgs: []string{"pacman", "-S", "--noconfirm", payload},
+		},
+		{
+			name:     "brew",
+			newAdpt:  func() adapters.Adapter { return &BrewAdapter{} },
+			wantBin:  "brew",
+			wantArgs: []string{"upgrade", payload},
+		},
+		{
+			name:     "winget",
+			newAdpt:  func() adapters.Adapter { return &WingetAdapter{} },
+			wantBin:  "winget",
+			wantArgs: []string{"upgrade", payload},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var recordedBin string
+			var recordedArgs []string
+
+			origRunCmd := runCmdFn
+			origRunCmdArgsUpdate := runCmdArgsUpdateFn
+			origLookPath := lookPathFn
+
+			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
+				t.Fatalf("runCmd should NOT be called; evaluated via shell: %q", command)
+				return "", "", nil
+			}
+			runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+				recordedBin = name
+				recordedArgs = append([]string(nil), args...)
+				return "", "", nil
+			}
+			lookPathFn = func(string) bool { return true }
+
+			t.Cleanup(func() {
+				runCmdFn = origRunCmd
+				runCmdArgsUpdateFn = origRunCmdArgsUpdate
+				lookPathFn = origLookPath
+			})
+
+			updater, ok := tt.newAdpt().(adapters.PackageUpdater)
+			if !ok {
+				t.Fatalf("adapter %T does not implement PackageUpdater", tt.newAdpt())
+			}
+
+			_, err := updater.UpdatePackage(context.Background(), payload)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if recordedBin != tt.wantBin {
+				t.Errorf("binary = %q, want %q", recordedBin, tt.wantBin)
+			}
+			if len(recordedArgs) != len(tt.wantArgs) {
+				t.Fatalf("args length = %d (%v), want %d (%v)", len(recordedArgs), recordedArgs, len(tt.wantArgs), tt.wantArgs)
+			}
+			for i := range recordedArgs {
+				if recordedArgs[i] != tt.wantArgs[i] {
+					t.Errorf("arg[%d] = %q, want %q", i, recordedArgs[i], tt.wantArgs[i])
+				}
 			}
 		})
 	}

@@ -82,7 +82,7 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 	before := commandOutput(ctx, "brew", "--version")
 	before = extractVersionFromString(before)
 
-	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(brewPackageUpdateTemplate, pkg))
+	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "upgrade", pkg)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -132,7 +132,7 @@ func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	// versions of the packages brew manages. `brew upgrade brew` is
 	// intentionally avoided — it is non-canonical and is a known portable-ruby
 	// footgun (Homebrew's ruby shims make it error-prone).
-	_, stderr, err := runCmd(ctx, brewSelfUpdateCmd)
+	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "update")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

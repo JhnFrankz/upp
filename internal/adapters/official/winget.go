@@ -98,7 +98,7 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 		before = "unknown"
 	}
 
-	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(wingetPackageUpdateTemplate, pkg))
+	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", pkg)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -152,7 +152,7 @@ func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	// Self-only: `winget upgrade winget` upgrades Windows Package Manager
 	// itself (equiv. Microsoft.AppInstaller), never the packages it manages.
 	// A bulk `winget upgrade --all` is intentionally avoided.
-	_, stderr, err := runCmd(ctx, wingetSelfUpdateCmd)
+	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", "winget")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
