@@ -39,6 +39,11 @@ func WithConcurrency(workers int) Option {
 	}
 }
 
+// WithWorkerCount is an alias for WithConcurrency.
+func WithWorkerCount(workers int) Option {
+	return WithConcurrency(workers)
+}
+
 // WithAdapters overrides adapter discovery with a pre-configured adapter slice.
 func WithAdapters(adapters []adapters.Adapter) Option {
 	return func(e *Engine) {

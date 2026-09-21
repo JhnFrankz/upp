@@ -115,6 +115,9 @@ func safeCheck(ctx context.Context, a adapters.Adapter) (oc CheckOutcome) {
 // Check executes concurrent version checks across the provided adapters using a
 // bounded worker pool, deferred panic recovery, deterministic index slotting,
 // and cooperative context cancellation.
+//
+// onProgress, if non-nil, is invoked sequentially as each check completes (serialized
+// internally via a mutex); callers do not need to provide their own synchronization.
 func (e *Engine) Check(ctx context.Context, adapterList []adapters.Adapter, onProgress func(CheckProgress)) ([]CheckOutcome, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -139,6 +142,7 @@ func (e *Engine) Check(ctx context.Context, adapterList []adapters.Adapter, onPr
 	close(jobs)
 
 	var wg sync.WaitGroup
+	var progressMu sync.Mutex
 
 	for w := 0; w < workerCount; w++ {
 		wg.Add(1)
@@ -159,11 +163,13 @@ func (e *Engine) Check(ctx context.Context, adapterList []adapters.Adapter, onPr
 				oc := safeCheck(ctx, job.adapter)
 				outcomes[job.index] = oc
 				if onProgress != nil {
+					progressMu.Lock()
 					onProgress(CheckProgress{
 						Index:   job.index,
 						Total:   total,
 						Outcome: oc,
 					})
+					progressMu.Unlock()
 				}
 			}
 		}()

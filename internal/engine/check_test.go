@@ -531,3 +531,40 @@ func TestTimeoutErr(t *testing.T) {
 		}
 	})
 }
+
+func TestEngine_Check_OnProgressSerialized(t *testing.T) {
+	cfg := &config.Config{}
+	eng := New(cfg, "linux", WithWorkerCount(8))
+
+	const totalAdapters = 16
+	mockAdapters := make([]adapters.Adapter, totalAdapters)
+	for i := 0; i < totalAdapters; i++ {
+		mockAdapters[i] = &testDelayedAdapter{
+			id:    fmt.Sprintf("tool-%02d", i),
+			name:  fmt.Sprintf("Tool %02d", i),
+			delay: 2 * time.Millisecond,
+			info:  adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+		}
+	}
+
+	var calls int
+	var receivedIndices []int
+	onProgress := func(p CheckProgress) {
+		calls++
+		receivedIndices = append(receivedIndices, p.Index)
+	}
+
+	outcomes, err := eng.Check(context.Background(), mockAdapters, onProgress)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(outcomes) != totalAdapters {
+		t.Fatalf("Check returned %d outcomes, want %d", len(outcomes), totalAdapters)
+	}
+	if calls != totalAdapters {
+		t.Errorf("calls = %d, want %d", calls, totalAdapters)
+	}
+	if len(receivedIndices) != totalAdapters {
+		t.Errorf("len(receivedIndices) = %d, want %d", len(receivedIndices), totalAdapters)
+	}
+}
