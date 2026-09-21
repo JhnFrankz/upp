@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -26,12 +27,16 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Initialize upp configuration",
 		Long:  "Detect installed tools and generate the initial config file.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(gf)
+			return runInit(cmd.Context(), gf)
 		},
 	}
 }
 
-func runInit(gf *GlobalFlags) error {
+func runInit(ctx context.Context, gf *GlobalFlags) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// An existing config gates the destructive overwrite this command
 	// performs. --ci can never answer the overwrite prompt, and the repo's
 	// doctrine is to deny rather than auto-proceed or silently skip
@@ -56,6 +61,9 @@ func runInit(gf *GlobalFlags) error {
 	// Detect which tools are installed
 	var detected []string
 	for _, a := range platformAdapters {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if a.Detect() {
 			info := a.Info()
 			detected = append(detected, info.ID)

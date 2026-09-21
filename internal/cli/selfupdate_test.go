@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -152,7 +153,7 @@ func TestSelfUpdate_DevBuild(t *testing.T) {
 	bin := fakeBinary(t, "OLD-BINARY")
 
 	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{}, "dev", newSelfUpdateDeps(ts, "y\n", bin)); err != nil {
+		if err := runSelfUpdate(context.Background(), &GlobalFlags{}, "dev", newSelfUpdateDeps(ts, "y\n", bin)); err != nil {
 			t.Errorf("dev build should exit 0, got: %v", err)
 		}
 	})
@@ -175,7 +176,7 @@ func TestSelfUpdate_DirtyBuild(t *testing.T) {
 	defer ts.Close()
 
 	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{}, "v0.1.0-19-gd40e428-dirty", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD"))); err != nil {
+		if err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0-19-gd40e428-dirty", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD"))); err != nil {
 			t.Errorf("dirty build should exit 0, got: %v", err)
 		}
 	})
@@ -194,7 +195,7 @@ func TestSelfUpdate_InvalidVersion(t *testing.T) {
 	ts := selfUpdateServer(t, "v0.1.1", nil, nil, &reqs)
 	defer ts.Close()
 
-	err := runSelfUpdate(&GlobalFlags{}, "banana", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
+	err := runSelfUpdate(context.Background(), &GlobalFlags{}, "banana", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
 	if err == nil {
 		t.Fatal("unparseable version should error")
 	}
@@ -213,7 +214,7 @@ func TestSelfUpdate_UpToDate(t *testing.T) {
 	defer ts.Close()
 
 	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{}, "v0.1.1", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD"))); err != nil {
+		if err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.1", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD"))); err != nil {
 			t.Errorf("up-to-date should exit 0, got: %v", err)
 		}
 	})
@@ -240,7 +241,7 @@ func TestSelfUpdate_Confirmed(t *testing.T) {
 	bin := fakeBinary(t, "OLD-BINARY")
 
 	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", bin)); err != nil {
+		if err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", bin)); err != nil {
 			t.Fatalf("confirmed update should exit 0, got: %v", err)
 		}
 	})
@@ -280,7 +281,7 @@ func TestSelfUpdate_Declined(t *testing.T) {
 	bin := fakeBinary(t, "OLD-BINARY")
 
 	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "n\n", bin)); err != nil {
+		if err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "n\n", bin)); err != nil {
 			t.Fatalf("declining should exit 0, got: %v", err)
 		}
 	})
@@ -311,7 +312,7 @@ func TestSelfUpdate_NonTTY(t *testing.T) {
 	deps := newSelfUpdateDeps(ts, "y\n", bin)
 	deps.isTTY = func() bool { return false } // stdin piped
 
-	err := runSelfUpdate(&GlobalFlags{}, "v0.1.0", deps)
+	err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", deps)
 	if err == nil {
 		t.Fatal("non-TTY stdin must deny the update")
 	}
@@ -338,7 +339,7 @@ func TestSelfUpdate_CIDeny(t *testing.T) {
 	ts := selfUpdateServer(t, "v0.1.1", nil, nil, &reqs)
 	defer ts.Close()
 
-	err := runSelfUpdate(&GlobalFlags{CI: true}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
+	err := runSelfUpdate(context.Background(), &GlobalFlags{CI: true}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
 	if err == nil {
 		t.Fatal("--ci must deny the update")
 	}
@@ -381,7 +382,7 @@ func TestSelfUpdate_QuietKeepsPrompt(t *testing.T) {
 	bin := fakeBinary(t, "OLD-BINARY")
 
 	output := withCapturedStdout(func() {
-		if err := runSelfUpdate(&GlobalFlags{Quiet: true}, "v0.1.0", newSelfUpdateDeps(ts, "n\n", bin)); err != nil {
+		if err := runSelfUpdate(context.Background(), &GlobalFlags{Quiet: true}, "v0.1.0", newSelfUpdateDeps(ts, "n\n", bin)); err != nil {
 			t.Fatalf("quiet flow should exit 0, got: %v", err)
 		}
 	})
@@ -401,7 +402,7 @@ func TestSelfUpdate_OnlyIgnored(t *testing.T) {
 	defer ts.Close()
 
 	output := withCapturedStdout(func() {
-		err := runSelfUpdate(&GlobalFlags{Only: "brew"}, "v0.1.1", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
+		err := runSelfUpdate(context.Background(), &GlobalFlags{Only: "brew"}, "v0.1.1", newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD")))
 		if err != nil {
 			t.Fatalf("--only must be ignored (normal flow), got: %v", err)
 		}
@@ -445,7 +446,7 @@ func TestSelfUpdate_WindowsUnsupported(t *testing.T) {
 		return platform.Platform{OS: "windows", Arch: "x86_64"}, nil
 	}
 
-	err := runSelfUpdate(&GlobalFlags{}, "v0.1.0", deps)
+	err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", deps)
 	if err == nil {
 		t.Fatal("windows must be refused")
 	}
@@ -470,7 +471,7 @@ func TestSelfUpdate_ChecksumMismatch(t *testing.T) {
 	defer ts.Close()
 	bin := fakeBinary(t, "OLD-BINARY")
 
-	err := runSelfUpdate(&GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", bin))
+	err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", bin))
 	if err == nil {
 		t.Fatal("checksum mismatch must abort")
 	}
@@ -485,5 +486,27 @@ func TestSelfUpdate_ChecksumMismatch(t *testing.T) {
 	}
 	if got := reqs.Load(); got != 3 {
 		t.Errorf("mismatch flow should make exactly 3 requests, got %d", got)
+	}
+}
+
+func TestSelfUpdate_ContextCanceled(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var reqs atomic.Int32
+	ts := selfUpdateServer(t, "v0.1.1", []byte("asset"), []byte("checksums"), &reqs)
+	defer ts.Close()
+	bin := fakeBinary(t, "OLD-BINARY")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runSelfUpdate(ctx, &GlobalFlags{}, "v0.1.0", newSelfUpdateDeps(ts, "y\n", bin))
+	if err == nil {
+		t.Fatal("canceled context must abort, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, want errors.Is context.Canceled", err)
+	}
+	if n := reqs.Load(); n != 0 {
+		t.Errorf("canceled context made %d requests, want 0", n)
 	}
 }

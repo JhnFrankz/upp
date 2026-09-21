@@ -22,7 +22,7 @@ func NewListCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "List detected tools and their status",
 		Long:  "Show all tools available on the current platform with installation status.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(gf, cliDeps.list)
+			return runList(cmd.Context(), gf, cliDeps.list)
 		},
 	}
 }
@@ -34,7 +34,11 @@ type listDeps struct {
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
 }
 
-func runList(gf *GlobalFlags, deps listDeps) error {
+func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("cannot load config: %w", err)
@@ -92,7 +96,7 @@ func runList(gf *GlobalFlags, deps listDeps) error {
 		}
 	}
 
-	outcomes, err := eng.Check(context.Background(), checkAdapters, nil)
+	outcomes, err := eng.Check(ctx, checkAdapters, nil)
 	if err != nil {
 		return fmt.Errorf("cannot check tools: %w", err)
 	}

@@ -41,7 +41,7 @@ func NewSelfUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Long: "Check for a newer upp release, verify its sha256 checksum, and replace the current binary after confirmation. " +
 			"--only is ignored: it filters tools for update/check, not releases.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSelfUpdate(gf, cmd.Root().Version, cliDeps.selfUpdate)
+			return runSelfUpdate(cmd.Context(), gf, cmd.Root().Version, cliDeps.selfUpdate)
 		},
 	}
 }
@@ -65,7 +65,11 @@ type selfUpdateDeps struct {
 // confirmation gate precedes the atomic replace; the user declining
 // exits 0 with nothing modified. The CLI layer only orchestrates — all
 // pipeline logic lives in internal/selfupdate.
-func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
+func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps selfUpdateDeps) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if deps.isTTY == nil {
 		deps.isTTY = stdinIsTTY
 	}
@@ -105,7 +109,7 @@ func runSelfUpdate(gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 		c.DownloadBaseURL = selfUpdateWebBase
 	}
 
-	rel, newPath, err := selfupdate.Prepare(context.Background(), c, current, p)
+	rel, newPath, err := selfupdate.Prepare(ctx, c, current, p)
 	switch {
 	case errors.Is(err, selfupdate.ErrUpToDate):
 		// Up to date: latest lookup happened (1 request), no download
