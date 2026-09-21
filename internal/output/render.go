@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
 // Status represents the outcome of a tool operation.
@@ -575,6 +576,34 @@ func (r *Renderer) UninstallRemoved(targetType, path string) {
 		return
 	}
 	_, _ = fmt.Fprintf(r.w, "  %s Removed %s: %s\n", r.statusIcon(StatusUpdated), targetType, path)
+}
+
+// UninstallPlan renders the list of targets to be removed before interactive confirmation.
+func (r *Renderer) UninstallPlan(targets []uninstall.Target) {
+	_, _ = fmt.Fprintln(r.w, "The following targets will be removed:")
+	hasExisting := false
+	for _, t := range targets {
+		if t.Exists {
+			hasExisting = true
+			break
+		}
+	}
+	for _, t := range targets {
+		if hasExisting && !t.Exists {
+			continue
+		}
+		typeName := string(t.Type)
+		if len(typeName) > 0 {
+			typeName = strings.ToUpper(typeName[:1]) + typeName[1:]
+		}
+		_, _ = fmt.Fprintf(r.w, "  - %s: %s\n", typeName, t.Path)
+	}
+	_, _ = fmt.Fprintln(r.w)
+}
+
+// UninstallCanceled prints the cancellation message when the user declines uninstallation.
+func (r *Renderer) UninstallCanceled() {
+	_, _ = fmt.Fprintln(r.w, "Uninstall canceled — no files were removed.")
 }
 
 // UninstallDone prints the uninstallation completion message.
