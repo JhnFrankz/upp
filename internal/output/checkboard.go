@@ -134,14 +134,37 @@ func boardResultLine(res ToolResult, color bool) (string, bool) {
 	case StatusSkipped:
 		return boardMarkerLine("✓", "2", res.Name, "not installed", "", color), true
 	case StatusFailed:
-		detail := ""
-		if res.Error != nil {
-			detail = res.Error.Error()
-		}
+		detail := sanitizeBoardError(res.Error)
 		return boardMarkerLine("✗", "31", res.Name, "", detail, color), true
 	default:
 		return "", false
 	}
+}
+
+// sanitizeBoardError extracts the first non-empty line of err, collapses internal
+// whitespace and tabs to single spaces, and truncates to 60 characters with an
+// ellipsis if needed, ensuring single-line ANSI cursor safety.
+func sanitizeBoardError(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := strings.TrimSpace(err.Error())
+	if s == "" {
+		return ""
+	}
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			s = line
+			break
+		}
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	const maxLen = 60
+	if len(s) > maxLen {
+		s = s[:maxLen] + "..."
+	}
+	return s
 }
 
 // boardMarkerLine builds "  <marker> <name>[ <detail>|: <errDetail>]" with the

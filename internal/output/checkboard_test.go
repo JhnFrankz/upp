@@ -382,3 +382,117 @@ func TestCheckBoard_Complete_OutOfRangeIndexIgnored(t *testing.T) {
 		"  ⟳ npm",
 	})
 }
+
+// --- Error sanitization and truncation ---
+
+func TestSanitizeBoardError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: "",
+		},
+		{
+			name: "single-line short error",
+			err:  errors.New("network unreachable"),
+			want: "network unreachable",
+		},
+		{
+			name: "multi-line error",
+			err:  errors.New("apt-cache policy failed\nE: Could not open lock file\nE: Unable to lock directory"),
+			want: "apt-cache policy failed",
+		},
+		{
+			name: "multi-line with leading blank line",
+			err:  errors.New("\n  \r\napt-cache policy failed\nE: Could not open lock file"),
+			want: "apt-cache policy failed",
+		},
+		{
+			name: "excessively long error (> 60 characters)",
+			err:  errors.New("this is an excessively long error message that exceeds sixty characters in total length"),
+			want: "this is an excessively long error message that exceeds sixty...",
+		},
+		{
+			name: "excessively long multi-line error",
+			err:  errors.New("this is an excessively long first line of an error message that exceeds sixty characters\nsecond line"),
+			want: "this is an excessively long first line of an error message t...",
+		},
+		{
+			name: "error with multiple spaces and tabs",
+			err:  errors.New("  apt-cache \t policy   failed \t with   code 1  "),
+			want: "apt-cache policy failed with code 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeBoardError(tt.err)
+			if got != tt.want {
+				t.Errorf("sanitizeBoardError() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckBoard_Complete_MultiLineError(t *testing.T) {
+	longMultiLineErr := errors.New("apt-cache policy failed with an extraordinarily long explanation\nE: Could not open lock file\nE: Unable to lock directory")
+
+	t.Run("color=true", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := NewCheckBoard(&buf, true, []string{"apt"})
+		b.Start()
+		b.Complete(0, ToolResult{
+			Name:   "apt",
+			Status: StatusFailed,
+			Error:  longMultiLineErr,
+		})
+		b.Finish()
+
+		frame := replay(&buf)
+		if len(frame) != 1 {
+			t.Fatalf("expected 1 row in settled frame, got %d: %q", len(frame), frame)
+		}
+		row := frame[0]
+		if strings.Contains(row, "\n") {
+			t.Errorf("rendered row contains newline: %q", row)
+		}
+		if !strings.Contains(row, "...") {
+			t.Errorf("rendered row does not contain ellipsis '...': %q", row)
+		}
+		if !strings.HasPrefix(row, "  ✗ apt: ") {
+			t.Errorf("rendered row has unexpected format: %q", row)
+		}
+	})
+
+	t.Run("color=false", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := NewCheckBoard(&buf, false, []string{"apt"})
+		b.Start()
+		b.Complete(0, ToolResult{
+			Name:   "apt",
+			Status: StatusFailed,
+			Error:  longMultiLineErr,
+		})
+		b.Finish()
+
+		out := buf.String()
+		lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+		if len(lines) != 1 {
+			t.Fatalf("expected exactly 1 line for single tool completion, got %d:\n%s", len(lines), out)
+		}
+		line := lines[0]
+		if strings.Contains(line, "\n") {
+			t.Errorf("line contains embedded newline: %q", line)
+		}
+		if !strings.Contains(line, "...") {
+			t.Errorf("line does not contain ellipsis '...': %q", line)
+		}
+		if !strings.HasPrefix(line, "  ✗ apt: ") {
+			t.Errorf("line has unexpected format: %q", line)
+		}
+	})
+}
