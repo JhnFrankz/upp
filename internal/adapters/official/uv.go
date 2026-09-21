@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // UvAdapter manages Astral's uv package and tool manager on all platforms.
@@ -24,7 +25,7 @@ func (a *UvAdapter) Info() adapters.ToolInfo {
 		ID:           "uv",
 		Name:         "uv",
 		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 		Kind:         adapters.KindTool,
 		// Command is the exact string Update() runs, declared so the plan's

@@ -559,11 +559,11 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 // proceeds; a custom command comes from the user's config and cannot be vouched
 // for, so anything above RiskLow fails closed (spec security-model: `--ci` MUST
 // fail high-risk custom updates even when trusted).
-func enforceRiskFor(trust adapters.TrustLevel, risk security.RiskLevel, ci bool) bool {
+func enforceRiskFor(trust security.TrustLevel, risk security.RiskLevel, ci bool) bool {
 	if risk == security.RiskLow {
 		return false
 	}
-	return !ci || trust != adapters.TrustOfficial
+	return !ci || trust != security.TrustOfficial
 }
 
 // executePlannedUpdate is the single executor shared by the sequential and

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // opencodeLatestTagFn is the seam for fetching the latest OpenCode release tag.
@@ -130,7 +131,7 @@ func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
 		ID:           "opencode",
 		Name:         "OpenCode",
 		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 		Kind:         adapters.KindTool,
 		Command:      "opencode update",

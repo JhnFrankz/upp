@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // TestTrustLevel_String covers the human-readable trust label mapping. It pins
@@ -16,13 +18,13 @@ import (
 func TestTrustLevel_String(t *testing.T) {
 	tests := []struct {
 		name  string
-		level TrustLevel
+		level security.TrustLevel
 		want  string
 	}{
-		{"official", TrustOfficial, "official"},
-		{"custom-trusted", TrustCustomTrusted, "custom-trusted"},
-		{"custom-untrusted", TrustCustomUntrusted, "custom-untrusted"},
-		{"unknown fallback", TrustLevel(99), "unknown"},
+		{"official", security.TrustOfficial, "official"},
+		{"custom-trusted", security.TrustCustomTrusted, "custom-trusted"},
+		{"custom-untrusted", security.TrustCustomUntrusted, "custom-untrusted"},
+		{"unknown fallback", security.TrustLevel(99), "unknown"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // GhAdapter manages GitHub CLI across platforms.
@@ -87,7 +88,7 @@ func (a *GhAdapter) Info() adapters.ToolInfo {
 		ID:             "gh",
 		Name:           "GitHub CLI",
 		Platforms:      []string{"linux", "macos", "windows"},
-		Trust:          adapters.TrustOfficial,
+		Trust:          security.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
 		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},

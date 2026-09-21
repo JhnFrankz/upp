@@ -9,18 +9,6 @@ import (
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
-// TrustLevel represents how much the system trusts a tool adapter.
-type TrustLevel = security.TrustLevel
-
-const (
-	// TrustCustomUntrusted is for custom adapters, untrusted by default.
-	TrustCustomUntrusted = security.TrustCustomUntrusted
-	// TrustCustomTrusted is for custom adapters marked trusted=true in config.
-	TrustCustomTrusted = security.TrustCustomTrusted
-	// TrustOfficial is for official, built-in adapters.
-	TrustOfficial = security.TrustOfficial
-)
-
 // UpdatePolicy controls when update() may run for a tool adapter.
 type UpdatePolicy int
 
@@ -134,7 +122,7 @@ type ToolInfo struct {
 	ID             string
 	Name           string
 	Platforms      []string
-	Trust          TrustLevel
+	Trust          security.TrustLevel
 	UpdatePolicy   UpdatePolicy
 	Kind           Kind
 	Manager        map[string]string // platform -> owning manager ID (nil for standalone)

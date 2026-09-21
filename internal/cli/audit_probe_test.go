@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // The probes exercise the security-classification path through runUpdate with
@@ -25,7 +26,7 @@ func TestProbe_TrustedCustomHighRisk_CI(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:       "evil-tool",
 		policy:     adapters.PolicyAlwaysUpdate,
-		trust:      adapters.TrustCustomTrusted,
+		trust:      security.TrustCustomTrusted,
 		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
 		privileges: []string{"sudo"},
 	}
@@ -45,7 +46,7 @@ func TestProbe_TrustedCustomHighRisk_Interactive(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:       "evil-tool",
 		policy:     adapters.PolicyAlwaysUpdate,
-		trust:      adapters.TrustCustomTrusted,
+		trust:      security.TrustCustomTrusted,
 		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
 		privileges: []string{"sudo"},
 	}
@@ -65,7 +66,7 @@ func TestProbe_UntrustedCustomHighRisk_Interactive(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:       "evil-tool",
 		policy:     adapters.PolicyAlwaysUpdate,
-		trust:      adapters.TrustCustomUntrusted,
+		trust:      security.TrustCustomUntrusted,
 		command:    "sudo rm -rf " + filepath.Join(t.TempDir(), "victim"),
 		privileges: []string{"sudo"},
 	}
@@ -84,7 +85,7 @@ func TestProbe_TrustedLowRisk_Executes(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:    "evil-tool",
 		policy:  adapters.PolicyAlwaysUpdate,
-		trust:   adapters.TrustCustomTrusted,
+		trust:   security.TrustCustomTrusted,
 		command: "harmless-tool --version",
 		result:  adapters.Result{Success: true, Before: "1.0.0", After: "1.0.0"},
 	}
@@ -105,7 +106,7 @@ func TestProbe_QuietMediumRisk_StillPrompts(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:    "evil-tool",
 		policy:  adapters.PolicyAlwaysUpdate,
-		trust:   adapters.TrustCustomUntrusted,
+		trust:   security.TrustCustomUntrusted,
 		command: "evil-tool --update && echo done",
 	}
 	out, err := runUpdateWithFlags(t, fake, &GlobalFlags{Quiet: true}, &UpdateFlags{})

@@ -10,6 +10,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 type mockPlanAdapter struct {
@@ -419,7 +420,7 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 				UpdatePolicy: adapters.PolicyGated,
 				Command:      "custom-standalone-upgrade --all",
 				Privileges:   []string{"sudo"},
-				Trust:        adapters.TrustCustomTrusted,
+				Trust:        security.TrustCustomTrusted,
 			},
 		}
 
@@ -471,7 +472,7 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 		if len(pu.Privileges) != 1 || pu.Privileges[0] != "sudo" {
 			t.Errorf("Privileges = %v, want [sudo]", pu.Privileges)
 		}
-		if pu.Trust != adapters.TrustCustomTrusted {
+		if pu.Trust != security.TrustCustomTrusted {
 			t.Errorf("Trust = %v, want TrustCustomTrusted", pu.Trust)
 		}
 	})
@@ -531,7 +532,7 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 		if len(pu.Privileges) != 1 || pu.Privileges[0] != "sudo" {
 			t.Errorf("Privileges = %v, want [sudo] from owner", pu.Privileges)
 		}
-		if pu.Trust != adapters.TrustOfficial {
+		if pu.Trust != security.TrustOfficial {
 			t.Errorf("Trust = %v, want TrustOfficial", pu.Trust)
 		}
 	})
@@ -976,7 +977,7 @@ func pacmanOwnedFixture() adapters.Adapter {
 		Name:           "ripgrep",
 		Kind:           adapters.KindTool,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
-		Trust:          adapters.TrustOfficial,
+		Trust:          security.TrustOfficial,
 		Manager:        map[string]string{"linux": "pacman"},
 		ManagerPackage: map[string]string{"linux": "ripgrep"},
 	}}
@@ -1005,7 +1006,7 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 		Name:         "standalone-custom",
 		Kind:         adapters.KindTool,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Trust:        adapters.TrustCustomTrusted,
+		Trust:        security.TrustCustomTrusted,
 		Command:      "custom-standalone-upgrade --all",
 	}}
 

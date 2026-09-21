@@ -9,6 +9,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // fakeDelayedAdapter introduces a controllable delay to test concurrency &
@@ -35,7 +36,7 @@ func (f *fakeDelayedAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
 		ID:           f.name,
 		Name:         f.name,
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 	}
 }

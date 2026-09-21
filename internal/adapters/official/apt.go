@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // AptAdapter manages APT packages on Linux.
@@ -174,7 +175,7 @@ func (a *AptAdapter) Info() adapters.ToolInfo {
 		ID:                   "apt",
 		Name:                 "APT Package Manager",
 		Platforms:            []string{"linux"},
-		Trust:                adapters.TrustOfficial,
+		Trust:                security.TrustOfficial,
 		UpdatePolicy:         adapters.PolicyGated,
 		Kind:                 adapters.KindManager,
 		SelfUpdateCommand:    aptSelfUpdateCmd,

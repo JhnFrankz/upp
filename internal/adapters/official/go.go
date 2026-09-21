@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // goBinaryPathFn is the seam for locating the go binary on Linux.
@@ -210,7 +211,7 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		ID:             "go",
 		Name:           "Go",
 		Platforms:      []string{"linux", "macos", "windows"},
-		Trust:          adapters.TrustOfficial,
+		Trust:          security.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
 		Manager:        map[string]string{"macos": "brew", "windows": "winget"},

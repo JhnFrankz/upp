@@ -2,6 +2,7 @@ package engine
 
 import (
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // CheckStatus represents the health and update status of a tool check.
@@ -71,7 +72,7 @@ type PlannedUpdate struct {
 	LatestVersion  string
 	RiskCommand    string
 	Privileges     []string
-	Trust          adapters.TrustLevel
+	Trust          security.TrustLevel
 }
 
 // UpdatePlan represents the categorized result of update planning.

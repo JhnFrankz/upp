@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // BrewAdapter manages Homebrew packages on Linux and macOS.
@@ -166,7 +167,7 @@ func (a *BrewAdapter) Info() adapters.ToolInfo {
 		ID:                   "brew",
 		Name:                 "Homebrew",
 		Platforms:            []string{"linux", "macos"},
-		Trust:                adapters.TrustOfficial,
+		Trust:                security.TrustOfficial,
 		UpdatePolicy:         adapters.PolicyAlwaysUpdate,
 		Kind:                 adapters.KindManager,
 		SelfUpdateCommand:    brewSelfUpdateCmd,

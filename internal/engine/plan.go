@@ -5,6 +5,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // ResolveEffectiveUpdatePolicy returns the effective UpdatePolicy that governs
@@ -102,7 +103,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 
 			toolID := oc.ToolID
 			toolName := oc.ToolName
-			trust := adapters.TrustOfficial
+			trust := security.TrustOfficial
 			var privileges []string
 			var command string
 			var kind adapters.Kind
@@ -172,7 +173,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 			}
 
 			if len(privileges) == 0 {
-				privileges = detectPrivileges(riskCmd)
+				privileges = security.DetectPrivileges(riskCmd)
 			}
 
 			plan.Updates = append(plan.Updates, PlannedUpdate{
@@ -204,17 +205,4 @@ func standaloneRiskCommand(command, toolName string) string {
 		return command
 	}
 	return toolName + " update"
-}
-
-// detectPrivileges inspects a command string for privilege escalation tokens.
-func detectPrivileges(cmd string) []string {
-	lower := strings.ToLower(cmd)
-	var privs []string
-	if strings.Contains(lower, "sudo") {
-		privs = append(privs, "sudo")
-	}
-	if strings.Contains(lower, "runas") || strings.Contains(lower, "admin") {
-		privs = append(privs, "admin")
-	}
-	return privs
 }

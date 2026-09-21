@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // DockerAdapter manages Docker across platforms.
@@ -86,7 +87,7 @@ func (a *DockerAdapter) Info() adapters.ToolInfo {
 		ID:             "docker",
 		Name:           "Docker",
 		Platforms:      []string{"linux", "macos", "windows"},
-		Trust:          adapters.TrustOfficial,
+		Trust:          security.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
 		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},

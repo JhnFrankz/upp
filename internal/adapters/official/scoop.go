@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // ScoopAdapter manages Scoop packages on Windows.
@@ -110,7 +111,7 @@ func (a *ScoopAdapter) Info() adapters.ToolInfo {
 		ID:                "scoop",
 		Name:              "Scoop",
 		Platforms:         []string{"windows"},
-		Trust:             adapters.TrustOfficial,
+		Trust:             security.TrustOfficial,
 		UpdatePolicy:      adapters.PolicyAlwaysUpdate,
 		Kind:              adapters.KindManager,
 		SelfUpdateCommand: scoopSelfUpdateCmd,
