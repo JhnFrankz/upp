@@ -37,31 +37,57 @@ upp detects installed tools, checks for updates, and applies them safely with in
 
 ## Installation
 
-### Binary download
+### Automated script (Linux & macOS)
 
-Download the archive for your platform from [GitHub Releases](https://github.com/JhnFrankz/upp/releases) (each release ships `upp-<os>-<arch>.tar.gz` for Linux/macOS, `upp-windows-amd64.zip` for Windows, plus `checksums.txt`):
-
-```bash
-# Linux (amd64)
-curl -fsSL -o upp.tar.gz https://github.com/JhnFrankz/upp/releases/latest/download/upp-linux-amd64.tar.gz
-tar xzf upp.tar.gz upp-linux-amd64/upp
-sudo mv upp-linux-amd64/upp /usr/local/bin/
-
-# macOS (Apple Silicon)
-curl -fsSL -o upp.tar.gz https://github.com/JhnFrankz/upp/releases/latest/download/upp-darwin-arm64.tar.gz
-tar xzf upp.tar.gz upp-darwin-arm64/upp
-sudo mv upp-darwin-arm64/upp /usr/local/bin/
-```
-
-Windows: download `upp-windows-amd64.zip` and extract `upp-windows-amd64/upp.exe`.
-
-### Install script
+The recommended way to install `upp`. It automatically detects your operating system and CPU architecture, downloads the latest matching release, verifies its SHA-256 checksum against `checksums.txt`, and installs the binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.sh | bash
 ```
 
-The script detects your OS and architecture, downloads the matching release archive, verifies its SHA-256 checksum against `checksums.txt`, and installs the binary to `/usr/local/bin` (override with `INSTALL_DIR=/your/path` or pin a version with `VERSION=v0.1.0`).
+**Non-root / user installation** (recommended for dotfiles or systems without `sudo`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.sh | INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+> Ensure `$HOME/.local/bin` is in your `$PATH`. You can also pin a specific release using `VERSION=v0.8.0`.
+
+### Windows (PowerShell)
+
+Download and extract the latest `upp.exe` to your user binary directory:
+
+```powershell
+# Create destination directory if needed (e.g. in your user Profile)
+$binDir = "$HOME\bin"
+New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+
+# Download, extract, and place upp.exe
+Invoke-WebRequest -Uri "https://github.com/JhnFrankz/upp/releases/latest/download/upp-windows-amd64.zip" -OutFile "$env:TEMP\upp.zip"
+Expand-Archive -Path "$env:TEMP\upp.zip" -DestinationPath "$env:TEMP\upp-extract" -Force
+Move-Item -Force "$env:TEMP\upp-extract\upp-windows-amd64\upp.exe" "$binDir\upp.exe"
+Remove-Item -Recurse -Force "$env:TEMP\upp.zip", "$env:TEMP\upp-extract"
+
+# Ensure $binDir is in your Path if not already present
+if ($env:Path -notlike "*$binDir*") { [Environment]::SetEnvironmentVariable("Path", "$env:Path;$binDir", "User") }
+```
+
+### Go Install
+
+If you have Go 1.24+ installed:
+
+```bash
+go install github.com/JhnFrankz/upp/cmd/upp@latest
+```
+
+### Manual download
+
+Precompiled binaries for all supported platforms are published on the [GitHub Releases](https://github.com/JhnFrankz/upp/releases/latest) page:
+
+- **Linux**: `upp-linux-amd64.tar.gz`, `upp-linux-arm64.tar.gz`
+- **macOS**: `upp-darwin-arm64.tar.gz` (Apple Silicon), `upp-darwin-amd64.tar.gz` (Intel)
+- **Windows**: `upp-windows-amd64.zip`
+- **Checksums**: `checksums.txt` (SHA-256 for all packages)
 
 ### Build from source
 
@@ -69,7 +95,7 @@ The script detects your OS and architecture, downloads the matching release arch
 git clone https://github.com/JhnFrankz/upp.git
 cd upp
 make build
-# binary: ./upp
+# binary: ./upp (or run `make install` to place in /usr/local/bin)
 ```
 
 ## Quick start
@@ -116,15 +142,15 @@ In a terminal, `upp update` shows an interactive selection of pending updates be
 |---------|-------------|-------------|-----------------|
 | `upp init` | First-run wizard: detect tools, generate `~/.config/upp/config.toml` | Yes | Yes (creates config) |
 | `upp self-update` | Update the upp binary itself (checks, verifies, asks for confirmation) | Yes (confirm) | Yes (replaces binary) |
-| `upp uninstall` | Remove upp: the binary, historical backups, `~/.config/upp`, and `~/.cache/upp` (Zero-Sudo best-effort; warns with manual commands on unwritable paths) | No | Yes (deletes files) |
+| `upp uninstall` | Remove upp: binary, historical backups, config, and cache directories (Zero-Sudo best-effort with interactive confirmation [y/N]) | Yes (confirm) | Yes (deletes files) |
 
 ## Self-update
 
-`upp self-update` replaces the upp binary itself with the latest release: it checks the newest release over HTTPS, verifies the downloaded archive's SHA-256 against `checksums.txt`, and asks for confirmation before an atomic replace (with a timestamped `.backup.<ts>` of the previous binary). It never uses `sudo`; if the install directory is not writable, it tells you to make it writable or install under your home directory.
+`upp self-update` replaces the upp binary itself with the latest release: it checks the newest release over HTTPS, streams the download and verifies the SHA-256 against `checksums.txt`, and asks for confirmation before an atomic replace (with a timestamped `.backup.<ts>` of the previous binary). It never uses `sudo`; if the install directory is not writable, it tells you to make it writable or install under your home directory.
 
 - **Deny paths**: non-TTY stdin or `--ci` deny the update with a clear message and exit non-zero — never hang, auto-proceed, or silently skip. Decline at the prompt = no changes, exit 0.
 - **Flags**: `self-update` accepts no flags in v1; `--only` is ignored. `--quiet` does not suppress the confirmation prompt.
-- **Limits**: development/dirty builds never claim updates (release builds only), Windows is not supported yet, and releases must ship `checksums.txt` or the update fails closed.
+- **Limits**: development/dirty builds never claim updates (release builds only), Windows is not supported yet (fails closed), and releases must ship `checksums.txt` or the update fails closed.
 
 ## Flags
 
@@ -148,6 +174,7 @@ Available on every command:
 |---------|------|-----------|-------------|
 | `update` | `--dry-run` | `-n` | Preview updates without applying |
 | `uninstall` | `--dry-run` | | List what `upp uninstall` would remove without deleting anything |
+| `uninstall` | `--yes` | `-y` | Confirm uninstallation without interactive prompt (required in non-interactive / CI runs) |
 
 ## Configuration
 
@@ -228,7 +255,7 @@ High-risk operations always require confirmation, regardless of trust. In `--ci`
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.24+
 - Make (optional)
 
 ### Build
