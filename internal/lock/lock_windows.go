@@ -9,8 +9,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// lockOffset is positioned past the initial byte range where the PID is stored,
+// so that other processes can read the PID without triggering a lock violation.
+const lockOffset = 4096
+
 func tryLock(f *os.File) error {
 	var overlapped windows.Overlapped
+	overlapped.Offset = lockOffset
 	err := windows.LockFileEx(
 		windows.Handle(f.Fd()),
 		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
@@ -30,6 +35,7 @@ func tryLock(f *os.File) error {
 
 func unlock(f *os.File) error {
 	var overlapped windows.Overlapped
+	overlapped.Offset = lockOffset
 	return windows.UnlockFileEx(
 		windows.Handle(f.Fd()),
 		0,

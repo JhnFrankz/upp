@@ -65,12 +65,7 @@ type selfUpdateDeps struct {
 // else; development builds exit 0 with no network; Prepare runs
 // detect → latest lookup → download → verify → extract; the TTY
 // confirmation gate precedes the atomic replace; the user declining
-// exits 0 with nothing modified. The CLI layer only orchestrates — all
-// runSelfUpdateContext is an alias for runSelfUpdate.
-func runSelfUpdateContext(ctx context.Context, gf *GlobalFlags, version string, deps selfUpdateDeps) error {
-	return runSelfUpdate(ctx, gf, version, deps)
-}
-
+// exits 0 with nothing modified. The CLI layer only orchestrates.
 func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps selfUpdateDeps) error {
 	if err := ctx.Err(); err != nil {
 		return err

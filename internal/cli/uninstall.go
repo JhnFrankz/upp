@@ -66,11 +66,6 @@ func NewUninstallCommand(gf *GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-// runUninstallContext is an alias for runUninstall.
-func runUninstallContext(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, out io.Writer, deps uninstallDeps) error {
-	return runUninstall(ctx, gf, flags, out, deps)
-}
-
 // runUninstall executes the uninstallation process or simulates it under --dry-run.
 func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, out io.Writer, deps uninstallDeps) error {
 	if err := ctx.Err(); err != nil {
