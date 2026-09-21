@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -44,12 +45,12 @@ func runDashboard(gf *GlobalFlags, version string, w io.Writer, deps dashboardDe
 	}
 
 	// Count enabled tools vs available platform catalog tools + custom tools
-	platformCatalog := platform.CatalogFor(p.OS)
-	totalAvailable := len(platformCatalog) + len(cfg.Custom)
+	platformAdapters := official.AdaptersForPlatform(p.OS)
+	totalAvailable := len(platformAdapters) + len(cfg.Custom)
 
 	enabledCount := 0
-	for _, tool := range platformCatalog {
-		if tCfg, ok := cfg.Tools[tool.ID]; !ok || tCfg.Enabled {
+	for _, a := range platformAdapters {
+		if tCfg, ok := cfg.Tools[a.Name()]; !ok || tCfg.Enabled {
 			enabledCount++
 		}
 	}
