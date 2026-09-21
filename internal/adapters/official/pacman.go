@@ -67,7 +67,7 @@ func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 		}, nil
 	}
 
-	_, stderr, err := runCmd(ctx, pacmanSelfUpdateCmd)
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "pacman", "-S", "--noconfirm", "pacman")
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -182,7 +182,7 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 	}
 
 	before, _ := a.CurrentVersion(ctx)
-	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(pacmanPackageUpdateTemplate, pkg))
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "pacman", "-S", "--noconfirm", pkg)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,

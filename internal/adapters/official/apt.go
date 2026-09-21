@@ -89,7 +89,7 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 	}
 
 	before, _ := a.CurrentVersion(ctx)
-	_, stderr, err := runCmd(ctx, adapters.RenderPackageCommand(aptPackageUpdateTemplate, pkg))
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "--only-upgrade", pkg)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -139,7 +139,7 @@ func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	// `apt upgrade` is intentionally avoided). Stays sudo-gated: the row means
 	// "apt package stale" (distro-managed, often intentional). Check() stays
 	// root-free and reports real Installed vs Candidate availability.
-	_, stderr, err := runCmd(ctx, aptSelfUpdateCmd)
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "--only-upgrade", "apt")
 	if err != nil {
 		return adapters.Result{
 			Success:    false,

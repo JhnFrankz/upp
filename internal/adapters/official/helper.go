@@ -58,6 +58,25 @@ var (
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
+	runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(ctx, adapters.UpdateTimeout)
+		defer cancel()
+
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.CommandContext(ctx, name, args...)
+		} else {
+			cmd = exec.CommandContext(ctx, name, args...)
+			// Own process group so the timeout can kill descendants too
+			// (workers holding the pipes): the direct child alone is
+			// not enough, exactly like runCmdFn's shell path.
+			setpgid(cmd)
+		}
+		return adapters.RunCommandWithTimeout(ctx, cmd)
+	}
 	lookPathFn = func(name string) bool {
 		_, err := exec.LookPath(name)
 		return err == nil
@@ -75,6 +94,12 @@ func runCmd(ctx context.Context, command string) (stdout, stderr string, err err
 // Delegates to the runCmdArgsFn seam variable.
 func runCmdArgs(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
 	return runCmdArgsFn(ctx, name, args...)
+}
+
+// runCmdArgsUpdate executes a command with explicit arguments (no shell) using UpdateTimeout.
+// Delegates to the runCmdArgsUpdateFn seam variable.
+func runCmdArgsUpdate(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
+	return runCmdArgsUpdateFn(ctx, name, args...)
 }
 
 // lookPath checks if a command exists on PATH.

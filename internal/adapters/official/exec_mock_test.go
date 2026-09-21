@@ -37,6 +37,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 
 	origRunCmd := runCmdFn
 	origRunCmdArgs := runCmdArgsFn
+	origRunCmdArgsUpdate := runCmdArgsUpdateFn
 	origLookPath := lookPathFn
 	origOpencodeTag := opencodeLatestTagFn
 	origGoBinaryPath := goBinaryPathFn
@@ -45,6 +46,22 @@ func setExecFakes(t *testing.T, f execFakes) {
 	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
 		r := f.shell[command]
 		return r.stdout, r.stderr, r.err
+	}
+	runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
+		key := name
+		if len(args) > 0 {
+			key = name + " " + strings.Join(args, " ")
+		}
+		if r, ok := f.cmdArgs[key]; ok {
+			return r.stdout, r.stderr, r.err
+		}
+		if r, ok := f.shell[key]; ok {
+			return r.stdout, r.stderr, r.err
+		}
+		if r, ok := f.cmdArgs[name]; ok {
+			return r.stdout, r.stderr, r.err
+		}
+		return "", "", nil
 	}
 	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
 		// Prefer an invocation-specific key ("name arg1 arg2..."), falling
@@ -130,6 +147,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 	t.Cleanup(func() {
 		runCmdFn = origRunCmd
 		runCmdArgsFn = origRunCmdArgs
+		runCmdArgsUpdateFn = origRunCmdArgsUpdate
 		lookPathFn = origLookPath
 		opencodeLatestTagFn = origOpencodeTag
 		goBinaryPathFn = origGoBinaryPath

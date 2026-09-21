@@ -97,6 +97,23 @@ func TestRunCmdArgs_CheckTimeoutKills(t *testing.T) {
 	}
 }
 
+// TestRunCmdArgsUpdate_UpdateTimeoutKills proves the runCmdArgsUpdateFn default seam body
+// kills a hung command once the UpdateTimeout context expires.
+func TestRunCmdArgsUpdate_UpdateTimeoutKills(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows: sleep is not a cmd.exe builtin")
+	}
+
+	orig := adapters.UpdateTimeout
+	adapters.UpdateTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { adapters.UpdateTimeout = orig })
+
+	_, _, err := runCmdArgsUpdate(context.Background(), "sleep", "2")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("runCmdArgsUpdate() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+	}
+}
+
 // TestRunCmdArgs_GroupKillProvesGrandchildrenDie verifies that the
 // process-group kill also reaches descendants of the direct-exec seam (the
 // npm/pnpm check path): after the timeout, a unique background marker
@@ -117,6 +134,31 @@ func TestRunCmdArgs_GroupKillProvesGrandchildrenDie(t *testing.T) {
 	_, _, err := runCmdArgs(context.Background(), "sh", "-c", marker+" & wait")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("runCmdArgs() error = %v, want DeadlineExceeded", err)
+	}
+
+	// Poll until the SIGKILL has landed; no fixed wait on the green path.
+	waitForMarkerGone(t, marker)
+}
+
+// TestRunCmdArgsUpdate_GroupKillProvesGrandchildrenDie verifies that the
+// process-group kill also reaches descendants of the direct-exec update seam:
+// after the timeout, a unique background marker process spawned by the direct child must no longer exist.
+func TestRunCmdArgsUpdate_GroupKillProvesGrandchildrenDie(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("process-group kill verification requires linux")
+	}
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("pgrep not available")
+	}
+
+	orig := adapters.UpdateTimeout
+	adapters.UpdateTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { adapters.UpdateTimeout = orig })
+
+	marker := "sleep 28.92" // unique marker; only this test ever runs it
+	_, _, err := runCmdArgsUpdate(context.Background(), "sh", "-c", marker+" & wait")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("runCmdArgsUpdate() error = %v, want DeadlineExceeded", err)
 	}
 
 	// Poll until the SIGKILL has landed; no fixed wait on the green path.
