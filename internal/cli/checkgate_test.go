@@ -35,7 +35,7 @@ func checkGateAdapters(checks ...string) []*checkGateAdapter {
 		list = append(list, &checkGateAdapter{info: adapters.ToolInfo{
 			ID:           "tool" + string(rune('a'+i)),
 			Name:         "tool" + string(rune('a'+i)),
-			Trust:        adapters.TrustCustomUntrusted,
+			Trust:        security.TrustCustomUntrusted,
 			UpdatePolicy: adapters.PolicyAlwaysUpdate,
 			Kind:         adapters.KindTool,
 			CheckCommand: c,
@@ -50,60 +50,60 @@ func checkGateAdapters(checks ...string) []*checkGateAdapter {
 func TestEnforceRiskFor(t *testing.T) {
 	tests := []struct {
 		name  string
-		trust adapters.TrustLevel
+		trust security.TrustLevel
 		risk  security.RiskLevel
 		ci    bool
 		want  bool
 	}{
 		{
 			name:  "official low-risk keeps auto-proceed",
-			trust: adapters.TrustOfficial,
+			trust: security.TrustOfficial,
 			risk:  security.RiskLow,
 			want:  false,
 		},
 		{
 			name:  "official low-risk under --ci keeps auto-proceed",
-			trust: adapters.TrustOfficial,
+			trust: security.TrustOfficial,
 			risk:  security.RiskLow,
 			ci:    true,
 			want:  false,
 		},
 		{
 			name:  "official high-risk prompts interactively",
-			trust: adapters.TrustOfficial,
+			trust: security.TrustOfficial,
 			risk:  security.RiskHigh,
 			want:  true,
 		},
 		{
 			name:  "official high-risk proceeds under --ci because upp ships the command",
-			trust: adapters.TrustOfficial,
+			trust: security.TrustOfficial,
 			risk:  security.RiskHigh,
 			ci:    true,
 			want:  false,
 		},
 		{
 			name:  "custom untrusted high-risk prompts interactively",
-			trust: adapters.TrustCustomUntrusted,
+			trust: security.TrustCustomUntrusted,
 			risk:  security.RiskHigh,
 			want:  true,
 		},
 		{
 			name:  "custom untrusted high-risk fails under --ci",
-			trust: adapters.TrustCustomUntrusted,
+			trust: security.TrustCustomUntrusted,
 			risk:  security.RiskHigh,
 			ci:    true,
 			want:  true,
 		},
 		{
 			name:  "custom trusted high-risk still fails under --ci",
-			trust: adapters.TrustCustomTrusted,
+			trust: security.TrustCustomTrusted,
 			risk:  security.RiskHigh,
 			ci:    true,
 			want:  true,
 		},
 		{
 			name:  "custom trusted medium-risk proceeds under --ci",
-			trust: adapters.TrustCustomTrusted,
+			trust: security.TrustCustomTrusted,
 			risk:  security.RiskMedium,
 			ci:    true,
 			want:  true,

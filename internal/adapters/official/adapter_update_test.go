@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // --- Hermetic wrapper tests ---
@@ -320,7 +321,7 @@ func TestAllAdapters_InfoConsistency(t *testing.T) {
 			}
 
 			// Trust must be TrustOfficial for official adapters
-			if info.Trust != adapters.TrustOfficial {
+			if info.Trust != security.TrustOfficial {
 				t.Errorf("Info().Trust = %d, want TrustOfficial", info.Trust)
 			}
 

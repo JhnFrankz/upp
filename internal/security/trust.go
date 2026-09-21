@@ -4,9 +4,37 @@ package security
 
 import (
 	"strings"
-
-	"github.com/JhnFrankz/upp/internal/adapters"
 )
+
+// TrustLevel represents how much the system trusts a tool adapter.
+type TrustLevel int
+
+const (
+	// TrustCustomUntrusted is for custom adapters, untrusted by default.
+	// It is the ZERO value on purpose: an unset TrustLevel MUST resolve to the
+	// least-privileged level so unset trust fails closed. The zero value MUST
+	// stay the least-privileged tier — never insert a new level before it.
+	TrustCustomUntrusted TrustLevel = 0
+	// TrustCustomTrusted is for custom adapters marked trusted=true in config.
+	// It must never alias TrustOfficial: trust level MUST NOT bypass the risk matrix.
+	TrustCustomTrusted TrustLevel = 1
+	// TrustOfficial is for official, built-in adapters.
+	TrustOfficial TrustLevel = 2
+)
+
+// String returns a human-readable trust label.
+func (t TrustLevel) String() string {
+	switch t {
+	case TrustOfficial:
+		return "official"
+	case TrustCustomTrusted:
+		return "custom-trusted"
+	case TrustCustomUntrusted:
+		return "custom-untrusted"
+	default:
+		return "unknown"
+	}
+}
 
 // RiskLevel classifies how dangerous a command is.
 type RiskLevel int
@@ -39,6 +67,9 @@ func (r RiskLevel) String() string {
 // HighRiskKeywords are substrings that immediately classify a command as high risk.
 var HighRiskKeywords = []string{
 	"sudo",
+	"doas",
+	"pkexec",
+	"runas",
 	"rm -rf",
 	"rm -r /",
 	"curl|sh",
@@ -99,8 +130,8 @@ func ClassifyCommand(cmd string) RiskLevel {
 // A check command is arbitrary shell, so it is classified by its real risk
 // exactly like an update command — never by the tool's trust level alone
 // (spec security-model: custom check-command gate).
-func CheckNeedsConsent(ti adapters.ToolInfo) bool {
-	return ti.CheckCommand != "" && ClassifyCommand(ti.CheckCommand) != RiskLow
+func CheckNeedsConsent(checkCmd string) bool {
+	return checkCmd != "" && ClassifyCommand(checkCmd) != RiskLow
 }
 
 // hasCommandChaining detects command chaining operators.
@@ -110,14 +141,20 @@ func hasCommandChaining(cmd string) bool {
 		strings.Contains(cmd, ";")
 }
 
-// hasPipeToShell detects piping output to a shell interpreter,
-// both spaced ("| sh", "| bash") and compact ("|sh", "|bash") variants.
+var pipeInterpreters = []string{
+	"sh", "bash", "zsh", "fish",
+	"powershell", "pwsh",
+	"python", "python3", "node", "ruby", "perl",
+}
+
+// hasPipeToShell detects piping output to a shell or script interpreter,
+// both spaced ("| sh", "| python") and compact ("|sh", "|python") variants.
 func hasPipeToShell(cmd string) bool {
 	lower := strings.ToLower(strings.TrimSpace(cmd))
-	return strings.Contains(lower, "| sh") ||
-		strings.Contains(lower, "| bash") ||
-		strings.Contains(lower, "|sh") ||
-		strings.Contains(lower, "|bash") ||
-		strings.Contains(lower, "|zsh") ||
-		strings.Contains(lower, "| zsh")
+	for _, interp := range pipeInterpreters {
+		if strings.Contains(lower, "| "+interp) || strings.Contains(lower, "|"+interp) {
+			return true
+		}
+	}
+	return false
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // testDelayedAdapter introduces a controllable delay to test concurrency, ordering, and detection.
@@ -53,7 +54,7 @@ func (a *testDelayedAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
 		ID:           a.id,
 		Name:         a.Name(),
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 	}
 }
@@ -95,7 +96,7 @@ func (a *testPanickingAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
 		ID:           a.id,
 		Name:         a.Name(),
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 	}
 }
@@ -143,7 +144,7 @@ func (a *testConcurrencyTrackingAdapter) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
 		ID:           a.id,
 		Name:         a.Name(),
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 	}
 }

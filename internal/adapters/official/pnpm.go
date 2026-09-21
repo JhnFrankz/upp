@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // PnpmAdapter manages pnpm global packages on all platforms.
@@ -114,7 +115,7 @@ func (a *PnpmAdapter) Info() adapters.ToolInfo {
 		ID:           "pnpm",
 		Name:         "pnpm",
 		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyGated,
 		Kind:         adapters.KindTool,
 		// Command is the exact string Update() runs, declared so the plan's

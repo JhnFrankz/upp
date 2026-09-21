@@ -13,6 +13,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // --- Helper: inject package-level deps ---
@@ -253,7 +254,7 @@ func TestListCommand_NoConfig(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	setCLIDeps(t, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(fake)}, selfUpdateDeps{})
@@ -285,7 +286,7 @@ func TestListCommand_FilterRoundTrip_GroupingDisplayOnly(t *testing.T) {
 	docker := &fakeUpdateAdapter{
 		name:   "docker",
 		policy: adapters.PolicyAlwaysUpdate,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "26.0.0"},
 	}
 	setCLIDeps(t, updateDeps{}, listDeps{buildAdapterList: fakeAdapterList(docker)}, selfUpdateDeps{})
@@ -317,7 +318,7 @@ func TestUpdateDryRunCommand_NoConfig(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
@@ -387,7 +388,7 @@ func TestCIMode_RejectsUntrustedCustomTools(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:    "untrusted-tool",
 		policy:  adapters.PolicyAlwaysUpdate,
-		trust:   adapters.TrustCustomUntrusted,
+		trust:   security.TrustCustomUntrusted,
 		command: "untrusted-tool --update && echo done",
 	}
 	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
@@ -415,7 +416,7 @@ func TestDryRun_NoCommandsExecuted(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info: adapters.UpdateInfo{
 			CurrentVersion:  "1.0.0",
 			LatestVersion:   "2.0.0",
@@ -485,8 +486,8 @@ func TestQuietMode_SuppressesProgress(t *testing.T) {
 
 	// Two tools so progress WOULD print without --quiet (multi-tool loop).
 	fakes := []*fakeUpdateAdapter{
-		{name: "apt", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
-		{name: "npm", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
+		{name: "apt", policy: adapters.PolicyGated, trust: security.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}},
+		{name: "npm", policy: adapters.PolicyGated, trust: security.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "10.0.0"}},
 	}
 	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fakes[0], fakes[1])}, listDeps{}, selfUpdateDeps{})
 
@@ -563,7 +564,7 @@ func TestUpdateFlow_ConfigToSummary(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info: adapters.UpdateInfo{
 			CurrentVersion:  "1.0.0",
 			LatestVersion:   "2.0.0",
@@ -780,7 +781,7 @@ func TestInitUpdateDryRunLifecycle(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info: adapters.UpdateInfo{
 			CurrentVersion:  "1.0.0",
 			LatestVersion:   "2.0.0",
@@ -916,7 +917,7 @@ func TestUpdateDryRun_WithSkips(t *testing.T) {
 	current := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	skipped := &fakeSkipAdapter{id: "nvm"}
@@ -952,7 +953,7 @@ func TestUpdateDryRun_SummaryOutput(t *testing.T) {
 	fake := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyGated,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	setCLIDeps(t, updateDeps{buildAdapterList: fakeAdapterList(fake)}, listDeps{}, selfUpdateDeps{})
@@ -1101,11 +1102,11 @@ func TestUpdateDryRun_DeterministicOrderUnderConcurrency(t *testing.T) {
 func TestUpdateDryRun_MixedStatusCounts(t *testing.T) {
 	probeHome(t)
 
-	a0 := &fakeUpdateAdapter{name: "tool-0", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
+	a0 := &fakeUpdateAdapter{name: "tool-0", policy: adapters.PolicyGated, trust: security.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
 	a1 := &fakeDelayedAdapter{name: "tool-1", checkErr: fmt.Errorf("lock frontend held by another process")}
-	a2 := &fakeUpdateAdapter{name: "tool-2", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "1.2.0"}}
+	a2 := &fakeUpdateAdapter{name: "tool-2", policy: adapters.PolicyGated, trust: security.TrustOfficial, info: adapters.UpdateInfo{UpdateAvailable: true, CurrentVersion: "1.0.0", LatestVersion: "1.2.0"}}
 	a3 := &fakeDelayedAdapter{name: "tool-3", checkErr: context.DeadlineExceeded}
-	a4 := &fakeUpdateAdapter{name: "tool-4", policy: adapters.PolicyGated, trust: adapters.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
+	a4 := &fakeUpdateAdapter{name: "tool-4", policy: adapters.PolicyGated, trust: security.TrustOfficial, info: adapters.UpdateInfo{CurrentVersion: "1.0.0"}}
 
 	setCLIDeps(t, updateDeps{buildAdapterList: func(*config.Config, string) []adapters.Adapter {
 		return []adapters.Adapter{a0, a1, a2, a3, a4}

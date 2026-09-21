@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 func TestNewCustomAdapter_RequiresCommand(t *testing.T) {
@@ -80,7 +82,7 @@ func TestCustomAdapter_Info_Untrusted(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := ca.Info()
-	if info.Trust != TrustCustomUntrusted {
+	if info.Trust != security.TrustCustomUntrusted {
 		t.Errorf("Info().Trust = %v, want TrustCustomUntrusted", info.Trust)
 	}
 	if info.ID != "mytool" {
@@ -100,10 +102,10 @@ func TestCustomAdapter_Info_Trusted(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := ca.Info()
-	if info.Trust != TrustCustomTrusted {
+	if info.Trust != security.TrustCustomTrusted {
 		t.Errorf("Info().Trust = %v, want TrustCustomTrusted (trusted=true must never map to Official)", info.Trust)
 	}
-	if info.Trust == TrustOfficial {
+	if info.Trust == security.TrustOfficial {
 		t.Error("trusted=true must never classify as TrustOfficial")
 	}
 	if info.Command != "sudo mytool --update" {

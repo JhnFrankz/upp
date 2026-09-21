@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // BunAdapter manages Bun runtime on all platforms.
@@ -85,7 +86,7 @@ func (a *BunAdapter) Info() adapters.ToolInfo {
 		ID:           "bun",
 		Name:         "Bun",
 		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        adapters.TrustOfficial,
+		Trust:        security.TrustOfficial,
 		UpdatePolicy: adapters.PolicyAlwaysUpdate,
 		Kind:         adapters.KindTool,
 		// Command is the exact string Update() runs, declared so the plan's

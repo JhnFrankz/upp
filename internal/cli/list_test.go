@@ -8,6 +8,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // runListWith runs runList with the given global flags against the given
@@ -29,7 +30,7 @@ func TestRunList_ContextCanceled(t *testing.T) {
 	tool := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyAlwaysUpdate,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	deps := listDeps{buildAdapterList: fakeAdapterList(tool)}
@@ -53,7 +54,7 @@ func TestRunList_EmptyVsFilterMismatch(t *testing.T) {
 	tool := &fakeUpdateAdapter{
 		name:   "apt",
 		policy: adapters.PolicyAlwaysUpdate,
-		trust:  adapters.TrustOfficial,
+		trust:  security.TrustOfficial,
 		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 
@@ -140,13 +141,13 @@ func TestRunList_GatesCheckCommandByRisk(t *testing.T) {
 	benignTool := &fakeUpdateAdapter{
 		name:         "benign",
 		checkCommand: "benign --version",
-		trust:        adapters.TrustCustomUntrusted,
+		trust:        security.TrustCustomUntrusted,
 		info:         adapters.UpdateInfo{CurrentVersion: "1.0.0"},
 	}
 	riskyTool := &fakeUpdateAdapter{
 		name:         "risky",
 		checkCommand: "sudo risky --version",
-		trust:        adapters.TrustCustomUntrusted,
+		trust:        security.TrustCustomUntrusted,
 		info:         adapters.UpdateInfo{CurrentVersion: "2.0.0"},
 	}
 

@@ -91,7 +91,7 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 
 	checkAdapters := prepareCheckAdapters(adapterList, p.OS, allAdapters)
 	for i, a := range checkAdapters {
-		if security.CheckNeedsConsent(a.Info()) {
+		if security.CheckNeedsConsent(a.Info().CheckCommand) {
 			checkAdapters[i] = unconsentedCheckAdapter{Adapter: a}
 		}
 	}

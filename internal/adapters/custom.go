@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // CustomAdapter implements Adapter for user-defined tools from config.
@@ -145,7 +147,7 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 		return c.manager.Update(ctx, dryRun)
 	}
 
-	privileges := detectPrivileges(c.command)
+	privileges := security.DetectPrivileges(c.command)
 
 	if !c.Detect() {
 		return Result{
@@ -180,9 +182,9 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 }
 
 func (c *CustomAdapter) Info() ToolInfo {
-	trust := TrustCustomUntrusted
+	trust := security.TrustCustomUntrusted
 	if c.trusted {
-		trust = TrustCustomTrusted
+		trust = security.TrustCustomTrusted
 	}
 
 	info := ToolInfo{
@@ -193,7 +195,7 @@ func (c *CustomAdapter) Info() ToolInfo {
 		UpdatePolicy: PolicyAlwaysUpdate,
 		Kind:         KindTool,
 		Command:      c.command,
-		Privileges:   detectPrivileges(c.command),
+		Privileges:   security.DetectPrivileges(c.command),
 		CheckCommand: c.checkCmd,
 	}
 	if c.manager != nil {
@@ -295,17 +297,4 @@ func isVersionLike(s string) bool {
 		}
 	}
 	return dotFound
-}
-
-// detectPrivileges checks if a command requires elevated privileges.
-func detectPrivileges(cmd string) []string {
-	lower := strings.ToLower(cmd)
-	var privs []string
-	if strings.Contains(lower, "sudo") {
-		privs = append(privs, "sudo")
-	}
-	if strings.Contains(lower, "runas") || strings.Contains(lower, "admin") {
-		privs = append(privs, "admin")
-	}
-	return privs
 }

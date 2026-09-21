@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 var (
@@ -38,7 +39,7 @@ func (a *PacmanAdapter) Info() adapters.ToolInfo {
 		ID:                   "pacman",
 		Name:                 "Pacman Package Manager",
 		Platforms:            []string{"linux"},
-		Trust:                adapters.TrustOfficial,
+		Trust:                security.TrustOfficial,
 		UpdatePolicy:         adapters.PolicyGated,
 		Kind:                 adapters.KindManager,
 		Privileges:           []string{"sudo"},

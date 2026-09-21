@@ -5,6 +5,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 func TestAllAdaptersCount(t *testing.T) {
@@ -36,7 +37,7 @@ func TestAllAdaptersImplementInterface(t *testing.T) {
 		if len(info.Platforms) == 0 {
 			t.Errorf("adapter %T has empty Info().Platforms", a)
 		}
-		if info.Trust != adapters.TrustOfficial {
+		if info.Trust != security.TrustOfficial {
 			t.Errorf("adapter %T has trust level %d, want TrustOfficial", a, info.Trust)
 		}
 	}

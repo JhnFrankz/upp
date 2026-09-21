@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 // WingetAdapter manages Windows Package Manager packages.
@@ -189,7 +190,7 @@ func (a *WingetAdapter) Info() adapters.ToolInfo {
 		ID:                   "winget",
 		Name:                 "Windows Package Manager",
 		Platforms:            []string{"windows"},
-		Trust:                adapters.TrustOfficial,
+		Trust:                security.TrustOfficial,
 		UpdatePolicy:         adapters.PolicyAlwaysUpdate,
 		Kind:                 adapters.KindManager,
 		SelfUpdateCommand:    wingetSelfUpdateCmd,
