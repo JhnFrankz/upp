@@ -89,7 +89,11 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
 	}
 
-	before, _ := a.CurrentVersion(ctx)
+	before := "unknown"
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		before = info.CurrentVersion
+	}
+
 	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "--only-upgrade", pkg)
 	if err != nil {
 		return adapters.Result{
@@ -111,7 +115,11 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 		}, nil
 	}
 
-	after, _ := a.CurrentVersion(ctx)
+	after := before
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		after = info.CurrentVersion
+	}
+
 	return adapters.Result{
 		Success:    true,
 		Before:     before,

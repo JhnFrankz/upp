@@ -191,8 +191,8 @@ func TestDynamicLinuxManager_UpdateDelegation(t *testing.T) {
 		setExecFakes(t, execFakes{
 			lookPath: map[string]bool{"gh": true, "apt": false, "pacman": true},
 			cmdArgs: map[string]fakeResult{
-				"gh":               {stdout: "gh version 2.45.0 (2024-05-30)"},
-				"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+				"gh":                   {stdout: "gh version 2.45.0 (2024-05-30)"},
+				"pacman -Q github-cli": {stdout: "github-cli 2.45.0-1"},
 			},
 			shell: map[string]fakeResult{
 				"sudo pacman -S --noconfirm github-cli": {stdout: "upgrading github-cli..."},
@@ -209,8 +209,8 @@ func TestDynamicLinuxManager_UpdateDelegation(t *testing.T) {
 		if !equalPrivileges(res.Privileges, []string{"sudo"}) {
 			t.Errorf("gh.Update(false) Privileges = %v, want [sudo]", res.Privileges)
 		}
-		if res.Before != "6.1.0-1" || res.After != "6.1.0-1" {
-			t.Errorf("gh.Update(false) Before/After = %q/%q, want 6.1.0-1", res.Before, res.After)
+		if res.Before != "2.45.0-1" || res.After != "2.45.0-1" {
+			t.Errorf("gh.Update(false) Before/After = %q/%q, want 2.45.0-1", res.Before, res.After)
 		}
 	})
 
@@ -219,7 +219,7 @@ func TestDynamicLinuxManager_UpdateDelegation(t *testing.T) {
 			lookPath: map[string]bool{"docker": true, "apt": false, "pacman": true},
 			cmdArgs: map[string]fakeResult{
 				"docker":           {stdout: "Docker version 26.1.4, build 5650f9b"},
-				"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+				"pacman -Q docker": {stdout: "docker 26.1.4-1"},
 			},
 			shell: map[string]fakeResult{
 				"sudo pacman -S --noconfirm docker": {stdout: "upgrading docker..."},
@@ -236,8 +236,8 @@ func TestDynamicLinuxManager_UpdateDelegation(t *testing.T) {
 		if !equalPrivileges(res.Privileges, []string{"sudo"}) {
 			t.Errorf("docker.Update(false) Privileges = %v, want [sudo]", res.Privileges)
 		}
-		if res.Before != "6.1.0-1" || res.After != "6.1.0-1" {
-			t.Errorf("docker.Update(false) Before/After = %q/%q, want 6.1.0-1", res.Before, res.After)
+		if res.Before != "26.1.4-1" || res.After != "26.1.4-1" {
+			t.Errorf("docker.Update(false) Before/After = %q/%q, want 26.1.4-1", res.Before, res.After)
 		}
 	})
 

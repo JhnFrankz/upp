@@ -154,6 +154,7 @@ func TestCheckStatus_String(t *testing.T) {
 		status   CheckStatus
 		expected string
 	}{
+		{StatusUnknown, "unknown"},
 		{StatusAvailable, "available"},
 		{StatusCurrent, "current"},
 		{StatusSkipped, "skipped"},

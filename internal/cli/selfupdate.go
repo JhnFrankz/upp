@@ -123,6 +123,9 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 	}
 
 	rel, newPath, err := selfupdate.Prepare(ctx, c, current, p)
+	if newPath != "" {
+		defer func() { _ = os.RemoveAll(filepath.Dir(newPath)) }()
+	}
 	switch {
 	case errors.Is(err, selfupdate.ErrUpToDate):
 		// Up to date: latest lookup happened (1 request), no download

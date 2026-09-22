@@ -75,7 +75,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		switch oc.Status {
 		case StatusFailed:
 			plan.Failed = append(plan.Failed, oc)
-		case StatusSkipped:
+		case StatusSkipped, StatusUnknown:
 			plan.Skipped = append(plan.Skipped, oc)
 		case StatusAvailable, StatusCurrent:
 			a := findAdapter(allAdapters, oc.ToolID, oc.ToolName)

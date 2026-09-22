@@ -9,8 +9,10 @@ import (
 type CheckStatus int
 
 const (
+	// StatusUnknown indicates an uninitialized, inconclusive, or interrupted check.
+	StatusUnknown CheckStatus = iota
 	// StatusAvailable indicates a new update is available.
-	StatusAvailable CheckStatus = iota
+	StatusAvailable
 	// StatusCurrent indicates the tool is already up-to-date.
 	StatusCurrent
 	// StatusSkipped indicates the tool is not installed or skipped.
@@ -22,6 +24,8 @@ const (
 // String returns the string representation of CheckStatus.
 func (s CheckStatus) String() string {
 	switch s {
+	case StatusUnknown:
+		return "unknown"
 	case StatusAvailable:
 		return "available"
 	case StatusCurrent:

@@ -93,10 +93,9 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
 	}
 
-	before := commandOutput(ctx, "winget", "--version")
-	before = extractVersionFromString(before)
-	if before == "" {
-		before = "unknown"
+	before := "unknown"
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		before = info.CurrentVersion
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", pkg)
@@ -118,10 +117,9 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 		}, nil
 	}
 
-	after := commandOutput(ctx, "winget", "--version")
-	after = extractVersionFromString(after)
-	if after == "" {
-		after = "unknown"
+	after := before
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		after = info.CurrentVersion
 	}
 
 	return adapters.Result{

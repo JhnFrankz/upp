@@ -119,6 +119,32 @@ func TestPresentGroups_StatusSkippedOutcome(t *testing.T) {
 	}
 }
 
+func TestPresentGroups_StatusUnknownOutcome(t *testing.T) {
+	npm := official.AdapterByName("npm")
+	toolGroups := []engine.ToolGroup{
+		{
+			Header:   "",
+			Manager:  nil,
+			Adapters: []adapters.Adapter{npm},
+		},
+	}
+	outcomes := []engine.CheckOutcome{
+		{
+			ToolID:   "npm",
+			ToolName: "npm",
+			Status:   engine.StatusUnknown,
+		},
+	}
+
+	groups := PresentGroups(toolGroups, outcomes)
+	if len(groups) != 1 || len(groups[0].Items) != 1 {
+		t.Fatalf("expected 1 group with 1 item, got %+v", groups)
+	}
+	if item := groups[0].Items[0]; item.Status != StatusSkipped {
+		t.Errorf("item status = %v, want StatusSkipped (never StatusAvailable)", item.Status)
+	}
+}
+
 func TestBackwardCompatibilityHelpers(t *testing.T) {
 	tools := []adapters.Adapter{
 		official.AdapterByName("npm"),

@@ -25,12 +25,14 @@ func outcomeToToolResult(oc engine.CheckOutcome) output.ToolResult {
 	case engine.StatusCurrent:
 		res.Status = output.StatusCurrent
 		res.Version = oc.CurrentVersion
-	case engine.StatusSkipped:
+	case engine.StatusSkipped, engine.StatusUnknown:
 		res.Status = output.StatusSkipped
 	case engine.StatusFailed:
 		res.Status = output.StatusFailed
 		res.Error = oc.Err
 		res.Stderr = oc.Stderr
+	default:
+		res.Status = output.StatusSkipped
 	}
 	return res
 }

@@ -88,6 +88,25 @@ func TestOutcomeToToolResult(t *testing.T) {
 			},
 		},
 		{
+			name: "StatusUnknown",
+			input: engine.CheckOutcome{
+				ToolName: "tool-u",
+				Status:   engine.StatusUnknown,
+			},
+			expected: output.ToolResult{
+				Name:   "tool-u",
+				Status: output.StatusSkipped,
+			},
+		},
+		{
+			name:  "ZeroValueOutcome",
+			input: engine.CheckOutcome{ToolName: "tool-zero"},
+			expected: output.ToolResult{
+				Name:   "tool-zero",
+				Status: output.StatusSkipped,
+			},
+		},
+		{
 			name: "StatusFailed",
 			input: engine.CheckOutcome{
 				ToolName: "tool-f",
