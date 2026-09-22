@@ -9,7 +9,7 @@ import (
 )
 
 func TestInit_LockAlreadyRunning(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	probeHome(t)
 
 	deps := initDeps{
 		acquireLock: func() (*lock.Lock, error) {
@@ -27,7 +27,7 @@ func TestInit_LockAlreadyRunning(t *testing.T) {
 }
 
 func TestInit_LockAcquiredAndReleased(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	probeHome(t)
 
 	lockPath, err := lock.DefaultLockPath()
 	if err != nil {
