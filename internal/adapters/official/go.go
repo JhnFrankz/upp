@@ -1,16 +1,69 @@
 package official
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
 )
+
+// GoRelease represents the metadata of an official Go release archive.
+type GoRelease struct {
+	Version  string
+	Filename string
+	SHA256   string
+	URL      string
+}
+
+type goDevFile struct {
+	Filename string `json:"filename"`
+	OS       string `json:"os"`
+	Arch     string `json:"arch"`
+	Version  string `json:"version"`
+	SHA256   string `json:"sha256"`
+	Size     int64  `json:"size"`
+	Kind     string `json:"kind"`
+}
+
+type goDevRelease struct {
+	Version string      `json:"version"`
+	Stable  bool        `json:"stable"`
+	Files   []goDevFile `json:"files"`
+}
+
+// goReleaseURL is the endpoint for Go release metadata.
+var goReleaseURL = "https://go.dev/dl/?mode=json"
+
+// goReleaseFn is the seam for fetching Go release metadata.
+// Swapped in tests via setExecFakes.
+var goReleaseFn = fetchGoRelease
+
+// goDownloadAndVerifyFn is the seam for downloading and verifying a Go archive.
+// Swapped in tests via setExecFakes.
+var goDownloadAndVerifyFn = downloadAndVerifyGo
+
+// goExtractTarballFn is the seam for extracting a Go archive.
+// Swapped in tests via setExecFakes.
+var goExtractTarballFn = extractGoTarball
+
+// goTargetExistsFn is the seam for checking if /usr/local/go exists before backing up.
+// Swapped in tests via setExecFakes.
+var goTargetExistsFn = func() bool {
+	_, err := os.Stat("/usr/local/go")
+	return err == nil
+}
 
 // goBinaryPathFn is the seam for locating the go binary on Linux.
 // Swapped in tests via setExecFakes.
@@ -51,6 +104,180 @@ func fetchGoDevVersion(ctx context.Context) (string, error) {
 	n, _ := resp.Body.Read(buf)
 	line := strings.TrimSpace(strings.Split(string(buf[:n]), "\n")[0])
 	return line, nil
+}
+
+func fetchGoRelease(ctx context.Context, goos, goarch string) (GoRelease, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	client := &http.Client{
+		Timeout: adapters.CheckTimeout,
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, goReleaseURL, nil)
+	if err != nil {
+		return GoRelease{}, err
+	}
+	req.Header.Set("User-Agent", "upp")
+	resp, err := client.Do(req)
+	if err != nil {
+		return GoRelease{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return GoRelease{}, fmt.Errorf("unexpected status %d from go.dev", resp.StatusCode)
+	}
+
+	var releases []goDevRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return GoRelease{}, fmt.Errorf("failed to decode go releases: %w", err)
+	}
+
+	for _, r := range releases {
+		if !r.Stable {
+			continue
+		}
+		for _, f := range r.Files {
+			if f.OS == goos && f.Arch == goarch && f.Kind == "archive" {
+				return GoRelease{
+					Version:  r.Version,
+					Filename: f.Filename,
+					SHA256:   f.SHA256,
+					URL:      "https://go.dev/dl/" + f.Filename,
+				}, nil
+			}
+		}
+	}
+
+	return GoRelease{}, fmt.Errorf("no stable Go release found for %s/%s", goos, goarch)
+}
+
+func downloadAndVerifyGo(ctx context.Context, rel GoRelease, destPath string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	client := &http.Client{
+		Timeout: adapters.UpdateTimeout,
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rel.URL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "upp")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download %s failed: HTTP %d", rel.URL, resp.StatusCode)
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+
+	hasher := sha256.New()
+	mw := io.MultiWriter(f, hasher)
+
+	_, copyErr := io.Copy(mw, resp.Body)
+	closeErr := f.Close()
+
+	if copyErr != nil {
+		_ = os.Remove(destPath)
+		return copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(destPath)
+		return closeErr
+	}
+
+	actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
+	if !strings.EqualFold(actualHash, rel.SHA256) {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", rel.Filename, actualHash, rel.SHA256)
+	}
+
+	return nil
+}
+
+func extractGoTarball(archivePath, destDir string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer func() { _ = gz.Close() }()
+
+	tr := tar.NewReader(gz)
+	cleanDest := filepath.Clean(destDir)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar entry: %w", err)
+		}
+
+		cleanName := filepath.Clean(hdr.Name)
+		if strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
+			return fmt.Errorf("illegal archive entry path: %s", hdr.Name)
+		}
+
+		targetPath := filepath.Join(cleanDest, cleanName)
+		if !strings.HasPrefix(targetPath, cleanDest+string(filepath.Separator)) && targetPath != cleanDest {
+			return fmt.Errorf("archive entry escapes destination: %s", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return err
+			}
+			mode := hdr.FileInfo().Mode().Perm()
+			if mode == 0 {
+				mode = 0644
+			}
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(outFile, tr); err != nil {
+				_ = outFile.Close()
+				return err
+			}
+			if err := outFile.Close(); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			if strings.HasPrefix(hdr.Linkname, "/") || strings.Contains(hdr.Linkname, "..") {
+				return fmt.Errorf("unsupported or unsafe symlink target: %s", hdr.Linkname)
+			}
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return err
+			}
+			_ = os.Remove(targetPath)
+			if err := os.Symlink(hdr.Linkname, targetPath); err != nil {
+				return err
+			}
+		default:
+			// Ignore other header types
+		}
+	}
+	return nil
 }
 
 // GoAdapter manages Go across platforms.
@@ -124,6 +351,23 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// goLinuxUpdateCmd declares the structured privileged swap for manual Go updates on Linux.
+const goLinuxUpdateCmd = "sudo mv /usr/local/go /usr/local/go.bak && sudo mv ... /usr/local/go && sudo rm -rf /usr/local/go.bak"
+
+func isStandardGoPath(bin string) bool {
+	if bin == "/usr/local/go/bin/go" {
+		return true
+	}
+	if resolved, err := filepath.EvalSymlinks(bin); err == nil && resolved == "/usr/local/go/bin/go" {
+		return true
+	}
+	return false
+}
+
+func hasCommandError(stderr string) bool {
+	return stderr != "" && (strings.Contains(stderr, "Error") || strings.Contains(stderr, "error") || strings.Contains(stderr, "E:"))
+}
+
 func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
@@ -159,15 +403,9 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	var cmd string
-	var privileges []string
+	privileges := []string{"sudo"}
 
-	switch runtime.GOOS {
-	case "linux":
-		// Manual binary update: purge existing installation, then download and extract latest from go.dev.
-		cmd = "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"
-		privileges = []string{"sudo"}
-	default:
+	if runtime.GOOS != "linux" {
 		return adapters.Result{
 			Success: false,
 			Before:  before,
@@ -176,7 +414,18 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	_, stderr, err := runCmd(ctx, cmd)
+	bin := goBinaryPathFn()
+	if !isStandardGoPath(bin) {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("cannot update go: active binary is at %q, but manual update only manages standard /usr/local/go installations", bin),
+			Privileges: privileges,
+		}, nil
+	}
+
+	rel, err := goReleaseFn(ctx, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -187,14 +436,79 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	if stderr != "" && (strings.Contains(stderr, "Error") || strings.Contains(stderr, "error") || strings.Contains(stderr, "E:")) {
+	tmpDir, err := os.MkdirTemp("", "upp-go-update-*")
+	if err != nil {
 		return adapters.Result{
 			Success:    false,
 			Before:     before,
 			After:      before,
-			Error:      fmt.Errorf("go update error: %s", truncate(stderr, 200)),
+			Error:      fmt.Errorf("go update failed: %w", err),
 			Privileges: privileges,
 		}, nil
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	archivePath := filepath.Join(tmpDir, rel.Filename)
+	if err := goDownloadAndVerifyFn(ctx, rel, archivePath); err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("go update failed: %w", err),
+			Privileges: privileges,
+		}, nil
+	}
+
+	if err := goExtractTarballFn(archivePath, tmpDir); err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("go update failed: %w", err),
+			Privileges: privileges,
+		}, nil
+	}
+
+	stagedDir := filepath.Join(tmpDir, "go")
+	backedUp := false
+	if goTargetExistsFn() {
+		_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", "/usr/local/go", "/usr/local/go.bak")
+		if err != nil || hasCommandError(stderr) {
+			errMsg := err
+			if errMsg == nil {
+				errMsg = fmt.Errorf("%s", truncate(stderr, 200))
+			}
+			return adapters.Result{
+				Success:    false,
+				Before:     before,
+				After:      before,
+				Error:      fmt.Errorf("go update failed: %w", errMsg),
+				Privileges: privileges,
+			}, nil
+		}
+		backedUp = true
+	}
+
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", stagedDir, "/usr/local/go")
+	if err != nil || hasCommandError(stderr) {
+		errMsg := err
+		if errMsg == nil {
+			errMsg = fmt.Errorf("%s", truncate(stderr, 200))
+		}
+		if backedUp {
+			_, _, _ = runCmdArgsUpdate(ctx, "sudo", "mv", "/usr/local/go.bak", "/usr/local/go")
+		}
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("go update failed: %w", errMsg),
+			Privileges: privileges,
+		}, nil
+	}
+
+	if backedUp {
+		_, _, _ = runCmdArgsUpdate(ctx, "sudo", "rm", "-rf", "/usr/local/go.bak")
 	}
 
 	after := extractGoVersion(commandOutput(ctx, "go", "version"))
@@ -220,7 +534,7 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		// plan's RiskCommand and the confirmation gate see what actually
 		// executes. On macOS and Windows go is owned (Manager above), so the
 		// plan takes the owning manager's command and never reads this field.
-		Command: "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -",
+		Command: goLinuxUpdateCmd,
 	}
 }
 

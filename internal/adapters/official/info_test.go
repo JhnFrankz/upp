@@ -2,7 +2,6 @@ package official
 
 import (
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -37,7 +36,7 @@ func TestInfo(t *testing.T) {
 		{"bun", func() adapters.Adapter { return &BunAdapter{} }, adapters.ToolInfo{ID: "bun", Name: "Bun", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Command: "bun upgrade"}},
 		{"gh", func() adapters.Adapter { return &GhAdapter{} }, adapters.ToolInfo{ID: "gh", Name: "GitHub CLI", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Manager: map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}, ManagerPackage: map[string]string{"linux": "gh", "macos": "gh", "windows": "gh"}}},
 		{"docker", func() adapters.Adapter { return &DockerAdapter{} }, adapters.ToolInfo{ID: "docker", Name: "Docker", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Manager: map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}, ManagerPackage: map[string]string{"linux": "docker-ce", "macos": "docker", "windows": "Docker.Docker"}}},
-		{"go", func() adapters.Adapter { return &GoAdapter{} }, adapters.ToolInfo{ID: "go", Name: "Go", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Manager: map[string]string{"macos": "brew", "windows": "winget"}, ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"}, Command: "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"}},
+		{"go", func() adapters.Adapter { return &GoAdapter{} }, adapters.ToolInfo{ID: "go", Name: "Go", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Manager: map[string]string{"macos": "brew", "windows": "winget"}, ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"}, Command: goLinuxUpdateCmd}},
 		{"opencode", func() adapters.Adapter { return &OpenCodeAdapter{} }, adapters.ToolInfo{ID: "opencode", Name: "OpenCode", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Command: "opencode update"}},
 		{"winget", func() adapters.Adapter { return &WingetAdapter{} }, adapters.ToolInfo{ID: "winget", Name: "Windows Package Manager", Platforms: []string{"windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: wingetSelfUpdateCmd, PackageUpdateCommand: wingetPackageUpdateTemplate}},
 		{"scoop", func() adapters.Adapter { return &ScoopAdapter{} }, adapters.ToolInfo{ID: "scoop", Name: "Scoop", Platforms: []string{"windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: scoopSelfUpdateCmd}},
