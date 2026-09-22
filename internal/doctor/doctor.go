@@ -101,7 +101,7 @@ func defaultHTTPGet(ctx context.Context, url string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode, nil
 }
 
@@ -555,7 +555,7 @@ func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
 	for _, t := range targets {
 		status, err := deps.HTTPGet(ctx, t.url)
 		if err != nil || status < 200 || status >= 400 {
-			msg := fmt.Sprintf("Failed to reach %s", t.url)
+			var msg string
 			if err != nil {
 				msg = fmt.Sprintf("Failed to reach %s: %v", t.url, err)
 			} else {

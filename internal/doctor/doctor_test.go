@@ -192,8 +192,12 @@ func TestDiagnose_StorageAndConfig(t *testing.T) {
 
 	t.Run("unwritable config directory", func(t *testing.T) {
 		deps := baseTestDeps(t)
+		regularFile := filepath.Join(t.TempDir(), "blocking_file")
+		if err := os.WriteFile(regularFile, []byte("block"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		deps.ConfigDir = func() (string, error) {
-			return "/nonexistent_root_dir/never_writable_xyz", nil
+			return filepath.Join(regularFile, "never_writable_subdir"), nil
 		}
 		results := Diagnose(context.Background(), deps)
 
