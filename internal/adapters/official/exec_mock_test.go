@@ -3,6 +3,8 @@ package official
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -27,6 +29,12 @@ type execFakes struct {
 	goBinaryPath    string
 	goDevVersion    string
 	goDevVersionErr error
+	goRelease       *GoRelease
+	goReleaseErr    error
+	goDownloadErr   error
+	goExtractErr    error
+	goTargetExists  *bool
+	recordedCmds    *[][]string
 }
 
 // setExecFakes swaps the package exec seam variables (runCmdFn,
@@ -42,6 +50,10 @@ func setExecFakes(t *testing.T, f execFakes) {
 	origOpencodeTag := opencodeLatestTagFn
 	origGoBinaryPath := goBinaryPathFn
 	origGoDevVersion := goDevVersionFn
+	origGoRelease := goReleaseFn
+	origGoDownloadAndVerify := goDownloadAndVerifyFn
+	origGoExtractTarball := goExtractTarballFn
+	origGoTargetExists := goTargetExistsFn
 
 	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
 		r := f.shell[command]
@@ -52,11 +64,25 @@ func setExecFakes(t *testing.T, f execFakes) {
 		if len(args) > 0 {
 			key = name + " " + strings.Join(args, " ")
 		}
+		if f.recordedCmds != nil {
+			*f.recordedCmds = append(*f.recordedCmds, append([]string{name}, args...))
+		}
 		if r, ok := f.cmdArgs[key]; ok {
 			return r.stdout, r.stderr, r.err
 		}
 		if r, ok := f.shell[key]; ok {
 			return r.stdout, r.stderr, r.err
+		}
+		if name == "sudo" && len(args) == 3 && args[0] == "mv" && args[2] == "/usr/local/go" && args[1] != "/usr/local/go.bak" {
+			if r, ok := f.cmdArgs["sudo mv staged /usr/local/go"]; ok {
+				return r.stdout, r.stderr, r.err
+			}
+			if r, ok := f.cmdArgs["sudo mv ... /usr/local/go"]; ok {
+				return r.stdout, r.stderr, r.err
+			}
+			if r, ok := f.shell["sudo mv staged /usr/local/go"]; ok {
+				return r.stdout, r.stderr, r.err
+			}
 		}
 		if r, ok := f.cmdArgs[name]; ok {
 			return r.stdout, r.stderr, r.err
@@ -143,6 +169,42 @@ func setExecFakes(t *testing.T, f execFakes) {
 		}
 		return "", nil
 	}
+	if f.goRelease != nil || f.goReleaseErr != nil {
+		goReleaseFn = func(ctx context.Context, goos, goarch string) (GoRelease, error) {
+			if f.goReleaseErr != nil {
+				return GoRelease{}, f.goReleaseErr
+			}
+			return *f.goRelease, nil
+		}
+	} else {
+		goReleaseFn = func(ctx context.Context, goos, goarch string) (GoRelease, error) {
+			return GoRelease{
+				Version:  "go1.22.1",
+				Filename: fmt.Sprintf("go1.22.1.%s-%s.tar.gz", goos, goarch),
+				SHA256:   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+				URL:      fmt.Sprintf("https://go.dev/dl/go1.22.1.%s-%s.tar.gz", goos, goarch),
+			}, nil
+		}
+	}
+	goDownloadAndVerifyFn = func(ctx context.Context, rel GoRelease, destPath string) error {
+		if f.goDownloadErr != nil {
+			return f.goDownloadErr
+		}
+		return nil
+	}
+	goExtractTarballFn = func(archivePath, destDir string) error {
+		if f.goExtractErr != nil {
+			return f.goExtractErr
+		}
+		_ = os.MkdirAll(filepath.Join(destDir, "go", "bin"), 0755)
+		return nil
+	}
+	goTargetExistsFn = func() bool {
+		if f.goTargetExists != nil {
+			return *f.goTargetExists
+		}
+		return true
+	}
 
 	t.Cleanup(func() {
 		runCmdFn = origRunCmd
@@ -152,5 +214,9 @@ func setExecFakes(t *testing.T, f execFakes) {
 		opencodeLatestTagFn = origOpencodeTag
 		goBinaryPathFn = origGoBinaryPath
 		goDevVersionFn = origGoDevVersion
+		goReleaseFn = origGoRelease
+		goDownloadAndVerifyFn = origGoDownloadAndVerify
+		goExtractTarballFn = origGoExtractTarball
+		goTargetExistsFn = origGoTargetExists
 	})
 }

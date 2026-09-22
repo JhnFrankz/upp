@@ -351,6 +351,23 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// goLinuxUpdateCmd declares the structured privileged swap for manual Go updates on Linux.
+const goLinuxUpdateCmd = "sudo mv /usr/local/go /usr/local/go.bak && sudo mv ... /usr/local/go && sudo rm -rf /usr/local/go.bak"
+
+func isStandardGoPath(bin string) bool {
+	if bin == "/usr/local/go/bin/go" {
+		return true
+	}
+	if resolved, err := filepath.EvalSymlinks(bin); err == nil && resolved == "/usr/local/go/bin/go" {
+		return true
+	}
+	return false
+}
+
+func hasCommandError(stderr string) bool {
+	return stderr != "" && (strings.Contains(stderr, "Error") || strings.Contains(stderr, "error") || strings.Contains(stderr, "E:"))
+}
+
 func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
@@ -386,15 +403,9 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	var cmd string
-	var privileges []string
+	privileges := []string{"sudo"}
 
-	switch runtime.GOOS {
-	case "linux":
-		// Manual binary update: purge existing installation, then download and extract latest from go.dev.
-		cmd = "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -"
-		privileges = []string{"sudo"}
-	default:
+	if runtime.GOOS != "linux" {
 		return adapters.Result{
 			Success: false,
 			Before:  before,
@@ -403,7 +414,18 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	_, stderr, err := runCmd(ctx, cmd)
+	bin := goBinaryPathFn()
+	if !isStandardGoPath(bin) {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("cannot update go: active binary is at %q, but manual update only manages standard /usr/local/go installations", bin),
+			Privileges: privileges,
+		}, nil
+	}
+
+	rel, err := goReleaseFn(ctx, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -414,14 +436,79 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	if stderr != "" && (strings.Contains(stderr, "Error") || strings.Contains(stderr, "error") || strings.Contains(stderr, "E:")) {
+	tmpDir, err := os.MkdirTemp("", "upp-go-update-*")
+	if err != nil {
 		return adapters.Result{
 			Success:    false,
 			Before:     before,
 			After:      before,
-			Error:      fmt.Errorf("go update error: %s", truncate(stderr, 200)),
+			Error:      fmt.Errorf("go update failed: %w", err),
 			Privileges: privileges,
 		}, nil
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	archivePath := filepath.Join(tmpDir, rel.Filename)
+	if err := goDownloadAndVerifyFn(ctx, rel, archivePath); err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("go update failed: %w", err),
+			Privileges: privileges,
+		}, nil
+	}
+
+	if err := goExtractTarballFn(archivePath, tmpDir); err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("go update failed: %w", err),
+			Privileges: privileges,
+		}, nil
+	}
+
+	stagedDir := filepath.Join(tmpDir, "go")
+	backedUp := false
+	if goTargetExistsFn() {
+		_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", "/usr/local/go", "/usr/local/go.bak")
+		if err != nil || hasCommandError(stderr) {
+			errMsg := err
+			if errMsg == nil {
+				errMsg = fmt.Errorf("%s", truncate(stderr, 200))
+			}
+			return adapters.Result{
+				Success:    false,
+				Before:     before,
+				After:      before,
+				Error:      fmt.Errorf("go update failed: %w", errMsg),
+				Privileges: privileges,
+			}, nil
+		}
+		backedUp = true
+	}
+
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", stagedDir, "/usr/local/go")
+	if err != nil || hasCommandError(stderr) {
+		errMsg := err
+		if errMsg == nil {
+			errMsg = fmt.Errorf("%s", truncate(stderr, 200))
+		}
+		if backedUp {
+			_, _, _ = runCmdArgsUpdate(ctx, "sudo", "mv", "/usr/local/go.bak", "/usr/local/go")
+		}
+		return adapters.Result{
+			Success:    false,
+			Before:     before,
+			After:      before,
+			Error:      fmt.Errorf("go update failed: %w", errMsg),
+			Privileges: privileges,
+		}, nil
+	}
+
+	if backedUp {
+		_, _, _ = runCmdArgsUpdate(ctx, "sudo", "rm", "-rf", "/usr/local/go.bak")
 	}
 
 	after := extractGoVersion(commandOutput(ctx, "go", "version"))
@@ -447,7 +534,7 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		// plan's RiskCommand and the confirmation gate see what actually
 		// executes. On macOS and Windows go is owned (Manager above), so the
 		// plan takes the owning manager's command and never reads this field.
-		Command: "sudo rm -rf /usr/local/go && curl -fsSL " + goTarballURL(runtime.GOARCH) + " | sudo tar -C /usr/local -xzf -",
+		Command: goLinuxUpdateCmd,
 	}
 }
 

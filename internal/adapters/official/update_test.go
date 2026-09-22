@@ -22,7 +22,6 @@ const (
 	pnpmUpdateCmd     = "pnpm update -g"
 	pnpmPruneCmd      = "pnpm store prune"
 	bunUpdateCmd      = "bun upgrade"
-	goLinuxUpdateCmd  = "sudo rm -rf /usr/local/go && curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
 	opencodeUpdateCmd = "opencode update"
 	wingetUpdateCmd   = "winget upgrade winget"
 	scoopUpdateCmd    = "scoop update scoop"
@@ -654,13 +653,39 @@ func TestUpdate(t *testing.T) {
 			want:   adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
 		},
 		{
+			name:    "go/linux-non-standard-path-error",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				goBinaryPath: "/home/user/go/bin/go",
+				lookPath:     map[string]bool{"go": true},
+				cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+			},
+			want:      adapters.Result{Success: false, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
+			resultErr: true,
+		},
+		{
+			name:    "go/linux-checksum-mismatch-aborts",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath:      map[string]bool{"go": true},
+				cmdArgs:       map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				goDownloadErr: errors.New("checksum mismatch for go1.22.1.linux-amd64.tar.gz: got 111, want 222"),
+			},
+			want:      adapters.Result{Success: false, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
+			resultErr: true,
+		},
+		{
 			name:    "go/linux-update-command-error",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:    map[string]fakeResult{goLinuxUpdateCmd: {err: errors.New("curl: connection failed")}},
+				cmdArgs: map[string]fakeResult{
+					"go":                           {stdout: "go version go1.22.0 linux/amd64"},
+					"sudo mv staged /usr/local/go": {err: errors.New("mv: permission denied")},
+				},
 			},
 			want:      adapters.Result{Success: false, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
 			resultErr: true,
@@ -671,8 +696,24 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:    map[string]fakeResult{goLinuxUpdateCmd: {stderr: "error: cannot write to /usr/local/go"}},
+				cmdArgs: map[string]fakeResult{
+					"go":                           {stdout: "go version go1.22.0 linux/amd64"},
+					"sudo mv staged /usr/local/go": {stderr: "error: cannot write to /usr/local/go"},
+				},
+			},
+			want:      adapters.Result{Success: false, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
+			resultErr: true,
+		},
+		{
+			name:    "go/linux-swap-failure-rollback",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath: map[string]bool{"go": true},
+				cmdArgs: map[string]fakeResult{
+					"go":                           {stdout: "go version go1.22.0 linux/amd64"},
+					"sudo mv staged /usr/local/go": {err: errors.New("swap failed")},
+				},
 			},
 			want:      adapters.Result{Success: false, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
 			resultErr: true,
@@ -684,7 +725,6 @@ func TestUpdate(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
 				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:    map[string]fakeResult{goLinuxUpdateCmd: {}},
 			},
 			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
 		},
@@ -1227,7 +1267,6 @@ func TestUpdateDelegation(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true},
 				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:    map[string]fakeResult{goLinuxUpdateCmd: {}},
 			},
 			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0", Privileges: sudo},
 		},
@@ -1950,6 +1989,121 @@ func TestUpdate_MigratedStructuredExecution(t *testing.T) {
 					t.Errorf("call[%d][%d] = %q, want %q", i, j, recordedCalls[i][j], wantCalls[i][j])
 				}
 			}
+		}
+	})
+}
+
+func TestGo_LinuxAtomicSwapAndRollback(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Go atomic swap is Linux-specific")
+	}
+
+	t.Run("success stages and executes backup, swap, and cleanup", func(t *testing.T) {
+		var recordedCalls [][]string
+		setExecFakes(t, execFakes{
+			lookPath:     map[string]bool{"go": true},
+			cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+			recordedCmds: &recordedCalls,
+		})
+
+		adpt := &GoAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success, got error: %v", res.Error)
+		}
+
+		if len(recordedCalls) != 3 {
+			t.Fatalf("recorded calls count = %d, want 3; calls: %v", len(recordedCalls), recordedCalls)
+		}
+		if len(recordedCalls[0]) != 4 || recordedCalls[0][0] != "sudo" || recordedCalls[0][1] != "mv" || recordedCalls[0][2] != "/usr/local/go" || recordedCalls[0][3] != "/usr/local/go.bak" {
+			t.Errorf("call 0 = %v, want [sudo mv /usr/local/go /usr/local/go.bak]", recordedCalls[0])
+		}
+		if len(recordedCalls[1]) != 4 || recordedCalls[1][0] != "sudo" || recordedCalls[1][1] != "mv" || recordedCalls[1][3] != "/usr/local/go" {
+			t.Errorf("call 1 = %v, want [sudo mv <staged> /usr/local/go]", recordedCalls[1])
+		}
+		if len(recordedCalls[2]) != 4 || recordedCalls[2][0] != "sudo" || recordedCalls[2][1] != "rm" || recordedCalls[2][2] != "-rf" || recordedCalls[2][3] != "/usr/local/go.bak" {
+			t.Errorf("call 2 = %v, want [sudo rm -rf /usr/local/go.bak]", recordedCalls[2])
+		}
+	})
+
+	t.Run("swap failure triggers rollback to restore backup", func(t *testing.T) {
+		var recordedCalls [][]string
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"go": true},
+			cmdArgs: map[string]fakeResult{
+				"go":                           {stdout: "go version go1.22.0 linux/amd64"},
+				"sudo mv staged /usr/local/go": {err: errors.New("mv: disk full")},
+			},
+			recordedCmds: &recordedCalls,
+		})
+
+		adpt := &GoAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Success {
+			t.Fatal("expected failure on swap error, got success")
+		}
+
+		if len(recordedCalls) != 3 {
+			t.Fatalf("recorded calls count = %d, want 3; calls: %v", len(recordedCalls), recordedCalls)
+		}
+		if len(recordedCalls[0]) != 4 || recordedCalls[0][2] != "/usr/local/go" || recordedCalls[0][3] != "/usr/local/go.bak" {
+			t.Errorf("call 0 = %v, want backup", recordedCalls[0])
+		}
+		if len(recordedCalls[1]) != 4 || recordedCalls[1][3] != "/usr/local/go" {
+			t.Errorf("call 1 = %v, want swap attempt", recordedCalls[1])
+		}
+		if len(recordedCalls[2]) != 4 || recordedCalls[2][0] != "sudo" || recordedCalls[2][1] != "mv" || recordedCalls[2][2] != "/usr/local/go.bak" || recordedCalls[2][3] != "/usr/local/go" {
+			t.Errorf("call 2 = %v, want [sudo mv /usr/local/go.bak /usr/local/go]", recordedCalls[2])
+		}
+	})
+
+	t.Run("checksum mismatch aborts before privileged execution", func(t *testing.T) {
+		var recordedCalls [][]string
+		setExecFakes(t, execFakes{
+			lookPath:      map[string]bool{"go": true},
+			cmdArgs:       map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+			goDownloadErr: errors.New("checksum mismatch for archive"),
+			recordedCmds:  &recordedCalls,
+		})
+
+		adpt := &GoAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Success {
+			t.Fatal("expected failure on checksum mismatch, got success")
+		}
+		if len(recordedCalls) != 0 {
+			t.Errorf("expected 0 privileged commands on checksum mismatch, got %v", recordedCalls)
+		}
+	})
+
+	t.Run("non-standard installation path aborts before privileged execution", func(t *testing.T) {
+		var recordedCalls [][]string
+		setExecFakes(t, execFakes{
+			goBinaryPath: "/home/user/go/bin/go",
+			lookPath:     map[string]bool{"go": true},
+			cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+			recordedCmds: &recordedCalls,
+		})
+
+		adpt := &GoAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Success {
+			t.Fatal("expected failure on non-standard path, got success")
+		}
+		if len(recordedCalls) != 0 {
+			t.Errorf("expected 0 privileged commands on path guardrail, got %v", recordedCalls)
 		}
 	})
 }
