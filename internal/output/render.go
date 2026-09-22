@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/doctor"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
@@ -476,6 +477,7 @@ func (r *Renderer) Dashboard(data DashboardData) {
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update -n", "Preview pending updates (--dry-run)")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp update", "Apply updates to all enabled tools")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp list", "List configured tools and versions")
+	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp doctor", "Run environment and health diagnostics")
 	_, _ = fmt.Fprintf(r.w, "    %-14s %s\n", "upp --help", "Show help and options")
 }
 
@@ -675,4 +677,99 @@ func StatusFromResult(result adapters.Result) Status {
 		return StatusUpdated
 	}
 	return StatusFailed
+}
+
+func (r *Renderer) doctorIcon(s doctor.Severity) string {
+	switch s {
+	case doctor.SeverityOK:
+		return r.green("[✓]")
+	case doctor.SeverityWarn:
+		return r.yellow("[!]")
+	case doctor.SeverityError:
+		return r.red("[✗]")
+	default:
+		return "[?]"
+	}
+}
+
+// DoctorResults renders diagnostics results grouped by category.
+func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bool) {
+	hasErrors := doctor.HasErrors(results)
+	hasWarnings := doctor.HasWarnings(results)
+
+	if quiet && !hasErrors && !hasWarnings {
+		_, _ = fmt.Fprintln(r.w, "upp doctor: all checks passed.")
+		return
+	}
+
+	displayResults := results
+	if quiet {
+		var filtered []doctor.CheckResult
+		for _, res := range results {
+			if res.Status != doctor.SeverityOK {
+				filtered = append(filtered, res)
+			}
+		}
+		displayResults = filtered
+	}
+
+	var categoryOrder []string
+	categoryMap := make(map[string][]doctor.CheckResult)
+	for _, res := range displayResults {
+		cat := res.Category
+		if cat == "" {
+			cat = "General"
+		}
+		if _, exists := categoryMap[cat]; !exists {
+			categoryOrder = append(categoryOrder, cat)
+		}
+		categoryMap[cat] = append(categoryMap[cat], res)
+	}
+
+	firstCategory := true
+	for _, cat := range categoryOrder {
+		if !firstCategory {
+			_, _ = fmt.Fprintln(r.w)
+		}
+		firstCategory = false
+		_, _ = fmt.Fprintln(r.w, cat)
+
+		items := categoryMap[cat]
+		for _, item := range items {
+			icon := r.doctorIcon(item.Status)
+			if item.Name != "" {
+				_, _ = fmt.Fprintf(r.w, "  %s %s: %s\n", icon, item.Name, item.Message)
+			} else {
+				_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, item.Message)
+			}
+
+			if verbose && item.Detail != "" {
+				for _, line := range strings.Split(item.Detail, "\n") {
+					if line != "" {
+						_, _ = fmt.Fprintf(r.w, "    %s\n", line)
+					}
+				}
+			}
+
+			if item.FixHint != "" {
+				_, _ = fmt.Fprintf(r.w, "    Hint: %s\n", item.FixHint)
+			}
+		}
+	}
+
+	passedCount := 0
+	warnCount := 0
+	errCount := 0
+	for _, res := range results {
+		switch res.Status {
+		case doctor.SeverityOK:
+			passedCount++
+		case doctor.SeverityWarn:
+			warnCount++
+		case doctor.SeverityError:
+			errCount++
+		}
+	}
+
+	_, _ = fmt.Fprintf(r.w, "\nResults: %d passed, %d warnings, %d errors.\n", passedCount, warnCount, errCount)
 }

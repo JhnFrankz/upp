@@ -73,12 +73,15 @@ func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 	selfUpdate.GroupID = "maintenance"
 	uninstall := NewUninstallCommand(gf)
 	uninstall.GroupID = "maintenance"
+	doctor := NewDoctorCommand(gf)
+	doctor.GroupID = "maintenance"
 
 	root.AddCommand(
 		init,
 		update,
 		selfUpdate,
 		uninstall,
+		doctor,
 		list,
 	)
 }
