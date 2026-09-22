@@ -90,6 +90,19 @@ func ConfigDir() (string, error) {
 	}
 }
 
+// CacheDir returns the platform-appropriate cache directory for upp.
+func CacheDir() (string, error) {
+	cacheRoot, err := os.UserCacheDir()
+	if err != nil {
+		home, herr := os.UserHomeDir()
+		if herr != nil {
+			return "", fmt.Errorf("cannot determine cache directory: %w", err)
+		}
+		return filepath.Join(home, ".cache", "upp"), nil
+	}
+	return filepath.Join(cacheRoot, "upp"), nil
+}
+
 // ConfigPath returns the full path to config.toml.
 func ConfigPath() (string, error) {
 	dir, err := ConfigDir()
