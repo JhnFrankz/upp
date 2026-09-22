@@ -80,8 +80,10 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
 	}
 
-	before := commandOutput(ctx, "brew", "--version")
-	before = extractVersionFromString(before)
+	before := "unknown"
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		before = info.CurrentVersion
+	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "upgrade", pkg)
 	if err != nil {
@@ -102,8 +104,10 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 		}, nil
 	}
 
-	after := commandOutput(ctx, "brew", "--version")
-	after = extractVersionFromString(after)
+	after := before
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		after = info.CurrentVersion
+	}
 
 	return adapters.Result{
 		Success: true,

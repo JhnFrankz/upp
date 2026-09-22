@@ -428,13 +428,15 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
+				cmdArgs: map[string]fakeResult{
+					"gh":                  {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {err: errors.New("apt: lock held")},
 				},
 			},
-			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
 			resultErr: true,
 		},
 		{
@@ -443,13 +445,15 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
+				cmdArgs: map[string]fakeResult{
+					"gh":                  {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {stderr: "E: Unable to acquire the dpkg frontend lock"},
 				},
 			},
-			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
 			resultErr: true,
 		},
 		{
@@ -458,13 +462,15 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
+				cmdArgs: map[string]fakeResult{
+					"gh":                  {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
 		},
 		{
 			name:    "gh/linux-update-delegates-to-pacman-success",
@@ -473,14 +479,14 @@ func TestUpdate(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "apt": false, "pacman": true},
 				cmdArgs: map[string]fakeResult{
-					"gh":               {stdout: "gh version 2.45.0 (2024-05-30)"},
-					"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+					"gh":                   {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"pacman -Q github-cli": {stdout: "github-cli 2.45.0-1"},
 				},
 				shell: map[string]fakeResult{
 					"sudo pacman -S --noconfirm github-cli": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "2.45.0-1", After: "2.45.0-1", Privileges: sudo},
 		},
 		{
 			name:    "gh/macos-delegates-to-brew-success",
@@ -488,10 +494,13 @@ func TestUpdate(t *testing.T) {
 			goos:    "darwin",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "brew": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}, "brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade gh": {}},
+				cmdArgs: map[string]fakeResult{
+					"gh":                      {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade gh": {}},
 			},
-			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
 		},
 		{
 			name:    "gh/windows-delegates-to-winget-success",
@@ -499,10 +508,13 @@ func TestUpdate(t *testing.T) {
 			goos:    "windows",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "winget": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}, "winget --version": {stdout: "v1.8.2301"}},
-				shell:    map[string]fakeResult{"winget upgrade gh": {}},
+				cmdArgs: map[string]fakeResult{
+					"gh":             {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+				},
+				shell: map[string]fakeResult{"winget upgrade gh": {}},
 			},
-			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
 		},
 
 		// --- docker (delegated to resolving manager via PackageUpdater) ---
@@ -533,13 +545,15 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
+				cmdArgs: map[string]fakeResult{
+					"docker":                     {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {err: errors.New("apt: lock held")},
 				},
 			},
-			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
 			resultErr: true,
 		},
 		{
@@ -548,13 +562,15 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
+				cmdArgs: map[string]fakeResult{
+					"docker":                     {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {stderr: "E: Unable to acquire the dpkg frontend lock"},
 				},
 			},
-			want:      adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want:      adapters.Result{Success: false, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
 			resultErr: true,
 		},
 		{
@@ -563,13 +579,15 @@ func TestUpdate(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
+				cmdArgs: map[string]fakeResult{
+					"docker":                     {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
 		},
 		{
 			name:    "docker/linux-update-delegates-to-pacman-success",
@@ -579,13 +597,13 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"docker": true, "apt": false, "pacman": true},
 				cmdArgs: map[string]fakeResult{
 					"docker":           {stdout: "Docker version 26.1.4, build 5650f9b"},
-					"pacman -Q pacman": {stdout: "pacman 6.1.0-1"},
+					"pacman -Q docker": {stdout: "docker 26.1.4-1"},
 				},
 				shell: map[string]fakeResult{
 					"sudo pacman -S --noconfirm docker": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "26.1.4-1", After: "26.1.4-1", Privileges: sudo},
 		},
 		{
 			name:    "docker/macos-delegates-to-brew-success",
@@ -593,10 +611,13 @@ func TestUpdate(t *testing.T) {
 			goos:    "darwin",
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true, "brew": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}, "brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade docker": {}},
+				cmdArgs: map[string]fakeResult{
+					"docker":                      {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"brew outdated --json docker": {stdout: `[{"name":"docker","installed_versions":["26.1.4"],"current_version":"26.1.5"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade docker": {}},
 			},
-			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
 		},
 		{
 			name:    "docker/windows-delegates-to-winget-success",
@@ -604,10 +625,13 @@ func TestUpdate(t *testing.T) {
 			goos:    "windows",
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true, "winget": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}, "winget --version": {stdout: "v1.8.2301"}},
-				shell:    map[string]fakeResult{"winget upgrade Docker.Docker": {}},
+				cmdArgs: map[string]fakeResult{
+					"docker":         {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nDocker  Docker.Docker  26.1.4  26.1.5  winget\n"},
+				},
+				shell: map[string]fakeResult{"winget upgrade Docker.Docker": {}},
 			},
-			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
+			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4"},
 		},
 
 		// --- go (standalone on Linux; delegated on macOS/Windows) ---
@@ -694,10 +718,13 @@ func TestUpdate(t *testing.T) {
 			goos:    "darwin",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true, "brew": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}, "brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade golang": {}},
+				cmdArgs: map[string]fakeResult{
+					"go":                          {stdout: "go version go1.22.0 linux/amd64"},
+					"brew outdated --json golang": {stdout: `[{"name":"golang","installed_versions":["1.22.0"],"current_version":"1.22.1"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade golang": {}},
 			},
-			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
 		},
 		{
 			name:    "go/windows-delegates-to-winget-success",
@@ -705,10 +732,13 @@ func TestUpdate(t *testing.T) {
 			goos:    "windows",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true, "winget": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}, "winget --version": {stdout: "v1.8.2301"}},
-				shell:    map[string]fakeResult{"winget upgrade GoLang.Go": {}},
+				cmdArgs: map[string]fakeResult{
+					"go":             {stdout: "go version go1.22.0 linux/amd64"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nGo  GoLang.Go  1.22.0  1.22.1  winget\n"},
+				},
+				shell: map[string]fakeResult{"winget upgrade GoLang.Go": {}},
 			},
-			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
+			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
 		},
 
 		// --- opencode (curl installer) ---
@@ -1120,7 +1150,7 @@ func TestUpdateDelegation(t *testing.T) {
 
 	tests := []updateCase{
 		// gh on Linux owned by apt (Gated): delegated apt.UpdatePackage("gh") runs, so
-		// the result carries APT's versions + sudo. gh's own
+		// the result carries gh's package versions + sudo. gh's own
 		// "sudo apt install --only-upgrade gh" command is executed.
 		{
 			name:    "gh/linux-delegates-to-apt",
@@ -1128,55 +1158,65 @@ func TestUpdateDelegation(t *testing.T) {
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
+				cmdArgs: map[string]fakeResult{
+					"gh":                  {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
 		},
 		// gh on macOS owned by brew (AlwaysUpdate): delegated brew.UpdatePackage("gh")
-		// runs, so the result carries brew's versions.
+		// runs, so the result carries gh's package versions.
 		{
 			name:    "gh/macos-delegates-to-brew",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "brew": true},
-				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}, "brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade gh": {}},
+				cmdArgs: map[string]fakeResult{
+					"gh":                      {stdout: "gh version 2.45.0 (2024-05-30)"},
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade gh": {}},
 			},
-			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
 		},
 		// docker on Linux owned by apt (Gated): delegated apt.UpdatePackage("docker-ce") runs,
-		// carrying apt's versions + sudo.
+		// carrying docker-ce's package versions + sudo.
 		{
 			name:    "docker/linux-delegates-to-apt",
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
 				lookPath: map[string]bool{"docker": true, "apt": true},
-				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
+				cmdArgs: map[string]fakeResult{
+					"docker":                     {stdout: "Docker version 26.1.4, build 5650f9b"},
+					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd: {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade docker-ce": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
 		},
 		// go on macOS owned by brew (AlwaysUpdate): delegated brew.UpdatePackage("golang")
-		// runs, carrying brew's versions.
+		// runs, carrying golang's package versions.
 		{
 			name:    "go/macos-delegates-to-brew",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
 				lookPath: map[string]bool{"go": true, "brew": true},
-				cmdArgs:  map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}, "brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade golang": {}},
+				cmdArgs: map[string]fakeResult{
+					"go":                          {stdout: "go version go1.22.0 linux/amd64"},
+					"brew outdated --json golang": {stdout: `[{"name":"golang","installed_versions":["1.22.0"],"current_version":"1.22.1"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade golang": {}},
 			},
-			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: true, Before: "1.22.0", After: "1.22.0"},
 		},
 		// go on Linux is standalone (no resolving owner) — its own manual
 		// binary-replace command must still run.
@@ -1228,8 +1268,8 @@ func TestUpdateDelegation(t *testing.T) {
 // owned package (e.g. `sudo apt install --only-upgrade gh`, `brew upgrade gh`,
 // `winget upgrade gh`). This is NOT the manager's self-only Update() — it
 // upgrades the owned package. Every row is hermetic (setExecFakes, no real
-// subprocess). The before/after version is the MANAGER's, matching the
-// delegated-owned-tool result shape.
+// subprocess). The before/after version is the PACKAGE's authentic version
+// reported via CheckPackage.
 func TestUpdatePackage(t *testing.T) {
 	sudo := []string{"sudo"}
 
@@ -1239,36 +1279,56 @@ func TestUpdatePackage(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"apt": true},
+				cmdArgs: map[string]fakeResult{
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
 		},
 		{
 			name:    "apt/command-fails-structurally",
 			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"apt": true},
+				cmdArgs: map[string]fakeResult{
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {err: errors.New("sudo: command not found")},
 				},
 			},
-			want: adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
 		},
 		{
 			name:    "apt/stderr-marker-fails",
 			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"apt": true},
+				cmdArgs: map[string]fakeResult{
+					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
+				},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
 					"sudo apt install --only-upgrade gh": {stderr: "E: Unable to locate package gh"},
 				},
 			},
-			want: adapters.Result{Success: false, Before: "2.4.0", After: "2.4.0", Privileges: sudo},
+			want: adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
+		},
+		{
+			name:    "apt/check-package-error-fallback",
+			newAdpt: func() adapters.Adapter { return &AptAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
+				cmdArgs: map[string]fakeResult{
+					"apt-cache policy gh": {err: errors.New("apt-cache failed")},
+				},
+				shell: map[string]fakeResult{
+					"sudo apt install --only-upgrade gh": {},
+				},
+			},
+			want: adapters.Result{Success: true, Before: "unknown", After: "unknown", Privileges: sudo},
 		},
 		{
 			name:    "apt/not-installed-error",
@@ -1281,40 +1341,48 @@ func TestUpdatePackage(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
-				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade gh": {}},
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade gh": {}},
 			},
-			want: adapters.Result{Success: true, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
 		},
 		{
 			name:    "brew/command-fails",
 			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"brew": true},
-				cmdArgs:  map[string]fakeResult{"brew": {stdout: "Homebrew 4.1.0"}},
-				shell:    map[string]fakeResult{"brew upgrade gh": {err: errors.New("brew: network error")}},
+				cmdArgs: map[string]fakeResult{
+					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
+				},
+				shell: map[string]fakeResult{"brew upgrade gh": {err: errors.New("brew: network error")}},
 			},
-			want: adapters.Result{Success: false, Before: "4.1.0", After: "4.1.0"},
+			want: adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0"},
 		},
 		{
 			name:    "winget/gh-updates-owned-package",
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"winget": true},
-				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
-				shell:    map[string]fakeResult{"winget upgrade gh": {}},
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+				},
+				shell: map[string]fakeResult{"winget upgrade gh": {}},
 			},
-			want: adapters.Result{Success: true, Before: "v1.8.2301", After: "v1.8.2301"},
+			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
 		},
 		{
 			name:    "winget/command-fails",
 			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
 			fakes: execFakes{
 				lookPath: map[string]bool{"winget": true},
-				cmdArgs:  map[string]fakeResult{"winget --version": {stdout: "v1.8.2301"}},
-				shell:    map[string]fakeResult{"winget upgrade gh": {err: errors.New("winget: package not found")}},
+				cmdArgs: map[string]fakeResult{
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+				},
+				shell: map[string]fakeResult{"winget upgrade gh": {err: errors.New("winget: package not found")}},
 			},
-			want: adapters.Result{Success: false, Before: "v1.8.2301", After: "v1.8.2301"},
+			want: adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0"},
 		},
 
 		// --- pacman: sudo pacman -S --noconfirm <pkg> ---
@@ -1323,26 +1391,33 @@ func TestUpdatePackage(t *testing.T) {
 			pkg:     "ripgrep",
 			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
 			fakes: execFakes{
-				lookPath: map[string]bool{"pacman": true},
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				cmdArgs: map[string]fakeResult{
+					"pacman -Q ripgrep":        {stdout: "ripgrep 14.1.0-1\n"},
+					"pacman -Si ripgrep":       {stdout: "Repository : extra\nName : ripgrep\nVersion : 14.1.2-1\n"},
+					"vercmp 14.1.2-1 14.1.0-1": {stdout: "1"},
+				},
 				shell: map[string]fakeResult{
-					pacmanInstalledCmd:                   {stdout: "6.1.0-1"},
 					"sudo pacman -S --noconfirm ripgrep": {},
 				},
 			},
-			want: adapters.Result{Success: true, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			want: adapters.Result{Success: true, Before: "14.1.0-1", After: "14.1.0-1", Privileges: sudo},
 		},
 		{
 			name:    "pacman/package-command-fails",
 			pkg:     "ripgrep",
 			newAdpt: func() adapters.Adapter { return &PacmanAdapter{} },
 			fakes: execFakes{
-				lookPath: map[string]bool{"pacman": true},
+				lookPath: map[string]bool{"pacman": true, "vercmp": true},
+				cmdArgs: map[string]fakeResult{
+					"pacman -Q ripgrep":  {stdout: "ripgrep 14.1.0-1\n"},
+					"pacman -Si ripgrep": {stdout: "Repository : extra\nName : ripgrep\nVersion : 14.1.2-1\n"},
+				},
 				shell: map[string]fakeResult{
-					pacmanInstalledCmd:                   {stdout: "6.1.0-1"},
 					"sudo pacman -S --noconfirm ripgrep": {err: errors.New("exit status 1")},
 				},
 			},
-			want: adapters.Result{Success: false, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			want: adapters.Result{Success: false, Before: "14.1.0-1", After: "14.1.0-1", Privileges: sudo},
 		},
 		{
 			name:    "pacman/stderr-marker-fails",
@@ -1351,11 +1426,10 @@ func TestUpdatePackage(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"pacman": true},
 				shell: map[string]fakeResult{
-					pacmanInstalledCmd:                  {stdout: "6.1.0-1"},
 					"sudo pacman -S --noconfirm badpkg": {stderr: "error: target not found: badpkg"},
 				},
 			},
-			want: adapters.Result{Success: false, Before: "6.1.0-1", After: "6.1.0-1", Privileges: sudo},
+			want: adapters.Result{Success: false, Before: "unknown", After: "unknown", Privileges: sudo},
 		},
 		{
 			name:    "pacman/not-installed-error",
@@ -1402,6 +1476,116 @@ func TestUpdatePackage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdatePackage_AuthenticVersionProgression(t *testing.T) {
+	t.Run("apt/version-advances", func(t *testing.T) {
+		callCount := 0
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"apt": true},
+			shell: map[string]fakeResult{
+				"sudo apt install --only-upgrade gh": {},
+			},
+		})
+		origRunCmdArgs := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "apt-cache" && len(args) == 2 && args[0] == "policy" && args[1] == "gh" {
+				callCount++
+				if callCount == 1 {
+					return "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n", "", nil
+				}
+				return "gh:\n  Installed: 2.46.0\n  Candidate: 2.46.0\n", "", nil
+			}
+			return origRunCmdArgs(ctx, name, args...)
+		}
+
+		res, err := (&AptAdapter{}).UpdatePackage(context.Background(), "gh")
+		if err != nil {
+			t.Fatalf("UpdatePackage unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Errorf("res.Success = false, want true")
+		}
+		if res.Before != "2.45.0" {
+			t.Errorf("res.Before = %q, want 2.45.0", res.Before)
+		}
+		if res.After != "2.46.0" {
+			t.Errorf("res.After = %q, want 2.46.0", res.After)
+		}
+	})
+
+	t.Run("pacman/version-advances", func(t *testing.T) {
+		callCount := 0
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"pacman": true, "vercmp": true},
+			shell: map[string]fakeResult{
+				"sudo pacman -S --noconfirm ripgrep": {},
+			},
+		})
+		origRunCmdArgs := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "pacman" && len(args) == 2 && args[0] == "-Q" && args[1] == "ripgrep" {
+				callCount++
+				if callCount == 1 {
+					return "ripgrep 14.1.0-1\n", "", nil
+				}
+				return "ripgrep 14.1.2-1\n", "", nil
+			}
+			if name == "pacman" && len(args) == 2 && args[0] == "-Si" && args[1] == "ripgrep" {
+				return "Repository : extra\nName : ripgrep\nVersion : 14.1.2-1\n", "", nil
+			}
+			return origRunCmdArgs(ctx, name, args...)
+		}
+
+		res, err := (&PacmanAdapter{}).UpdatePackage(context.Background(), "ripgrep")
+		if err != nil {
+			t.Fatalf("UpdatePackage unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Errorf("res.Success = false, want true")
+		}
+		if res.Before != "14.1.0-1" {
+			t.Errorf("res.Before = %q, want 14.1.0-1", res.Before)
+		}
+		if res.After != "14.1.2-1" {
+			t.Errorf("res.After = %q, want 14.1.2-1", res.After)
+		}
+	})
+
+	t.Run("winget/version-advances", func(t *testing.T) {
+		callCount := 0
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"winget": true},
+			shell: map[string]fakeResult{
+				"winget upgrade gh": {},
+			},
+		})
+		origRunCmdArgs := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "winget" && len(args) == 1 && args[0] == "upgrade" {
+				callCount++
+				if callCount == 1 {
+					return "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n", "", nil
+				}
+				return "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.46.0  2.46.0  winget\n", "", nil
+			}
+			return origRunCmdArgs(ctx, name, args...)
+		}
+
+		res, err := (&WingetAdapter{}).UpdatePackage(context.Background(), "gh")
+		if err != nil {
+			t.Fatalf("UpdatePackage unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Errorf("res.Success = false, want true")
+		}
+		if res.Before != "2.45.0" {
+			t.Errorf("res.Before = %q, want 2.45.0", res.Before)
+		}
+		if res.After != "2.46.0" {
+			t.Errorf("res.After = %q, want 2.46.0", res.After)
+		}
+	})
 }
 
 // TestPnpmCorruptionRecoveryMessage verifies the recovery failure path reports
