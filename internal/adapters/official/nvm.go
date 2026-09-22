@@ -9,7 +9,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
-	"github.com/JhnFrankz/upp/internal/selfupdate"
+	"github.com/JhnFrankz/upp/internal/version"
 )
 
 // NVMAdapter manages Node Version Manager on all platforms.
@@ -86,18 +86,18 @@ func (a *NVMAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 // with no error, so a newer current never reports a phantom downgrade and
 // unknown versions never claim an update based on string inequality.
 func semverCompare(cur, latest string) bool {
-	c, err := selfupdate.Parse(normalizeVersion(cur))
+	c, err := version.Parse(normalizeVersion(cur))
 	if err != nil || c.Dev {
 		return false
 	}
-	l, err := selfupdate.Parse(normalizeVersion(latest))
+	l, err := version.Parse(normalizeVersion(latest))
 	if err != nil || l.Dev {
 		return false
 	}
 	return c.Compare(l) < 0
 }
 
-// normalizeVersion adds the "v" prefix selfupdate.Parse requires, tolerating
+// normalizeVersion adds the "v" prefix version.Parse requires, tolerating
 // raw semver strings like "20.11.0" (nvm outputs both shapes).
 func normalizeVersion(s string) string {
 	if strings.HasPrefix(s, "v") {
