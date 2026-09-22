@@ -532,3 +532,50 @@ func TestSelfUpdate_LockAlreadyRunning(t *testing.T) {
 		t.Errorf("expected error containing 'another instance of upp is currently running', got: %v", err)
 	}
 }
+
+func TestSelfUpdate_TempDirectoryCleanup(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		input   string
+		isTTY   bool
+		wantErr bool
+	}{
+		{name: "confirmed", input: "y\n", isTTY: true, wantErr: false},
+		{name: "declined", input: "n\n", isTTY: true, wantErr: false},
+		{name: "non-tty-error", input: "", isTTY: false, wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpRoot := t.TempDir()
+			t.Setenv("TMPDIR", tmpRoot)
+			t.Setenv("HOME", t.TempDir())
+
+			const assetName = "upp-linux-amd64.tar.gz"
+			asset := cliArchive(t, assetName, "NEW-BINARY")
+			checksums := []byte(cliChecksumLine(t, asset, assetName))
+			var reqs atomic.Int32
+			ts := selfUpdateServer(t, "v0.1.1", asset, checksums, &reqs)
+			defer ts.Close()
+			bin := fakeBinary(t, "OLD-BINARY")
+
+			deps := newSelfUpdateDeps(ts, tt.input, bin)
+			deps.isTTY = func() bool { return tt.isTTY }
+
+			withCapturedStdout(func() {
+				err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", deps)
+				if (err != nil) != tt.wantErr {
+					t.Fatalf("runSelfUpdate error = %v, wantErr %v", err, tt.wantErr)
+				}
+			})
+
+			entries, err := os.ReadDir(tmpRoot)
+			if err != nil {
+				t.Fatalf("ReadDir error: %v", err)
+			}
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), "upp-selfupdate-") {
+					t.Errorf("temporary directory %s was not cleaned up after %s", entry.Name(), tt.name)
+				}
+			}
+		})
+	}
+}
