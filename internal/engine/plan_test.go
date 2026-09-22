@@ -136,6 +136,32 @@ func TestPlan_OutcomeSegregation(t *testing.T) {
 	}
 }
 
+func TestPlan_StatusUnknownZeroValueOutcome(t *testing.T) {
+	var zero CheckOutcome
+	if zero.Status != StatusUnknown {
+		t.Fatalf("zero-value CheckOutcome.Status = %v, want StatusUnknown", zero.Status)
+	}
+	if zero.Status.String() != "unknown" {
+		t.Errorf("zero.Status.String() = %q, want %q", zero.Status.String(), "unknown")
+	}
+
+	eng := &Engine{}
+	plan, err := eng.Plan([]CheckOutcome{zero}, Filter{})
+	if err != nil {
+		t.Fatalf("Plan error: %v", err)
+	}
+
+	if len(plan.Updates) != 0 {
+		t.Errorf("plan.Updates = %v, want empty", plan.Updates)
+	}
+	if len(plan.Current) != 0 {
+		t.Errorf("plan.Current = %v, want empty", plan.Current)
+	}
+	if len(plan.Skipped) != 1 {
+		t.Errorf("plan.Skipped = %v, want 1 item", plan.Skipped)
+	}
+}
+
 func TestPlan_PolicyGated(t *testing.T) {
 	cfg := &config.Config{}
 	fakes := []adapters.Adapter{

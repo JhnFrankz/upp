@@ -60,10 +60,12 @@ func PresentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome
 				case engine.StatusCurrent:
 					status = StatusCurrent
 					version = oc.CurrentVersion
-				case engine.StatusSkipped:
+				case engine.StatusSkipped, engine.StatusUnknown:
 					status = StatusSkipped
 				case engine.StatusFailed:
 					status = StatusFailed
+				default:
+					status = StatusSkipped
 				}
 			}
 

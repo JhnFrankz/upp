@@ -282,7 +282,7 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 		oc := outcomes[i]
 
 		switch oc.Status {
-		case engine.StatusSkipped:
+		case engine.StatusSkipped, engine.StatusUnknown:
 			results[i] = output.ToolResult{
 				Name:   info.Name,
 				Status: output.StatusSkipped,
@@ -346,6 +346,11 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 			results[i] = executePlannedUpdate(ctx, gf, u, a, i+1, total, r, osName, allAdapters...)
 			if results[i].Status == output.StatusFailed {
 				hasFailure = true
+			}
+		default:
+			results[i] = output.ToolResult{
+				Name:   info.Name,
+				Status: output.StatusSkipped,
 			}
 		}
 	}
