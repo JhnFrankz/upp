@@ -21,8 +21,9 @@ func NewDoctorCommand(gf *GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run environment and configuration diagnostics",
-		Long: "Inspect configuration validity, storage permissions, orphaned process locks, " +
-			"package manager conflicts, active tool PATH shadowing, and upstream network connectivity.",
+		Long: "Run environment and configuration diagnostics: inspect configuration validity, " +
+			"storage permissions, orphaned process locks, package manager conflicts, active tool PATH shadowing, " +
+			"and upstream network connectivity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDoctor(cmd.Context(), gf, os.Stdout, cliDeps.doctor)
 		},

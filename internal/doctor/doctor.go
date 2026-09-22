@@ -134,6 +134,12 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 	if deps.HTTPGet == nil {
 		deps.HTTPGet = defaultHTTPGet
 	}
+	if deps.Platform.OS == "" {
+		deps.Platform, _ = platform.Detect()
+	}
+	if deps.Adapters == nil {
+		deps.Adapters = official.AdaptersForCurrentPlatform()
+	}
 
 	var results []CheckResult
 	results = append(results, checkStorageAndConfig(deps)...)

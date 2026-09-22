@@ -244,6 +244,13 @@ run_test_exit_code "upp update --manager apt (removed, exit 1)" 1 "$BINARY" upda
 run_test_exit_code "upp update --update-group brew (removed, exit 1)" 1 "$BINARY" update --update-group brew
 run_test_exit_code "upp update --skip apt (removed, exit 1)" 1 "$BINARY" update --skip apt
 
+# Test 13: Doctor diagnostics
+echo ""
+echo "13. Doctor diagnostics"
+run_test_with_output "upp doctor --help" "diagnostics" "$BINARY" doctor --help
+run_test "upp doctor" "$BINARY" doctor
+run_test "upp doctor -q" "$BINARY" doctor -q
+
 # --- Summary ---
 
 echo ""

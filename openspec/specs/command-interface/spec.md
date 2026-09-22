@@ -8,7 +8,7 @@ Define CLI commands, flags, and behavior. All commands share: `--quiet` (`-q`), 
 
 ### Requirement: Command Structure
 
-The system MUST support the following core subcommands: `list`, `update`, `init`, `self-update`, and `uninstall`. The system MUST NOT support `check`, `export`, or `import` subcommands; attempting to invoke any of them MUST result in an unknown command error and exit with status 1.
+The system MUST support the following core subcommands: `list`, `update`, `init`, `self-update`, `uninstall`, and `doctor`. The system MUST NOT support `check`, `export`, or `import` subcommands; attempting to invoke any of them MUST result in an unknown command error and exit with status 1.
 
 Running `upp` with no arguments (bare invocation) MUST display an informative, non-destructive dashboard and welcome screen showing version and platform information, configured tools status overview, and primary command guidance. Bare invocation MUST NOT run update checks against package managers, MUST NOT apply updates, and MUST NOT execute any destructive actions.
 
@@ -22,6 +22,7 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | `update -n` / `--dry-run` | Read-only query: preview pending updates without executing | No | No |
 | `self-update` | Update the upp binary itself | Yes (confirm) | Yes (replaces binary) |
 | `uninstall` | Uninstall upp and remove all binaries, configuration, and caches | Yes (confirm) | Yes (deletes binary/config/cache) |
+| `doctor` | Run environment and health diagnostics | No | No |
 | `list` | List installed/detected tools | No | No |
 
 | Scenario | GIVEN | WHEN | THEN |
@@ -37,6 +38,7 @@ Running `upp` with no arguments (bare invocation) MUST display an informative, n
 | uninstall interactive confirm | User runs upp uninstall in TTY | Execution | Displays target plan, prompts for confirmation [y/N], deletes only upon approval |
 | uninstall -y bypass | User runs upp uninstall -y | Execution | Bypasses confirmation prompt, deletes targets directly under Zero-Sudo policy |
 | `uninstall --dry-run` | User runs `upp uninstall --dry-run` | Execution | Lists planned deletions without modifying disk |
+| `doctor` | User runs `upp doctor` | Execution | Inspects configuration, storage, process locks, package managers, tool paths, and network; prints diagnostic report |
 | Pruned `check` command | User runs `upp check` | Execution | Error: unknown command "check", exit 1 |
 | Pruned `export` command | User runs `upp export` | Execution | Error: unknown command "export", exit 1 |
 | Pruned `import` command | User runs `upp import config.toml` | Execution | Error: unknown command "import", exit 1 |
