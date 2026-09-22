@@ -164,7 +164,7 @@ func (a *UvAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	stdout, stderr, err := runCmd(ctx, "uv self update")
+	stdout, stderr, err := runCmdArgsUpdate(ctx, "uv", "self", "update")
 	if err != nil {
 		if !isExternalManagerError(err, stdout+" "+stderr) {
 			return adapters.Result{
@@ -176,7 +176,7 @@ func (a *UvAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}
 	}
 
-	_, _, err = runCmd(ctx, "uv tool upgrade --all")
+	_, _, err = runCmdArgsUpdate(ctx, "uv", "tool", "upgrade", "--all")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

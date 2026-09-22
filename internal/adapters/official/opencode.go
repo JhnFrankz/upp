@@ -97,9 +97,7 @@ func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Res
 		}, nil
 	}
 
-	cmd := "opencode update"
-
-	_, stderr, err := runCmd(ctx, cmd)
+	_, stderr, err := runCmdArgsUpdate(ctx, "opencode", "update")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
