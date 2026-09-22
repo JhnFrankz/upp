@@ -67,7 +67,7 @@ func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 		}, nil
 	}
 
-	_, stderr, err := runCmd(ctx, "npm update -g")
+	_, stderr, err := runCmdArgsUpdate(ctx, "npm", "update", "-g")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

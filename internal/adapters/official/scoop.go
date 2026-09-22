@@ -73,7 +73,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	// Self-only: `scoop update scoop` upgrades Scoop itself, never the
 	// packages it manages. A bulk `scoop update *` (which updates every
 	// app) is intentionally avoided — self-only semantics per point 4.
-	_, stderr, err := runCmd(ctx, scoopSelfUpdateCmd)
+	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", "scoop")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

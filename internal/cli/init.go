@@ -10,6 +10,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -20,6 +21,10 @@ import (
 // Gate — never auto-proceed, never hang, never silently skip.
 var ErrInitDeniedCI = errors.New("init denied in --ci mode")
 
+type initDeps struct {
+	acquireLock func() (*lock.Lock, error)
+}
+
 // NewInitCommand creates the `upp init` command.
 func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 	return &cobra.Command{
@@ -27,12 +32,12 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Initialize upp configuration",
 		Long:  "Detect installed tools and generate the initial config file.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(cmd.Context(), gf)
+			return runInit(cmd.Context(), gf, cliDeps.init)
 		},
 	}
 }
 
-func runInit(ctx context.Context, gf *GlobalFlags) error {
+func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -44,6 +49,16 @@ func runInit(ctx context.Context, gf *GlobalFlags) error {
 	// any detection work so the deny has no side effects.
 	if config.Exists() && gf.CI {
 		return fmt.Errorf("%w: rerun `upp init` interactively to confirm the overwrite", ErrInitDeniedCI)
+	}
+
+	if deps.acquireLock != nil {
+		l, err := deps.acquireLock()
+		if err != nil {
+			return err
+		}
+		if l != nil {
+			defer func() { _ = l.Release() }()
+		}
 	}
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)

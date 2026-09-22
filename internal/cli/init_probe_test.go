@@ -180,7 +180,7 @@ func TestInit_ContextCanceled(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := runInit(ctx, &GlobalFlags{})
+	err := runInit(ctx, &GlobalFlags{}, initDeps{})
 	if err == nil {
 		t.Fatal("runInit(canceled): want error, got nil")
 	}

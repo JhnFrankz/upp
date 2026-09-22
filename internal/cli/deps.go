@@ -11,12 +11,17 @@ import "github.com/JhnFrankz/upp/internal/lock"
 // Sequential-only: this package has no t.Parallel tests, so mutation from
 // tests (setCLIDeps) needs no synchronization. Adding t.Parallel tests
 // requires a mutex or per-command dep construction.
-var cliDeps struct {
+var cliDeps = struct {
 	dashboard  dashboardDeps
 	update     updateDeps
 	list       listDeps
 	selfUpdate selfUpdateDeps
 	uninstall  uninstallDeps
+	init       initDeps
+}{
+	init: initDeps{
+		acquireLock: defaultAcquireLock,
+	},
 }
 
 func defaultAcquireLock() (*lock.Lock, error) {

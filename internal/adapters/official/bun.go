@@ -52,7 +52,7 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 		}, nil
 	}
 
-	_, stderr, err := runCmd(ctx, "bun upgrade")
+	_, stderr, err := runCmdArgsUpdate(ctx, "bun", "upgrade")
 	if err != nil {
 		return adapters.Result{
 			Success: false,

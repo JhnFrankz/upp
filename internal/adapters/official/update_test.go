@@ -20,7 +20,7 @@ const (
 	brewUpdateCmd     = "brew update"
 	npmUpdateCmd      = "npm update -g"
 	pnpmUpdateCmd     = "pnpm update -g"
-	pnpmPruneCmd      = "pnpm store prune 2>/dev/null"
+	pnpmPruneCmd      = "pnpm store prune"
 	bunUpdateCmd      = "bun upgrade"
 	goLinuxUpdateCmd  = "sudo rm -rf /usr/local/go && curl -fsSL https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -"
 	opencodeUpdateCmd = "opencode update"
@@ -1796,4 +1796,160 @@ func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestUpdate_MigratedStructuredExecution asserts that official adapters migrated
+// from runCmd (npm, pnpm, scoop, bun, uv, opencode) execute their update commands
+// strictly via runCmdArgsUpdate and never invoke the shell runCmdFn seam.
+func TestUpdate_MigratedStructuredExecution(t *testing.T) {
+	tests := []struct {
+		name      string
+		newAdpt   func() adapters.Adapter
+		wantCalls [][]string // list of [binary, arg1, arg2...] expected to runCmdArgsUpdate
+	}{
+		{
+			name:      "npm",
+			newAdpt:   func() adapters.Adapter { return &NpmAdapter{} },
+			wantCalls: [][]string{{"npm", "update", "-g"}},
+		},
+		{
+			name:      "pnpm",
+			newAdpt:   func() adapters.Adapter { return &PnpmAdapter{} },
+			wantCalls: [][]string{{"pnpm", "update", "-g"}},
+		},
+		{
+			name:      "scoop",
+			newAdpt:   func() adapters.Adapter { return &ScoopAdapter{} },
+			wantCalls: [][]string{{"scoop", "update", "scoop"}},
+		},
+		{
+			name:      "bun",
+			newAdpt:   func() adapters.Adapter { return &BunAdapter{} },
+			wantCalls: [][]string{{"bun", "upgrade"}},
+		},
+		{
+			name:      "uv",
+			newAdpt:   func() adapters.Adapter { return &UvAdapter{} },
+			wantCalls: [][]string{{"uv", "self", "update"}, {"uv", "tool", "upgrade", "--all"}},
+		},
+		{
+			name:      "opencode",
+			newAdpt:   func() adapters.Adapter { return &OpenCodeAdapter{} },
+			wantCalls: [][]string{{"opencode", "update"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var recordedCalls [][]string
+
+			origRunCmd := runCmdFn
+			origRunCmdArgsUpdate := runCmdArgsUpdateFn
+			origRunCmdArgs := runCmdArgsFn
+			origLookPath := lookPathFn
+
+			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
+				t.Fatalf("runCmd should NOT be called; evaluated via shell: %q", command)
+				return "", "", nil
+			}
+			runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+				call := append([]string{name}, args...)
+				recordedCalls = append(recordedCalls, call)
+				return "", "", nil
+			}
+			runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+				return "", "", nil
+			}
+			lookPathFn = func(string) bool { return true }
+
+			t.Cleanup(func() {
+				runCmdFn = origRunCmd
+				runCmdArgsUpdateFn = origRunCmdArgsUpdate
+				runCmdArgsFn = origRunCmdArgs
+				lookPathFn = origLookPath
+			})
+
+			_, err := tt.newAdpt().Update(context.Background(), false)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(recordedCalls) != len(tt.wantCalls) {
+				t.Fatalf("recorded calls = %v, want %v", recordedCalls, tt.wantCalls)
+			}
+			for i := range recordedCalls {
+				if len(recordedCalls[i]) != len(tt.wantCalls[i]) {
+					t.Fatalf("call[%d] len = %d (%v), want %d (%v)", i, len(recordedCalls[i]), recordedCalls[i], len(tt.wantCalls[i]), tt.wantCalls[i])
+				}
+				for j := range recordedCalls[i] {
+					if recordedCalls[i][j] != tt.wantCalls[i][j] {
+						t.Errorf("call[%d][%d] = %q, want %q", i, j, recordedCalls[i][j], tt.wantCalls[i][j])
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("pnpm/corruption-recovery", func(t *testing.T) {
+		var recordedCalls [][]string
+
+		origRunCmd := runCmdFn
+		origRunCmdArgsUpdate := runCmdArgsUpdateFn
+		origRunCmdArgs := runCmdArgsFn
+		origLookPath := lookPathFn
+
+		runCmdFn = func(ctx context.Context, command string) (string, string, error) {
+			t.Fatalf("runCmd should NOT be called; evaluated via shell: %q", command)
+			return "", "", nil
+		}
+		attempts := 0
+		runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			call := append([]string{name}, args...)
+			recordedCalls = append(recordedCalls, call)
+			attempts++
+			if attempts == 1 {
+				return "", "corrupt store detected", errors.New("exit 1")
+			}
+			return "", "", nil
+		}
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			return "", "", nil
+		}
+		lookPathFn = func(string) bool { return true }
+
+		t.Cleanup(func() {
+			runCmdFn = origRunCmd
+			runCmdArgsUpdateFn = origRunCmdArgsUpdate
+			runCmdArgsFn = origRunCmdArgs
+			lookPathFn = origLookPath
+		})
+
+		adpt := &PnpmAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success after recovery, got error: %v", res.Error)
+		}
+
+		wantCalls := [][]string{
+			{"pnpm", "update", "-g"},
+			{"pnpm", "store", "prune"},
+			{"pnpm", "update", "-g"},
+		}
+		if len(recordedCalls) != len(wantCalls) {
+			t.Fatalf("recorded calls = %v, want %v", recordedCalls, wantCalls)
+		}
+		for i := range recordedCalls {
+			if len(recordedCalls[i]) != len(wantCalls[i]) {
+				t.Fatalf("call[%d] len = %d (%v), want %d (%v)", i, len(recordedCalls[i]), recordedCalls[i], len(wantCalls[i]), wantCalls[i])
+			}
+			for j := range recordedCalls[i] {
+				if recordedCalls[i][j] != wantCalls[i][j] {
+					t.Errorf("call[%d][%d] = %q, want %q", i, j, recordedCalls[i][j], wantCalls[i][j])
+				}
+			}
+		}
+	})
 }

@@ -70,7 +70,7 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	}
 
 	// First attempt: standard update.
-	_, stderr, err := runCmd(ctx, "pnpm update -g")
+	_, stderr, err := runCmdArgsUpdate(ctx, "pnpm", "update", "-g")
 	if err == nil {
 		after := commandOutput(ctx, "pnpm", "--version")
 		after = strings.TrimSpace(after)
@@ -83,8 +83,8 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 
 	// Corruption recovery: remove global store and retry.
 	if stderr != "" && (strings.Contains(stderr, "corrupt") || strings.Contains(stderr, "ENOENT") || strings.Contains(stderr, "EACCES")) {
-		_, _, _ = runCmd(ctx, "pnpm store prune 2>/dev/null")
-		_, stderr2, err2 := runCmd(ctx, "pnpm update -g")
+		_, _, _ = runCmdArgsUpdate(ctx, "pnpm", "store", "prune")
+		_, stderr2, err2 := runCmdArgsUpdate(ctx, "pnpm", "update", "-g")
 		if err2 == nil {
 			after := commandOutput(ctx, "pnpm", "--version")
 			after = strings.TrimSpace(after)
