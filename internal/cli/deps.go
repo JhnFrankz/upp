@@ -18,6 +18,7 @@ var cliDeps = struct {
 	selfUpdate selfUpdateDeps
 	uninstall  uninstallDeps
 	init       initDeps
+	doctor     doctorDeps
 }{
 	init: initDeps{
 		acquireLock: defaultAcquireLock,

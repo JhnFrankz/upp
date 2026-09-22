@@ -22,13 +22,13 @@ This file is the source of repo conventions for AI code reviews (gga) and AI age
 
 ## Architecture
 
-- Package-per-layer layout under `internal/`: adapters (with `official/`), cli, config, engine, output, platform, security, selfupdate, uninstall.
+- Package-per-layer layout under `internal/`: adapters (with `official/`), cli, config, doctor, engine, output, platform, security, selfupdate, uninstall.
 - One adapter per supported tool; register new tools in the adapters registry. Follow the existing adapter pattern.
 - Respect the security/trust model (spec domain: `security-model`) when touching command execution or updates.
 
 ## CLI contract (must keep working)
 
-- Commands: `list`, `update`, `init`, `self-update`, `uninstall`.
+- Commands: `list`, `update`, `init`, `self-update`, `uninstall`, `doctor`.
 - Flags: `--ci`, `--dry-run` (`-n`), `--quiet` (`-q`), `--verbose` (`-v`), `--only`.
 
 ## Commits

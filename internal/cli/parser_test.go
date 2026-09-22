@@ -225,7 +225,7 @@ func TestAddCommands(t *testing.T) {
 	root, gf := BuildRoot()
 	AddCommands(root, gf)
 
-	expectedCommands := []string{"init", "update", "self-update", "uninstall", "list"}
+	expectedCommands := []string{"init", "update", "self-update", "uninstall", "doctor", "list"}
 	commands := root.Commands()
 
 	if len(commands) != len(expectedCommands) {
