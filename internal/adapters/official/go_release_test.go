@@ -43,7 +43,7 @@ func TestFetchGoRelease(t *testing.T) {
 			t.Errorf("User-Agent = %q, want %q", r.Header.Get("User-Agent"), "upp")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, sampleJSON)
+		_, _ = fmt.Fprint(w, sampleJSON)
 	}))
 	defer ts.Close()
 
@@ -181,13 +181,13 @@ func createTestTarball(t *testing.T, entries map[string]string) string {
 	if err != nil {
 		t.Fatalf("create archive: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gw := gzip.NewWriter(f)
-	defer gw.Close()
+	defer func() { _ = gw.Close() }()
 
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for name, content := range entries {
 		hdr := &tar.Header{
