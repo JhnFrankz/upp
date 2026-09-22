@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -32,10 +33,10 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 	// `brew outdated --json docker`, `winget upgrade`).
 	// runtime.GOOS is translated to the platform key because the manager and
 	// package maps are keyed by PLATFORM constants, not runtime.GOOS (darwin).
-	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	if owner := ResolveOwner("docker", platform); owner != nil {
+	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	if owner := ResolveOwner("docker", plat); owner != nil {
 		if checker, ok := owner.(adapters.PackageChecker); ok {
-			pkg := a.Info().ManagerPackage[platform]
+			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
 			}
@@ -55,13 +56,13 @@ func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	// Delegated update path: an owned tool delegates to its resolving manager's
 	// PackageUpdater interface to upgrade its specific package name (e.g. `docker-ce`),
 	// rather than triggering manager self-update.
-	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	if owner := ResolveOwner("docker", platform); owner != nil {
+	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	if owner := ResolveOwner("docker", plat); owner != nil {
 		if dryRun {
 			return adapters.Result{Success: true}, nil
 		}
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
-			pkg := a.Info().ManagerPackage[platform]
+			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
 				return adapters.Result{Success: false}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
 			}

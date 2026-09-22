@@ -2,7 +2,6 @@ package official
 
 import (
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // ResolveOwner returns the manager adapter that owns the given tool on the
@@ -21,22 +20,4 @@ func ResolveOwner(tool, os string) adapters.Adapter {
 		return nil
 	}
 	return AdapterByName(ownerID)
-}
-
-// runtimeGOOSToPlatform maps the runtime.GOOS value to upp's canonical
-// platform key (platform constants). This is the WU1-documented gotcha:
-// ResolveOwner is keyed by PLATFORM constants (linux/macos/windows), while
-// runtime.GOOS returns "darwin" on macOS. Translating here guarantees the
-// delegated Update() resolves the owner correctly on every OS.
-func runtimeGOOSToPlatform(goos string) string {
-	switch goos {
-	case "darwin":
-		return platform.OSMacOS
-	case "linux":
-		return platform.OSLinux
-	case "windows":
-		return platform.OSWindows
-	default:
-		return goos
-	}
 }

@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -33,10 +34,10 @@ func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// translated to the platform key because the manager/package maps are
 	// keyed by PLATFORM constants, not runtime.GOOS (darwin) — the
 	// WU1-documented gotcha.
-	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	if owner := ResolveOwner("gh", platform); owner != nil {
+	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	if owner := ResolveOwner("gh", plat); owner != nil {
 		if checker, ok := owner.(adapters.PackageChecker); ok {
-			pkg := a.Info().ManagerPackage[platform]
+			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("gh has no manager package on %s", runtime.GOOS)
 			}
@@ -56,13 +57,13 @@ func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	// Delegated update path: an owned tool delegates to its resolving manager's
 	// PackageUpdater interface to upgrade its specific package name (e.g. `gh`),
 	// rather than triggering manager self-update.
-	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	if owner := ResolveOwner("gh", platform); owner != nil {
+	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	if owner := ResolveOwner("gh", plat); owner != nil {
 		if dryRun {
 			return adapters.Result{Success: true}, nil
 		}
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
-			pkg := a.Info().ManagerPackage[platform]
+			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
 				return adapters.Result{Success: false}, fmt.Errorf("gh has no manager package on %s", runtime.GOOS)
 			}
