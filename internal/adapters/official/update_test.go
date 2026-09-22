@@ -1184,7 +1184,7 @@ func TestUpdate(t *testing.T) {
 // gh/docker delegate to their resolving manager (apt/brew/winget), and go on
 // Linux has no resolving owner so its own (manual binary replace) command
 // still runs. Each row drives the runtime.GOOS that the production adapter
-// sees so the runtimeGOOSToPlatform translation is exercised for real.
+// sees so the platform.NormalizeOS translation is exercised for real.
 func TestUpdateDelegation(t *testing.T) {
 	sudo := []string{"sudo"}
 

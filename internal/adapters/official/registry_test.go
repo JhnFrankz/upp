@@ -196,9 +196,8 @@ func TestResolveOwner(t *testing.T) {
 // TestRuntimeGOOSToPlatform pins the WU1-documented gotcha translation:
 // ResolveOwner is keyed by PLATFORM constants (linux/macos/windows), not
 // runtime.GOOS (which returns "darwin" on macOS). A delegated Update() that
-// calls ResolveOwner(id, runtimeGOOSToPlatform(runtime.GOOS)) must translate
-// darwin->macos, so macOS owner resolution succeeds on every host without
-// needing to run on a Mac.
+// calls ResolveOwner(id, plat) must translate darwin->macos, so macOS
+// owner resolution succeeds on every host without needing to run on a Mac.
 func TestRuntimeGOOSToPlatform(t *testing.T) {
 	tests := []struct {
 		goos string
@@ -207,12 +206,15 @@ func TestRuntimeGOOSToPlatform(t *testing.T) {
 		{"linux", platform.OSLinux},
 		{"darwin", platform.OSMacOS},
 		{"windows", platform.OSWindows},
-		{"unknown", "unknown"}, // pass-through fallback
 	}
 	for _, tt := range tests {
 		t.Run(tt.goos, func(t *testing.T) {
-			if got := runtimeGOOSToPlatform(tt.goos); got != tt.want {
-				t.Errorf("runtimeGOOSToPlatform(%q) = %q, want %q", tt.goos, got, tt.want)
+			got, err := platform.NormalizeOS(tt.goos)
+			if err != nil {
+				t.Fatalf("platform.NormalizeOS(%q) unexpected error: %v", tt.goos, err)
+			}
+			if got != tt.want {
+				t.Errorf("platform.NormalizeOS(%q) = %q, want %q", tt.goos, got, tt.want)
 			}
 		})
 	}
@@ -224,7 +226,7 @@ func TestRuntimeGOOSToPlatform(t *testing.T) {
 // the GOTCHA on any host — the darwin branch cannot run natively here, but the
 // translation+resolution chain is fully exercised by supplying the translated
 // key directly (the same value a real darwin runtime.GOOS would produce after
-// runtimeGOOSToPlatform).
+// platform.NormalizeOS).
 func TestResolveOwnerViaRuntimeGOOSToPlatform(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -239,7 +241,7 @@ func TestResolveOwnerViaRuntimeGOOSToPlatform(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			key := runtimeGOOSToPlatform(tt.goos)
+			key, _ := platform.NormalizeOS(tt.goos)
 			owner := ResolveOwner(tt.tool, key)
 			if tt.wantID == "" {
 				if owner != nil {

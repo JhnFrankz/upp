@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -314,9 +315,9 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// Delegated check path: go is owned by brew on macOS and winget on Windows.
 	// On Linux, if go is installed in /usr/bin under apt or pacman, delegate to
 	// that package manager; if manual (e.g. /usr/local/go), check go.dev directly.
-	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	owner := ResolveOwner("go", platform)
-	pkg := a.Info().ManagerPackage[platform]
+	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	owner := ResolveOwner("go", plat)
+	pkg := a.Info().ManagerPackage[plat]
 	if owner == nil && runtime.GOOS == "linux" {
 		owner, pkg = a.linuxOwner()
 	}
@@ -373,9 +374,9 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
 	}
 
-	platform := runtimeGOOSToPlatform(runtime.GOOS)
-	owner := ResolveOwner("go", platform)
-	pkg := a.Info().ManagerPackage[platform]
+	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	owner := ResolveOwner("go", plat)
+	pkg := a.Info().ManagerPackage[plat]
 	if owner == nil && runtime.GOOS == "linux" {
 		owner, pkg = a.linuxOwner()
 	}
