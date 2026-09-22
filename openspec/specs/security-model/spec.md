@@ -119,6 +119,8 @@ Official adapters MUST NOT execute arbitrary user-provided commands.
 
 Official package manager update operations (`apt`, `pacman`, `brew`, `winget`) MUST execute structured command arguments directly (via `exec.CommandContext` without `/bin/sh -c` or `cmd.exe /c` shell evaluation), preventing argument manipulation or shell metacharacter injection in package operations.
 
+Manual Go updates on Linux (when unmanaged by a platform package manager) MUST enforce an installation path guardrail (only standard `/usr/local/go/bin/go` installations may be updated). The replacement archive MUST be validated against its official SHA-256 checksum fetched from `https://go.dev/dl/?mode=json` over HTTPS before any privileged command executes; on mismatch, the downloaded archive MUST be deleted and execution aborted without modifying `/usr/local/go`. Archive extraction MUST occur in unprivileged user space. The replacement of `/usr/local/go` MUST execute structured commands (`sudo mv`) with an existing installation backup (`/usr/local/go.bak`) and automatic rollback to the backup if staging or replacement fails.
+
 The pacman adapter MUST strictly invoke self-only updates (`sudo pacman -S --noconfirm pacman`) or targeted package updates (`sudo pacman -S --noconfirm <pkg>`), and MUST NOT invoke whole-system upgrades (`pacman -Syu`) or mutating sync operations (`pacman -Sy`) during read-only version checks.
 
 Self-update integrity MUST fail closed: the replacement archive's sha256 MUST match `checksums.txt` from the SAME release, both fetched over HTTPS with ~10s timeouts. Mismatch or missing entry MUST abort — original binary untouched, non-zero exit (stricter than install.sh's warn-and-skip). Downloaded bytes MUST be extracted, never executed.
@@ -128,6 +130,10 @@ Self-update integrity MUST fail closed: the replacement archive's sha256 MUST ma
 | Official brew | Platform macOS | `brew.update()` | Runs `brew update` only |
 | Official pacman self-update | Platform Linux | `pacman.update()` | Runs `sudo pacman -S --noconfirm pacman` only |
 | Structured package execution | Package manager update invoked | Update execution | Arguments passed directly to process; shell metacharacters treated as literal text |
+| Go manual path guardrail | Linux, manual Go install outside `/usr/local/go` | `go.update()` | Refused with error; system untouched |
+| Go manual checksum mismatch | Linux, unmanaged Go archive sha256 mismatch | `go.update()` | Abort, archive deleted, `/usr/local/go` untouched |
+| Go manual swap with rollback | Linux, unmanaged Go swap fails | `go.update()` | Rolled back to `/usr/local/go.bak`, exit with error |
+| Go manual structured swap | Linux, unmanaged Go | `go.update()` | Executes structured `sudo mv` commands without shell pipelines |
 | Pacman never runs whole system upgrade | Platform Linux | `pacman.update()` | MUST NOT invoke `pacman -Syu` |
 | Pacman check never syncs DB | Platform Linux | `pacman.check()` | Reads local sync DB; MUST NOT invoke `pacman -Sy` |
 | Linux docker delegates | Platform Linux, docker owned by apt | `docker.update()` | The owning manager (apt) updates docker; no hardcoded `apt upgrade docker-ce` |
@@ -135,6 +141,8 @@ Self-update integrity MUST fail closed: the replacement archive's sha256 MUST ma
 | Self-update mismatch | Archive sha256 ≠ checksums.txt | Verify | Abort, binary untouched, exit non-zero |
 | Self-update missing entry | checksums.txt has no asset line | Verify | Abort, binary untouched, exit non-zero |
 | Self-update HTTPS-only | Asset URL over plain HTTP | Download | Refused, exit non-zero |
+
+(Previously: manual Go updates on Linux used an insecure shell pipeline `sudo rm -rf /usr/local/go && curl -fsSL ... | sudo tar -C /usr/local -xzf -` which destroyed the installation before downloading, lacked cryptographic checksum verification, and ran without rollback capability.)
 
 (Previously: official package managers listed were brew, apt, winget, scoop, nvm, npm, and pnpm; pacman was not included, and no pacman-specific command restrictions existed.)
 
