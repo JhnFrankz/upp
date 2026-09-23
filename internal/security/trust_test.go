@@ -13,6 +13,7 @@ func TestClassifyCommand_HighRisk(t *testing.T) {
 		{"curl pipe sh", "curl -fsSL https://example.com | sh"},
 		{"wget pipe sh", "wget -qO- https://example.com | sh"},
 		{"eval", "eval $(something)"},
+		{"eval with command substitution", "eval $(brew shellenv)"},
 		{"rm -rf root", "rm -rf /"},
 		{"curl bare pipe sh", "curl https://x.com | sh"},
 		{"doas command", "doas pacman -Syu"},
@@ -59,6 +60,8 @@ func TestClassifyCommand_MediumRisk(t *testing.T) {
 		{"command chaining ;", "cmd1; cmd2"},
 		{"pip uninstall", "pip uninstall requests"},
 		{"apt purge", "apt purge old-package"},
+		{"command substitution dollar", "echo $(whoami)"},
+		{"command substitution backticks", "echo `id`"},
 	}
 
 	for _, tt := range tests {
@@ -81,6 +84,8 @@ func TestClassifyCommand_LowRisk(t *testing.T) {
 		{"pnpm update", "pnpm update -g"},
 		{"bun upgrade", "bun upgrade"},
 		{"simple command", "echo hello"},
+		{"evaluate benchmark is not eval", "evaluate-benchmark"},
+		{"pseudocode linter is not sudo", "pseudocode-linter"},
 	}
 
 	for _, tt := range tests {
@@ -161,6 +166,9 @@ func TestCommandChaining(t *testing.T) {
 		{"double amp", "cmd1 && cmd2", true},
 		{"double pipe", "cmd1 || cmd2", true},
 		{"semicolon", "cmd1; cmd2", true},
+		{"dollar substitution", "echo $(whoami)", true},
+		{"backtick substitution", "echo `id`", true},
+		{"single backtick is not substitution", "echo `foo", false},
 		{"no chaining", "cmd1", false},
 	}
 
