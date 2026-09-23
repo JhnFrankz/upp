@@ -511,7 +511,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
 					aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
@@ -524,7 +524,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
 					aptPolicyCmd("gh", "Candidate"): {stdout: "2.45.0"},
@@ -537,7 +537,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("gh", "Installed"): {err: errors.New("apt-cache: command not found")},
 					aptPolicyCmd("gh", "Candidate"): {err: errors.New("apt-cache: command not found")},
@@ -565,7 +565,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
 				},
@@ -577,7 +577,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.45.0"}]`},
 				},
@@ -589,7 +589,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
 			goos:    "windows",
 			fakes: execFakes{
-				lookPath: map[string]bool{"gh": true},
+				lookPath: map[string]bool{"gh": true, "winget": true},
 				cmdArgs: map[string]fakeResult{
 					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
 				},
@@ -609,7 +609,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("docker-ce", "Installed"): {stdout: "26.1.4"},
 					aptPolicyCmd("docker-ce", "Candidate"): {stdout: "26.2.0"},
@@ -622,7 +622,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "linux",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("docker-ce", "Installed"): {stdout: "26.1.4"},
 					aptPolicyCmd("docker-ce", "Candidate"): {stdout: "26.1.4"},
@@ -649,7 +649,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json docker": {stdout: `[{"name":"docker","installed_versions":["26.1.4"],"current_version":"26.2.0"}]`},
 				},
@@ -661,7 +661,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &DockerAdapter{} },
 			goos:    "windows",
 			fakes: execFakes{
-				lookPath: map[string]bool{"docker": true},
+				lookPath: map[string]bool{"docker": true, "winget": true},
 				cmdArgs: map[string]fakeResult{
 					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nDocker  Docker.Docker  26.1.4  26.2.0  winget\n"},
 				},
@@ -1353,6 +1353,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &AptAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
 					aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
@@ -1365,6 +1366,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &AptAdapter{},
 			pkg:     "docker-ce",
 			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("docker-ce", "Installed"): {stdout: "26.1.4"},
 					aptPolicyCmd("docker-ce", "Candidate"): {stdout: "26.1.4"},
@@ -1377,6 +1379,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &AptAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("gh", "Installed"): {stdout: "(none)"},
 					aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
@@ -1389,6 +1392,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &AptAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"apt": true},
 				shell: map[string]fakeResult{
 					aptPolicyCmd("gh", "Installed"): {err: errors.New("apt-cache: command not found")},
 					aptPolicyCmd("gh", "Candidate"): {err: errors.New("apt-cache: command not found")},
@@ -1757,4 +1761,56 @@ func TestPacmanCheckPackage_StructuredExecution(t *testing.T) {
 	if info.CurrentVersion != "14.1.0-1" || info.LatestVersion != "14.1.2-1" || !info.UpdateAvailable {
 		t.Errorf("CheckPackage() = %+v, want 14.1.0-1 -> 14.1.2-1 (available)", info)
 	}
+}
+
+func TestAptCheckPackage_NotInstalled(t *testing.T) {
+	apt := &AptAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"apt": false},
+	})
+	_, err := apt.CheckPackage(context.Background(), "gh")
+	if err == nil {
+		t.Fatal("CheckPackage() expected error when apt is not installed, got nil")
+	}
+	if !strings.Contains(err.Error(), "apt is not installed") {
+		t.Errorf("error = %q, want contains 'apt is not installed'", err.Error())
+	}
+}
+
+func TestCheck_ManagerNotInstalled_Fallback(t *testing.T) {
+	t.Run("gh fallback when owning manager is not detected", func(t *testing.T) {
+		gh := &GhAdapter{}
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"gh": true, "apt": false, "pacman": false, "brew": false, "winget": false},
+			cmdArgs: map[string]fakeResult{
+				"gh --version": {stdout: "gh version 2.45.0 (2024-03-04)\n"},
+			},
+		})
+
+		info, err := gh.Check(context.Background())
+		if err != nil {
+			t.Fatalf("Check() unexpected error: %v", err)
+		}
+		if info.CurrentVersion != "2.45.0" || info.LatestVersion != "2.45.0" || info.UpdateAvailable {
+			t.Errorf("Check() = %+v, want Current=2.45.0, Latest=2.45.0, UpdateAvailable=false", info)
+		}
+	})
+
+	t.Run("docker fallback when owning manager is not detected", func(t *testing.T) {
+		docker := &DockerAdapter{}
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"docker": true, "apt": false, "pacman": false, "brew": false, "winget": false},
+			cmdArgs: map[string]fakeResult{
+				"docker --version": {stdout: "Docker version 26.1.4, build 5650f9b\n"},
+			},
+		})
+
+		info, err := docker.Check(context.Background())
+		if err != nil {
+			t.Fatalf("Check() unexpected error: %v", err)
+		}
+		if info.CurrentVersion != "26.1.4" || info.LatestVersion != "26.1.4" || info.UpdateAvailable {
+			t.Errorf("Check() = %+v, want Current=26.1.4, Latest=26.1.4, UpdateAvailable=false", info)
+		}
+	})
 }
