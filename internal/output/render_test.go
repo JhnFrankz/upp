@@ -704,8 +704,8 @@ func TestUpdateCancelled(t *testing.T) {
 	}
 }
 
-func TestStatusFromResult(t *testing.T) {
-	// We test the mapping logic by checking the constants.
+func TestStatusConstants(t *testing.T) {
+	// We test the status enum values by checking the constants.
 	if StatusUpdated != 0 {
 		t.Error("StatusUpdated should be 0")
 	}
