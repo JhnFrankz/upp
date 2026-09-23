@@ -473,6 +473,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	stagedDir := filepath.Join(tmpDir, "go")
 	backedUp := false
 	if goTargetExistsFn() {
+		_, _, _ = runCmdArgsUpdate(ctx, "sudo", "rm", "-rf", "/usr/local/go.bak")
 		_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", "/usr/local/go", "/usr/local/go.bak")
 		if err != nil || hasCommandError(stderr) {
 			errMsg := err
