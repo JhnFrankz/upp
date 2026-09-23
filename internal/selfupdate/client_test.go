@@ -565,3 +565,59 @@ func TestClientCancellation(t *testing.T) {
 		}
 	})
 }
+
+func TestClient_DownloadClientTimeout(t *testing.T) {
+	t.Run("default client uses downloadTimeout for downloads", func(t *testing.T) {
+		c := NewClient("https://api.github.com", "")
+		dc := c.downloadHTTPClient()
+		if dc.Timeout != 5*time.Minute {
+			t.Errorf("downloadHTTPClient timeout = %v, want 5m", dc.Timeout)
+		}
+	})
+
+	t.Run("zero-value client uses downloadTimeout for downloads", func(t *testing.T) {
+		c := &Client{BaseURL: "https://api.github.com"}
+		dc := c.downloadHTTPClient()
+		if dc.Timeout != 5*time.Minute {
+			t.Errorf("downloadHTTPClient timeout = %v, want 5m", dc.Timeout)
+		}
+	})
+
+	t.Run("injected HTTP client is preserved for downloads", func(t *testing.T) {
+		injected := &http.Client{Timeout: 42 * time.Second}
+		c := &Client{BaseURL: "https://api.github.com", HTTP: injected}
+		dc := c.downloadHTTPClient()
+		if dc != injected {
+			t.Errorf("downloadHTTPClient = %p, want injected client %p", dc, injected)
+		}
+	})
+
+	t.Run("Download succeeds and uses download client", func(t *testing.T) {
+		asset := []byte("download-test-bytes")
+		checksums := []byte("deadbeef  upp-linux-amd64.tar.gz\n")
+		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, asset, checksums, nil)
+		defer ts.Close()
+
+		c := NewClient(ts.URL, "")
+		if _, err := c.LatestFresh(context.Background()); err != nil {
+			t.Fatalf("LatestFresh: %v", err)
+		}
+
+		archivePath, gotChecksums, err := c.Download(context.Background(), "upp-linux-amd64.tar.gz")
+		if err != nil {
+			t.Fatalf("Download failed: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Remove(archivePath) })
+
+		if !bytes.Equal(gotChecksums, checksums) {
+			t.Errorf("checksums = %q, want %q", gotChecksums, checksums)
+		}
+		gotAsset, err := os.ReadFile(archivePath)
+		if err != nil {
+			t.Fatalf("read file: %v", err)
+		}
+		if !bytes.Equal(gotAsset, asset) {
+			t.Errorf("asset = %q, want %q", gotAsset, asset)
+		}
+	})
+}
