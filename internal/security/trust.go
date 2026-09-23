@@ -3,6 +3,7 @@
 package security
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -64,12 +65,10 @@ func (r RiskLevel) String() string {
 	}
 }
 
+var reHighRiskWord = regexp.MustCompile(`(?i)\b(eval|sudo|doas|pkexec|runas)\b`)
+
 // HighRiskKeywords are substrings that immediately classify a command as high risk.
 var HighRiskKeywords = []string{
-	"sudo",
-	"doas",
-	"pkexec",
-	"runas",
 	"rm -rf",
 	"rm -r /",
 	"curl|sh",
@@ -77,7 +76,6 @@ var HighRiskKeywords = []string{
 	"curl -fsSL",
 	"wget|sh",
 	"wget | sh",
-	"eval",
 	"rm -rf /",
 }
 
@@ -94,6 +92,10 @@ var MediumRiskKeywords = []string{
 // ClassifyCommand uses a hybrid approach to determine the risk level of a command.
 // It checks keyword matching first, then pattern matching for chaining/piping.
 func ClassifyCommand(cmd string) RiskLevel {
+	if reHighRiskWord.MatchString(cmd) {
+		return RiskHigh
+	}
+
 	lower := strings.ToLower(cmd)
 
 	// 1. Keyword matching — high risk first (short-circuits).
@@ -138,7 +140,9 @@ func CheckNeedsConsent(checkCmd string) bool {
 func hasCommandChaining(cmd string) bool {
 	return strings.Contains(cmd, "&&") ||
 		strings.Contains(cmd, "||") ||
-		strings.Contains(cmd, ";")
+		strings.Contains(cmd, ";") ||
+		strings.Contains(cmd, "$(") ||
+		(strings.Contains(cmd, "`") && strings.Count(cmd, "`") >= 2)
 }
 
 var pipeInterpreters = []string{
