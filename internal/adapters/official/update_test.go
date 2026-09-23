@@ -1792,12 +1792,16 @@ func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
 			var recordedArgs []string
 
 			origRunCmd := runCmdFn
+			origRunCmdArgs := runCmdArgsFn
 			origRunCmdArgsUpdate := runCmdArgsUpdateFn
 			origLookPath := lookPathFn
 
 			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 				t.Fatalf("runCmd should NOT be called; evaluated via shell: %q", command)
 				return "", "", nil
+			}
+			runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+				return "[]", "", nil
 			}
 			runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
 				recordedBin = name
@@ -1808,6 +1812,7 @@ func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
 
 			t.Cleanup(func() {
 				runCmdFn = origRunCmd
+				runCmdArgsFn = origRunCmdArgs
 				runCmdArgsUpdateFn = origRunCmdArgsUpdate
 				lookPathFn = origLookPath
 			})
