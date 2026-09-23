@@ -16,8 +16,9 @@ const (
 	// dialTimeout bounds TCP connection setup and requestTimeout bounds
 	// the whole request including the response read (spec R2: ~10s
 	// dial/read timeouts).
-	dialTimeout    = 10 * time.Second
-	requestTimeout = 10 * time.Second
+	dialTimeout     = 10 * time.Second
+	requestTimeout  = 10 * time.Second
+	downloadTimeout = 5 * time.Minute
 
 	// latestPath is the GitHub "latest release" API endpoint, relative to
 	// Client.BaseURL. The owner/repo is fixed: upp is published from
@@ -85,18 +86,27 @@ func NewClient(baseURL, cachePath string) *Client {
 	}
 }
 
-// defaultHTTPClient is the production HTTP client: ~10s dial and request
-// timeouts (spec R2), environment proxies, and the HTTPS-only redirect
-// policy (security-model delta: off-HTTPS redirect → fail closed).
-func defaultHTTPClient() *http.Client {
+var (
+	defaultClient         = newHTTPClient(requestTimeout)
+	defaultDownloadClient = newHTTPClient(downloadTimeout)
+)
+
+func newHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
-		Timeout: requestTimeout,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			Proxy:       http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{Timeout: dialTimeout}).DialContext,
 		},
 		CheckRedirect: checkRedirect,
 	}
+}
+
+// defaultHTTPClient is the production HTTP client: ~10s dial and request
+// timeouts (spec R2), environment proxies, and the HTTPS-only redirect
+// policy (security-model delta: off-HTTPS redirect → fail closed).
+func defaultHTTPClient() *http.Client {
+	return defaultClient
 }
 
 // checkRedirect is the client-wide redirect policy: any hop whose target
@@ -117,6 +127,16 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTP
 	}
 	return defaultHTTPClient()
+}
+
+// downloadHTTPClient returns the client used for downloading assets: an injected
+// client if set and not the default client, or the production download client
+// with the extended 5-minute timeout.
+func (c *Client) downloadHTTPClient() *http.Client {
+	if c.HTTP != nil && c.HTTP != defaultHTTPClient() {
+		return c.HTTP
+	}
+	return defaultDownloadClient
 }
 
 // fetchLatest queries the latest-release endpoint and parses the tag. It
@@ -221,7 +241,7 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 	if err != nil {
 		return "", nil, err
 	}
-	resp, err := c.httpClient().Do(req)
+	resp, err := c.downloadHTTPClient().Do(req)
 	if err != nil {
 		return "", nil, err
 	}

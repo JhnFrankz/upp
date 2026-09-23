@@ -2390,7 +2390,7 @@ func TestRunUpdate_DryRunSkipsLock(t *testing.T) {
 			return nil, nil
 		},
 		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
-			return nil
+			return []adapters.Adapter{}
 		},
 	}
 	err := runUpdateContext(context.Background(), &GlobalFlags{}, &UpdateFlags{DryRun: true}, deps)

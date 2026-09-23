@@ -25,6 +25,8 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 		return adapters.UpdateInfo{}, fmt.Errorf("docker is not installed")
 	}
 
+	current := extractVersion(commandOutput(ctx, "docker", "--version"))
+
 	// Delegated check path (WU2, spec Per-Owned-Tool Availability): an owned
 	// tool's Check() reports the real update of its package under the
 	// resolving manager, NOT the manager's own self check. docker is owned on
@@ -35,6 +37,13 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 	// package maps are keyed by PLATFORM constants, not runtime.GOOS (darwin).
 	plat, _ := platform.NormalizeOS(runtime.GOOS)
 	if owner := ResolveOwner("docker", plat); owner != nil {
+		if !owner.Detect() {
+			return adapters.UpdateInfo{
+				CurrentVersion:  current,
+				LatestVersion:   current,
+				UpdateAvailable: false,
+			}, nil
+		}
 		if checker, ok := owner.(adapters.PackageChecker); ok {
 			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {

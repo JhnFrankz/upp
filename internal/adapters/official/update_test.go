@@ -1792,12 +1792,16 @@ func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
 			var recordedArgs []string
 
 			origRunCmd := runCmdFn
+			origRunCmdArgs := runCmdArgsFn
 			origRunCmdArgsUpdate := runCmdArgsUpdateFn
 			origLookPath := lookPathFn
 
 			runCmdFn = func(ctx context.Context, command string) (string, string, error) {
 				t.Fatalf("runCmd should NOT be called; evaluated via shell: %q", command)
 				return "", "", nil
+			}
+			runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+				return "[]", "", nil
 			}
 			runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
 				recordedBin = name
@@ -1808,6 +1812,7 @@ func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
 
 			t.Cleanup(func() {
 				runCmdFn = origRunCmd
+				runCmdArgsFn = origRunCmdArgs
 				runCmdArgsUpdateFn = origRunCmdArgsUpdate
 				lookPathFn = origLookPath
 			})
@@ -2015,17 +2020,20 @@ func TestGo_LinuxAtomicSwapAndRollback(t *testing.T) {
 			t.Fatalf("expected success, got error: %v", res.Error)
 		}
 
-		if len(recordedCalls) != 3 {
-			t.Fatalf("recorded calls count = %d, want 3; calls: %v", len(recordedCalls), recordedCalls)
+		if len(recordedCalls) != 4 {
+			t.Fatalf("recorded calls count = %d, want 4; calls: %v", len(recordedCalls), recordedCalls)
 		}
-		if len(recordedCalls[0]) != 4 || recordedCalls[0][0] != "sudo" || recordedCalls[0][1] != "mv" || recordedCalls[0][2] != "/usr/local/go" || recordedCalls[0][3] != "/usr/local/go.bak" {
-			t.Errorf("call 0 = %v, want [sudo mv /usr/local/go /usr/local/go.bak]", recordedCalls[0])
+		if len(recordedCalls[0]) != 4 || recordedCalls[0][0] != "sudo" || recordedCalls[0][1] != "rm" || recordedCalls[0][2] != "-rf" || recordedCalls[0][3] != "/usr/local/go.bak" {
+			t.Errorf("call 0 = %v, want [sudo rm -rf /usr/local/go.bak]", recordedCalls[0])
 		}
-		if len(recordedCalls[1]) != 4 || recordedCalls[1][0] != "sudo" || recordedCalls[1][1] != "mv" || recordedCalls[1][3] != "/usr/local/go" {
-			t.Errorf("call 1 = %v, want [sudo mv <staged> /usr/local/go]", recordedCalls[1])
+		if len(recordedCalls[1]) != 4 || recordedCalls[1][0] != "sudo" || recordedCalls[1][1] != "mv" || recordedCalls[1][2] != "/usr/local/go" || recordedCalls[1][3] != "/usr/local/go.bak" {
+			t.Errorf("call 1 = %v, want [sudo mv /usr/local/go /usr/local/go.bak]", recordedCalls[1])
 		}
-		if len(recordedCalls[2]) != 4 || recordedCalls[2][0] != "sudo" || recordedCalls[2][1] != "rm" || recordedCalls[2][2] != "-rf" || recordedCalls[2][3] != "/usr/local/go.bak" {
-			t.Errorf("call 2 = %v, want [sudo rm -rf /usr/local/go.bak]", recordedCalls[2])
+		if len(recordedCalls[2]) != 4 || recordedCalls[2][0] != "sudo" || recordedCalls[2][1] != "mv" || recordedCalls[2][3] != "/usr/local/go" {
+			t.Errorf("call 2 = %v, want [sudo mv <staged> /usr/local/go]", recordedCalls[2])
+		}
+		if len(recordedCalls[3]) != 4 || recordedCalls[3][0] != "sudo" || recordedCalls[3][1] != "rm" || recordedCalls[3][2] != "-rf" || recordedCalls[3][3] != "/usr/local/go.bak" {
+			t.Errorf("call 3 = %v, want [sudo rm -rf /usr/local/go.bak]", recordedCalls[3])
 		}
 	})
 
@@ -2049,17 +2057,46 @@ func TestGo_LinuxAtomicSwapAndRollback(t *testing.T) {
 			t.Fatal("expected failure on swap error, got success")
 		}
 
-		if len(recordedCalls) != 3 {
-			t.Fatalf("recorded calls count = %d, want 3; calls: %v", len(recordedCalls), recordedCalls)
+		if len(recordedCalls) != 4 {
+			t.Fatalf("recorded calls count = %d, want 4; calls: %v", len(recordedCalls), recordedCalls)
 		}
-		if len(recordedCalls[0]) != 4 || recordedCalls[0][2] != "/usr/local/go" || recordedCalls[0][3] != "/usr/local/go.bak" {
-			t.Errorf("call 0 = %v, want backup", recordedCalls[0])
+		if len(recordedCalls[0]) != 4 || recordedCalls[0][0] != "sudo" || recordedCalls[0][1] != "rm" || recordedCalls[0][2] != "-rf" || recordedCalls[0][3] != "/usr/local/go.bak" {
+			t.Errorf("call 0 = %v, want [sudo rm -rf /usr/local/go.bak]", recordedCalls[0])
 		}
-		if len(recordedCalls[1]) != 4 || recordedCalls[1][3] != "/usr/local/go" {
-			t.Errorf("call 1 = %v, want swap attempt", recordedCalls[1])
+		if len(recordedCalls[1]) != 4 || recordedCalls[1][2] != "/usr/local/go" || recordedCalls[1][3] != "/usr/local/go.bak" {
+			t.Errorf("call 1 = %v, want backup", recordedCalls[1])
 		}
-		if len(recordedCalls[2]) != 4 || recordedCalls[2][0] != "sudo" || recordedCalls[2][1] != "mv" || recordedCalls[2][2] != "/usr/local/go.bak" || recordedCalls[2][3] != "/usr/local/go" {
-			t.Errorf("call 2 = %v, want [sudo mv /usr/local/go.bak /usr/local/go]", recordedCalls[2])
+		if len(recordedCalls[2]) != 4 || recordedCalls[2][3] != "/usr/local/go" {
+			t.Errorf("call 2 = %v, want swap attempt", recordedCalls[2])
+		}
+		if len(recordedCalls[3]) != 4 || recordedCalls[3][0] != "sudo" || recordedCalls[3][1] != "mv" || recordedCalls[3][2] != "/usr/local/go.bak" || recordedCalls[3][3] != "/usr/local/go" {
+			t.Errorf("call 3 = %v, want [sudo mv /usr/local/go.bak /usr/local/go]", recordedCalls[3])
+		}
+	})
+
+	t.Run("stale backup directory is removed before atomic swap", func(t *testing.T) {
+		var recordedCalls [][]string
+		setExecFakes(t, execFakes{
+			lookPath:     map[string]bool{"go": true},
+			cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+			recordedCmds: &recordedCalls,
+		})
+
+		adpt := &GoAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Fatalf("expected success, got error: %v", res.Error)
+		}
+
+		if len(recordedCalls) == 0 {
+			t.Fatal("expected privileged calls, got 0")
+		}
+		wantPreClean := []string{"sudo", "rm", "-rf", "/usr/local/go.bak"}
+		if !equalPrivileges(recordedCalls[0], wantPreClean) {
+			t.Errorf("call 0 = %v, want %v", recordedCalls[0], wantPreClean)
 		}
 	})
 

@@ -25,6 +25,8 @@ func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("gh is not installed")
 	}
 
+	current := extractVersion(commandOutput(ctx, "gh", "--version"))
+
 	// Delegated check path (WU2, spec Per-Owned-Tool Availability): an owned
 	// tool's Check() reports the real update of its package under the
 	// resolving manager, NOT the manager's own self check. gh is owned on
@@ -36,6 +38,13 @@ func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// WU1-documented gotcha.
 	plat, _ := platform.NormalizeOS(runtime.GOOS)
 	if owner := ResolveOwner("gh", plat); owner != nil {
+		if !owner.Detect() {
+			return adapters.UpdateInfo{
+				CurrentVersion:  current,
+				LatestVersion:   current,
+				UpdateAvailable: false,
+			}, nil
+		}
 		if checker, ok := owner.(adapters.PackageChecker); ok {
 			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {

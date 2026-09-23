@@ -65,6 +65,9 @@ func parseAptPolicyOutput(out string) (string, string) {
 // queries `apt-cache policy <pkg>` directly via structured execution, not
 // through bash or awk.
 func (a *AptAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	if !a.Detect() {
+		return adapters.UpdateInfo{}, fmt.Errorf("apt is not installed")
+	}
 	stdout, err := commandOutputErrFor(ctx, "apt", "apt-cache", "policy", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
