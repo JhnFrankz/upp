@@ -1,12 +1,20 @@
 package security
 
-import "strings"
+import "regexp"
+
+var (
+	reSudo   = regexp.MustCompile(`(?i)\bsudo\b`)
+	reDoas   = regexp.MustCompile(`(?i)\bdoas\b`)
+	rePkexec = regexp.MustCompile(`(?i)\bpkexec\b`)
+	reSu     = regexp.MustCompile(`(?i)\bsu\b`)
+	reRunas  = regexp.MustCompile(`(?i)\brunas(\b|admin)`)
+	reAdmin  = regexp.MustCompile(`(?i)(\b|runas)admin(istrator)?\b`)
+)
 
 // DetectPrivileges inspects a command string for privilege escalation tokens.
 // It detects Unix privilege escalators (sudo, doas, pkexec, su) and Windows
 // elevation tokens (runas, admin).
 func DetectPrivileges(cmd string) []string {
-	lower := strings.ToLower(cmd)
 	var privs []string
 	seen := make(map[string]bool)
 
@@ -17,22 +25,22 @@ func DetectPrivileges(cmd string) []string {
 		}
 	}
 
-	if strings.Contains(lower, "sudo") {
+	if reSudo.MatchString(cmd) {
 		add("sudo")
 	}
-	if strings.Contains(lower, "doas") {
+	if reDoas.MatchString(cmd) {
 		add("doas")
 	}
-	if strings.Contains(lower, "pkexec") {
+	if rePkexec.MatchString(cmd) {
 		add("pkexec")
 	}
-	if strings.Contains(lower, " su ") || strings.HasPrefix(lower, "su ") || strings.HasSuffix(lower, " su") || lower == "su" {
+	if reSu.MatchString(cmd) {
 		add("su")
 	}
-	if strings.Contains(lower, "runas") {
+	if reRunas.MatchString(cmd) {
 		add("runas")
 	}
-	if strings.Contains(lower, "admin") {
+	if reAdmin.MatchString(cmd) {
 		add("admin")
 	}
 	return privs

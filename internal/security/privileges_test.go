@@ -62,6 +62,36 @@ func TestDetectPrivileges(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "pseudocode is not sudo",
+			cmd:  "pseudocode --check",
+			want: nil,
+		},
+		{
+			name: "consudo is not sudo",
+			cmd:  "consudo something",
+			want: nil,
+		},
+		{
+			name: "sysadmin is not admin",
+			cmd:  "pip install sysadmin",
+			want: nil,
+		},
+		{
+			name: "supertool submit-job is not su",
+			cmd:  "supertool submit-job",
+			want: nil,
+		},
+		{
+			name: "pkexecution is not pkexec",
+			cmd:  "pkexecution something",
+			want: nil,
+		},
+		{
+			name: "prunas is not runas",
+			cmd:  "prunas tool",
+			want: nil,
+		},
+		{
 			name: "windows runas without admin",
 			cmd:  "runas /user:Alice cmd.exe",
 			want: []string{"runas"},
@@ -70,6 +100,11 @@ func TestDetectPrivileges(t *testing.T) {
 			name: "windows runas with administrator",
 			cmd:  "runas /user:Administrator cmd.exe",
 			want: []string{"runas", "admin"},
+		},
+		{
+			name: "windows runas token alone",
+			cmd:  "powershell Start-Process cmd -Verb runAs",
+			want: []string{"runas"},
 		},
 		{
 			name: "windows admin token",
