@@ -10,7 +10,6 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/doctor"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
@@ -667,16 +666,6 @@ func toolNames(results []ToolResult) []string {
 		names = append(names, r.Name)
 	}
 	return names
-}
-
-// --- Adapter-based helpers ---
-
-// StatusFromResult maps an adapters.Result to a Status.
-func StatusFromResult(result adapters.Result) Status {
-	if result.Success {
-		return StatusUpdated
-	}
-	return StatusFailed
 }
 
 func (r *Renderer) doctorIcon(s doctor.Severity) string {
