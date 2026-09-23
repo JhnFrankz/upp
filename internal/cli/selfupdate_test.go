@@ -2,6 +2,7 @@ package cli
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -98,6 +99,26 @@ func cliArchive(t *testing.T, assetName, content string) []byte {
 	}
 	if err := gz.Close(); err != nil {
 		t.Fatalf("close gzip writer: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// cliZipArchive returns zip-compressed bytes with the release
+// layout entry "{assetDir}/upp.exe" (assetDir = asset name minus .zip).
+func cliZipArchive(t *testing.T, assetName, content string) []byte {
+	t.Helper()
+	dir := strings.TrimSuffix(assetName, ".zip")
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create(dir + "/upp.exe")
+	if err != nil {
+		t.Fatalf("create zip entry: %v", err)
+	}
+	if _, err := w.Write([]byte(content)); err != nil {
+		t.Fatalf("write zip entry: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip writer: %v", err)
 	}
 	return buf.Bytes()
 }
@@ -437,19 +458,19 @@ func TestSelfUpdate_UnknownFlagRejected(t *testing.T) {
 	}
 }
 
-func TestSelfUpdate_WindowsUnsupported(t *testing.T) {
+func TestSelfUpdate_UnsupportedPlatform(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var reqs atomic.Int32
 	ts := selfUpdateServer(t, "v0.1.1", nil, nil, &reqs)
 	defer ts.Close()
 	deps := newSelfUpdateDeps(ts, "y\n", fakeBinary(t, "OLD"))
 	deps.detect = func() (platform.Platform, error) {
-		return platform.Platform{OS: "windows", Arch: "x86_64"}, nil
+		return platform.Platform{OS: "freebsd", Arch: "x86_64"}, nil
 	}
 
 	err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", deps)
 	if err == nil {
-		t.Fatal("windows must be refused")
+		t.Fatal("unsupported platform must be refused")
 	}
 	if !errors.Is(err, selfupdate.ErrUnsupportedPlatform) {
 		t.Errorf("error should carry ErrUnsupportedPlatform, got: %v", err)
@@ -458,7 +479,37 @@ func TestSelfUpdate_WindowsUnsupported(t *testing.T) {
 		t.Errorf("error should say not supported yet, got: %v", err)
 	}
 	if got := reqs.Load(); got != 0 {
-		t.Errorf("windows refusal must not touch the network, got %d requests", got)
+		t.Errorf("unsupported platform refusal must not touch the network, got %d requests", got)
+	}
+}
+
+func TestSelfUpdate_WindowsZipSuccess(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const assetName = "upp-windows-amd64.zip"
+	const oldContent = "OLD-UPP-WINDOWS"
+	const newContent = "NEW-UPP-WINDOWS"
+	asset := cliZipArchive(t, assetName, newContent)
+	sum := sha256.Sum256(asset)
+	checksums := []byte(fmt.Sprintf("%x  %s\n", sum, assetName))
+
+	bin := fakeBinary(t, oldContent)
+	ts := selfUpdateServer(t, "v0.1.1", asset, checksums, nil)
+	defer ts.Close()
+	deps := newSelfUpdateDeps(ts, "y\n", bin)
+	deps.detect = func() (platform.Platform, error) {
+		return platform.Platform{OS: "windows", Arch: "amd64"}, nil
+	}
+
+	if err := runSelfUpdate(context.Background(), &GlobalFlags{}, "v0.1.0", deps); err != nil {
+		t.Fatalf("runSelfUpdate: unexpected error: %v", err)
+	}
+
+	got, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != newContent {
+		t.Errorf("binary content = %q, want %q", got, newContent)
 	}
 }
 

@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -89,13 +90,20 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 // "upp-{os}-{arch}/upp".
 const binarySuffix = "/upp"
 
-// extract writes ONLY the known binary entry (upp-{os}-{arch}/upp) from
-// the tar.gz archive on disk into destDir as "upp", mode 0755, and returns its path.
+// extract writes ONLY the known binary entry from the archive on disk into destDir,
+// mode 0755, and returns its path. Supports .tar.gz (Linux/macOS) and .zip (Windows).
 func extract(archivePath, assetName, destDir string) (string, error) {
-	dir := strings.TrimSuffix(assetName, ".tar.gz")
-	if dir == assetName {
-		return "", fmt.Errorf("selfupdate: %s is not a .tar.gz asset name", assetName)
+	if strings.HasSuffix(assetName, ".tar.gz") {
+		return extractTarGz(archivePath, assetName, destDir)
 	}
+	if strings.HasSuffix(assetName, ".zip") {
+		return extractZip(archivePath, assetName, destDir)
+	}
+	return "", fmt.Errorf("selfupdate: unsupported archive format for %s", assetName)
+}
+
+func extractTarGz(archivePath, assetName, destDir string) (string, error) {
+	dir := strings.TrimSuffix(assetName, ".tar.gz")
 	binaryPath := dir + binarySuffix
 
 	f, err := os.Open(archivePath)
@@ -146,6 +154,61 @@ func extract(archivePath, assetName, destDir string) (string, error) {
 	return out, nil
 }
 
+func extractZip(archivePath, assetName, destDir string) (string, error) {
+	dir := strings.TrimSuffix(assetName, ".zip")
+	binaryPathExe := dir + "/upp.exe"
+	binaryPathFallback := dir + "/upp"
+
+	zr, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("selfupdate: release archive is not zip: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+
+	// Every entry is checked — a dangerous entry anywhere in the
+	// archive aborts the extraction, even one that appears after
+	// the binary (fail closed).
+	for _, f := range zr.File {
+		if err := checkZipEntry(f); err != nil {
+			return "", err
+		}
+	}
+
+	var target *zip.File
+	for _, f := range zr.File {
+		if f.Name == binaryPathExe {
+			target = f
+			break
+		}
+	}
+	if target == nil {
+		for _, f := range zr.File {
+			if f.Name == binaryPathFallback {
+				target = f
+				break
+			}
+		}
+	}
+	if target == nil {
+		return "", fmt.Errorf("selfupdate: release archive does not contain %s", binaryPathExe)
+	}
+	if target.FileInfo().IsDir() {
+		return "", fmt.Errorf("selfupdate: archive entry %s is not a regular file", target.Name)
+	}
+
+	rc, err := target.Open()
+	if err != nil {
+		return "", fmt.Errorf("selfupdate: opening entry %s: %w", target.Name, err)
+	}
+	defer func() { _ = rc.Close() }()
+
+	out := filepath.Join(destDir, filepath.Base(target.Name))
+	if err := writeBinary(out, rc); err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
 // checkEntry rejects archive entries that could escape destDir or
 // redirect writes: absolute paths, path-traversal names, and link
 // entries. Everything else passes; only the known binary path is ever
@@ -161,6 +224,23 @@ func checkEntry(hdr *tar.Header) error {
 		}
 	}
 	if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
+		return fmt.Errorf("selfupdate: release archive contains link entry %q; refusing", name)
+	}
+	return nil
+}
+
+func checkZipEntry(f *zip.File) error {
+	name := f.Name
+	if name == "" || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") || filepath.IsAbs(name) || strings.Contains(name, ":") {
+		return fmt.Errorf("selfupdate: release archive contains absolute path %q; refusing", name)
+	}
+	normalized := strings.ReplaceAll(name, "\\", "/")
+	for _, comp := range strings.Split(normalized, "/") {
+		if comp == ".." {
+			return fmt.Errorf("selfupdate: release archive contains path traversal entry %q; refusing", name)
+		}
+	}
+	if f.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("selfupdate: release archive contains link entry %q; refusing", name)
 	}
 	return nil
@@ -264,7 +344,11 @@ func Replace(execPath, newPath string) error {
 	}
 	dir := filepath.Dir(resolved)
 
-	tmp, err := os.CreateTemp(dir, ".upp-*")
+	tmpPattern := ".upp-*"
+	if strings.EqualFold(filepath.Ext(resolved), ".exe") {
+		tmpPattern = ".upp-*.exe"
+	}
+	tmp, err := os.CreateTemp(dir, tmpPattern)
 	if err != nil {
 		return fmt.Errorf("%w: %s: %v (make %s writable or install upp under your home, e.g. ~/.local/bin; upp never uses sudo)",
 			ErrNotWritable, dir, err, dir)
@@ -289,6 +373,10 @@ func Replace(execPath, newPath string) error {
 	}
 
 	backup := fmt.Sprintf("%s.backup.%s", resolved, time.Now().Format("20060102.150405"))
+	if strings.EqualFold(filepath.Ext(resolved), ".exe") {
+		base := strings.TrimSuffix(resolved, filepath.Ext(resolved))
+		backup = fmt.Sprintf("%s.backup.%s.exe", base, time.Now().Format("20060102.150405"))
+	}
 	if err := rename(resolved, backup); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("selfupdate: cannot back up current binary: %w", err)

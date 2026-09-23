@@ -22,10 +22,14 @@ func TestAssetName(t *testing.T) {
 		{"macos arm64", platform.Platform{OS: platform.OSMacOS, Arch: platform.ArchArm64}, "upp-darwin-arm64.tar.gz", false},
 		// Identity entries accept release-style names unchanged.
 		{"identity release names", platform.Platform{OS: "darwin", Arch: "amd64"}, "upp-darwin-amd64.tar.gz", false},
+		// Windows supported combinations.
+		{"windows amd64", platform.Platform{OS: "windows", Arch: "amd64"}, "upp-windows-amd64.zip", false},
+		{"windows arm64", platform.Platform{OS: "windows", Arch: "arm64"}, "upp-windows-arm64.zip", false},
+		{"windows canonical x86_64", platform.Platform{OS: platform.OSWindows, Arch: platform.ArchX86_64}, "upp-windows-amd64.zip", false},
+		{"windows canonical arm64", platform.Platform{OS: platform.OSWindows, Arch: platform.ArchArm64}, "upp-windows-arm64.zip", false},
 		// Unknown OS/arch must fail closed.
 		{"unknown os", platform.Platform{OS: "freebsd", Arch: platform.ArchX86_64}, "", true},
 		{"unknown arch", platform.Platform{OS: platform.OSLinux, Arch: "mips"}, "", true},
-		{"windows fails closed", platform.Platform{OS: platform.OSWindows, Arch: platform.ArchX86_64}, "", true},
 	}
 
 	for _, tt := range tests {

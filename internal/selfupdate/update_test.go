@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -235,6 +236,177 @@ func TestExtract(t *testing.T) {
 			t.Fatal("extract with nonexistent file: want error")
 		}
 	})
+}
+
+type zipEntry struct {
+	name    string
+	content string
+	mode    os.FileMode
+}
+
+func buildZipArchive(t *testing.T, entries ...zipEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, e := range entries {
+		hdr := &zip.FileHeader{
+			Name:   e.name,
+			Method: zip.Deflate,
+		}
+		if e.mode != 0 {
+			hdr.SetMode(e.mode)
+		} else {
+			hdr.SetMode(0o755)
+		}
+		w, err := zw.CreateHeader(hdr)
+		if err != nil {
+			t.Fatalf("create zip header for %q: %v", e.name, err)
+		}
+		if _, err := w.Write([]byte(e.content)); err != nil {
+			t.Fatalf("write zip content for %q: %v", e.name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip writer: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestExtract_Zip(t *testing.T) {
+	const assetName = "upp-windows-amd64.zip"
+	realBytes := []byte("fake-windows-binary-bytes")
+
+	tests := []struct {
+		name     string
+		archive  []byte
+		wantName string
+		wantErr  bool
+	}{
+		{
+			name: "normal zip extracts binary with .exe",
+			archive: buildZipArchive(t, zipEntry{
+				name:    "upp-windows-amd64/upp.exe",
+				content: string(realBytes),
+			}),
+			wantName: "upp.exe",
+			wantErr:  false,
+		},
+		{
+			name: "fallback extracts binary without .exe if .exe not present",
+			archive: buildZipArchive(t, zipEntry{
+				name:    "upp-windows-amd64/upp",
+				content: string(realBytes),
+			}),
+			wantName: "upp",
+			wantErr:  false,
+		},
+		{
+			name: "extra entries are ignored",
+			archive: buildZipArchive(t,
+				zipEntry{name: "upp-windows-amd64/upp.exe", content: string(realBytes)},
+				zipEntry{name: "README.md", content: "readme"},
+				zipEntry{name: "upp-windows-amd64/LICENSE", content: "mit"},
+			),
+			wantName: "upp.exe",
+			wantErr:  false,
+		},
+		{
+			name: "binary entry missing",
+			archive: buildZipArchive(t, zipEntry{
+				name:    "upp-windows-amd64/README.txt",
+				content: "x",
+			}),
+			wantErr: true,
+		},
+		{
+			name: "path traversal rejected",
+			archive: buildZipArchive(t, zipEntry{
+				name:    "../outside.exe",
+				content: "x",
+			}),
+			wantErr: true,
+		},
+		{
+			name: "nested path traversal rejected",
+			archive: buildZipArchive(t, zipEntry{
+				name:    "upp-windows-amd64/../../outside.exe",
+				content: "x",
+			}),
+			wantErr: true,
+		},
+		{
+			name: "absolute path rejected",
+			archive: buildZipArchive(t, zipEntry{
+				name:    "/etc/upp.exe",
+				content: "x",
+			}),
+			wantErr: true,
+		},
+		{
+			name: "symlink entry rejected",
+			archive: buildZipArchive(t,
+				zipEntry{name: "upp-windows-amd64/upp.exe", content: string(realBytes)},
+				zipEntry{name: "link.exe", content: "target", mode: os.ModeSymlink | 0o777},
+			),
+			wantErr: true,
+		},
+		{
+			name: "binary entry as directory rejected",
+			archive: buildZipArchive(t, zipEntry{
+				name: "upp-windows-amd64/upp.exe/",
+				mode: os.ModeDir | 0o755,
+			}),
+			wantErr: true,
+		},
+		{
+			name:    "invalid zip data",
+			archive: []byte("not a zip archive"),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), assetName)
+			writeFile(t, archivePath, tt.archive, 0o644)
+			dest := t.TempDir()
+			got, err := extract(archivePath, assetName, dest)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("extract: want error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("extract: %v", err)
+			}
+			wantPath := filepath.Join(dest, tt.wantName)
+			if got != wantPath {
+				t.Errorf("extract returned %q, want %q", got, wantPath)
+			}
+			data, err := os.ReadFile(wantPath)
+			if err != nil {
+				t.Fatalf("read extracted binary: %v", err)
+			}
+			if !bytes.Equal(data, realBytes) {
+				t.Errorf("extracted bytes = %q, want %q", data, realBytes)
+			}
+			fi, err := os.Stat(wantPath)
+			if err != nil {
+				t.Fatalf("stat extracted binary: %v", err)
+			}
+			if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755 {
+				t.Errorf("extracted binary mode = %v, want 0755", fi.Mode().Perm())
+			}
+			entries, err := os.ReadDir(dest)
+			if err != nil {
+				t.Fatalf("read dest dir: %v", err)
+			}
+			if len(entries) != 1 || entries[0].Name() != tt.wantName {
+				t.Errorf("dest dir entries = %v, want exactly [%s]", entries, tt.wantName)
+			}
+		})
+	}
 }
 
 func TestPrepare(t *testing.T) {
@@ -623,6 +795,31 @@ func TestReplace(t *testing.T) {
 		b := backups(t, binPath)
 		if len(b) != 1 {
 			t.Fatalf("backup count = %d (%v), want exactly 1", len(b), b)
+		}
+		assertBinary(t, b[0], oldBytes)
+		assertNoTempLeftovers(t, dir)
+	})
+
+	t.Run("replaces .exe binary and preserves .exe extension on backup", func(t *testing.T) {
+		dir := t.TempDir()
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			dir = resolved
+		}
+		binPath := filepath.Join(dir, "upp.exe")
+		newPath := filepath.Join(dir, "staged.exe")
+		writeFile(t, binPath, oldBytes, 0o755)
+		writeFile(t, newPath, newBytes, 0o755)
+
+		if err := Replace(binPath, newPath); err != nil {
+			t.Fatalf("Replace: %v", err)
+		}
+		assertBinary(t, binPath, newBytes)
+		b, err := filepath.Glob(filepath.Join(dir, "upp.backup.*.exe"))
+		if err != nil {
+			t.Fatalf("glob backups: %v", err)
+		}
+		if len(b) != 1 {
+			t.Fatalf("backup count = %d (%v), want exactly 1 ending in .exe", len(b), b)
 		}
 		assertBinary(t, b[0], oldBytes)
 		assertNoTempLeftovers(t, dir)
