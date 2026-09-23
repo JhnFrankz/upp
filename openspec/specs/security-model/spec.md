@@ -91,6 +91,25 @@ A check command classified above `RiskLow` MUST NOT run from a read-only surface
 
 (Previously: the `--ci` scenarios required a privileged OFFICIAL row to fail closed — pacman's self-update and the apt sudo package group both exited non-zero, because the adapter was TrustOfficial and `EnforceRisk` was derived from the declaration. Two consequences followed from classifying by the declaration instead of the command: apt's self-update ran `sudo apt install --only-upgrade apt` without ever prompting (it declared no `Privileges`), while pacman's identical-shaped privileged row did prompt; and `--ci` was unusable on any Debian/Ubuntu host with pending apt updates. Confirmation now classifies by the real command for every row, and `--ci` distinguishes only by who ships the command.)
 
+### Requirement: Risk Classification Heuristics
+
+The system MUST classify command risk levels (`RiskLow`, `RiskMedium`, `RiskHigh`) and detect privilege escalation using word-boundary matching (`\b`) and pattern analysis, preventing false positives on benign identifiers containing keyword substrings:
+
+- Single-token privilege escalators and elevation verbs (`sudo`, `doas`, `pkexec`, `su`, `runas`, `admin`/`administrator`) MUST be evaluated using case-insensitive word-boundary matching (`\b`). Benign identifiers containing these substrings (e.g. `pseudocode`, `consudo`, `sysadmin`, `pkexecution`, `prunas`, `supertool`) MUST NOT trigger privilege detection.
+- High-risk single-token command keywords (`eval`, `sudo`, `doas`, `pkexec`, `runas`) MUST use case-insensitive word-boundary matching (`\b`), preventing benign command names (e.g. `evaluate-benchmark`, `pseudocode-linter`) from being classified as `RiskHigh`.
+- Command chaining and subshell execution vectors MUST elevate command risk to at least `RiskMedium`. Chaining detection MUST recognize sequential/conditional operators (`&&`, `||`, `;`) and command substitution vectors (`$(...)` and subshells enclosed with paired backticks `` `...` ``).
+- Multi-word phrases (`rm -rf`, `rm -r /`, `curl -fsSL`, `rm -rf /`) and pipe-to-shell patterns (`| sh`, `| bash`, `| python`, etc.) remain classified as `RiskHigh`.
+
+| Scenario | GIVEN | WHEN | THEN |
+|----------|-------|------|------|
+| Benign privilege substring | Command contains `pseudocode` or `pip install sysadmin` | `DetectPrivileges` evaluated | Returns empty/no privileges |
+| Benign eval prefix | Command is `evaluate-benchmark` | `ClassifyCommand` evaluated | Returns `RiskLow`, not `RiskHigh` |
+| Command substitution dollar | Command contains `echo $(whoami)` | `ClassifyCommand` evaluated | Detected as command chaining, returns `RiskMedium` |
+| Command substitution backtick | Command contains `echo `id`` | `ClassifyCommand` evaluated | Detected as command chaining, returns `RiskMedium` |
+| Privilege escalation detection | Command is `sudo apt upgrade` or `runas /user:Administrator cmd` | `DetectPrivileges` evaluated | Returns detected privilege tokens (`sudo`, `runas`, `admin`) |
+
+(Previously: `DetectPrivileges` and `ClassifyCommand` used raw substring matching via `strings.Contains`, causing benign commands like `pseudocode` or `evaluate-models` to trigger false-positive privilege detection or high-risk classification; `hasCommandChaining` only checked `&&`, `||`, and `;`, omitting subshell command substitutions.)
+
 ### Requirement: Official Command Versus Custom Command Under `--ci`
 
 Interactive confirmation MUST classify every row by the real risk of the command it will execute, whatever the row's origin or trust: any command above RiskLow MUST prompt before running.
