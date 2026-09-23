@@ -55,22 +55,13 @@ curl -fsSL https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.
 
 ### Windows (PowerShell)
 
-Download and extract the latest `upp.exe` to your user binary directory:
+The recommended way to install `upp` on Windows. It automatically detects your architecture (x64 / arm64), downloads the latest matching release, verifies its SHA-256 checksum, places `upp.exe` in `$env:LOCALAPPDATA\upp\bin`, and adds it to your user PATH:
 
 ```powershell
-# Create destination directory if needed (e.g. in your user Profile)
-$binDir = "$HOME\bin"
-New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-
-# Download, extract, and place upp.exe
-Invoke-WebRequest -Uri "https://github.com/JhnFrankz/upp/releases/latest/download/upp-windows-amd64.zip" -OutFile "$env:TEMP\upp.zip"
-Expand-Archive -Path "$env:TEMP\upp.zip" -DestinationPath "$env:TEMP\upp-extract" -Force
-Move-Item -Force "$env:TEMP\upp-extract\upp-windows-amd64\upp.exe" "$binDir\upp.exe"
-Remove-Item -Recurse -Force "$env:TEMP\upp.zip", "$env:TEMP\upp-extract"
-
-# Ensure $binDir is in your Path if not already present
-if ($env:Path -notlike "*$binDir*") { [Environment]::SetEnvironmentVariable("Path", "$env:Path;$binDir", "User") }
+irm https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.ps1 | iex
 ```
+
+You can also pin a specific release using `$env:VERSION = "v0.8.0"` or customize the directory with `$env:INSTALL_DIR`.
 
 ### Go Install
 
