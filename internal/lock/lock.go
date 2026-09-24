@@ -111,11 +111,13 @@ func (l *Lock) Release() error {
 	if l == nil || l.file == nil {
 		return nil
 	}
-	_ = os.Remove(l.path)
+	err := os.Remove(l.path)
 	unlockErr := unlock(l.file)
 	closeErr := l.file.Close()
 	l.file = nil
-	_ = os.Remove(l.path)
+	if err != nil {
+		_ = os.Remove(l.path)
+	}
 	if unlockErr != nil {
 		return unlockErr
 	}

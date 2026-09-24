@@ -425,6 +425,19 @@ func checkProcessLock(deps DoctorDeps) []CheckResult {
 			},
 		}
 	}
+	if lockErr != nil {
+		_ = f.Close()
+		return []CheckResult{
+			{
+				Category: "Process Lock",
+				Name:     "Process Lock",
+				Status:   SeverityWarn,
+				Message:  fmt.Sprintf("Cannot test lock on file: %v", lockErr),
+				Detail:   lockPath,
+				FixHint:  fmt.Sprintf("Check permissions or remove lock file: rm %s", lockPath),
+			},
+		}
+	}
 
 	_ = lock.Unlock(f)
 	_ = f.Close()

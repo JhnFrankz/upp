@@ -324,6 +324,51 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 		}
 	})
 
+	t.Run("stale lock with alive PID not holding lock", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		_ = os.WriteFile(lockPath, []byte("5678\n"), 0o644)
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+		deps.ProcessAlive = func(pid int) bool { return pid == 5678 }
+		deps.TryLock = func(f *os.File) error { return nil }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn for stale lock, got %v", lockRes.Status)
+		}
+		if !strings.Contains(lockRes.Message, "does not hold lock") {
+			t.Errorf("expected message to mention does not hold lock, got %q", lockRes.Message)
+		}
+	})
+
+	t.Run("tryLock unexpected error", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		_ = os.WriteFile(lockPath, []byte("1234\n"), 0o644)
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+		deps.TryLock = func(f *os.File) error { return errors.New("simulated I/O failure") }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn for tryLock error, got %v", lockRes.Status)
+		}
+		if !strings.Contains(lockRes.Message, "Cannot test lock on file") {
+			t.Errorf("expected message to mention Cannot test lock on file, got %q", lockRes.Message)
+		}
+	})
+
 	t.Run("corrupted lock file", func(t *testing.T) {
 		deps := baseTestDeps(t)
 		tmp := t.TempDir()
@@ -607,6 +652,34 @@ func TestDefaultFindAllPaths_SymlinkAndHardlinkDeduplication(t *testing.T) {
 		}
 		if res.Status != SeverityOK {
 			t.Errorf("expected SeverityOK (no shadowing), got %v: %s", res.Status, res.Message)
+		}
+	})
+
+	t.Run("hardlink across directories deduplicated", func(t *testing.T) {
+		tmp := t.TempDir()
+		dir1 := filepath.Join(tmp, "dir1")
+		dir2 := filepath.Join(tmp, "dir2")
+		if err := os.MkdirAll(dir1, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(dir2, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		bin1 := filepath.Join(dir1, "tool")
+		if err := os.WriteFile(bin1, []byte("#!/bin/sh\necho same\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		bin2 := filepath.Join(dir2, "tool")
+		if err := os.Link(bin1, bin2); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("PATH", dir1+string(filepath.ListSeparator)+dir2)
+
+		found := defaultFindAllPaths("tool")
+		if len(found) != 1 {
+			t.Fatalf("expected 1 deduplicated path for hardlinks, got %d: %v", len(found), found)
 		}
 	})
 
