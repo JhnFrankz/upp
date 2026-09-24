@@ -31,9 +31,6 @@ func NewDoctorCommand(gf *GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-// NewDoctorCmd is an alias for NewDoctorCommand.
-var NewDoctorCmd = NewDoctorCommand
-
 func runDoctor(ctx context.Context, gf *GlobalFlags, out io.Writer, deps doctorDeps) error {
 	if err := ctx.Err(); err != nil {
 		return err
