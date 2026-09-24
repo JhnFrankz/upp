@@ -201,3 +201,27 @@ func TestRunList_OwnedToolGroupedUnderManager(t *testing.T) {
 		t.Errorf("output missing owned tool 'gh' 2.4.0, got:\n%s", out)
 	}
 }
+
+func TestRunList_UnknownOnlyToolWarning(t *testing.T) {
+	tool := &fakeUpdateAdapter{
+		name:   "apt",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		info:   adapters.UpdateInfo{CurrentVersion: "1.0.0"},
+	}
+	probeHome(t)
+	deps := listDeps{buildAdapterList: fakeAdapterList(tool)}
+	gf := &GlobalFlags{Only: "unknown-tool"}
+
+	errOut := withCapturedStderr(func() {
+		_ = withCapturedStdout(func() {
+			if err := runList(context.Background(), gf, deps); err != nil {
+				t.Fatalf("runList returned error: %v", err)
+			}
+		})
+	})
+
+	if !strings.Contains(strings.ToLower(errOut), `warning: tool "unknown-tool" not found`) {
+		t.Errorf("expected stderr to contain warning: tool %q not found, got: %q", "unknown-tool", errOut)
+	}
+}

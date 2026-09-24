@@ -315,7 +315,15 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 					r.Progress("Updating", i+1, total, info.Name)
 				}
 				if oc.UpdateAvailable {
-					r.DryRunPlanned(fmt.Sprintf("%s (%s → %s)", info.Name, oc.CurrentVersion, oc.LatestVersion))
+					if oc.CurrentVersion != "" && oc.LatestVersion != "" {
+						if oc.CurrentVersion == oc.LatestVersion {
+							r.DryRunPlanned(fmt.Sprintf("%s (%s → update available)", info.Name, oc.CurrentVersion))
+						} else {
+							r.DryRunPlanned(fmt.Sprintf("%s (%s → %s)", info.Name, oc.CurrentVersion, oc.LatestVersion))
+						}
+					} else {
+						r.DryRunPlanned(info.Name)
+					}
 					results[i] = output.ToolResult{
 						Name:    info.Name,
 						Status:  output.StatusAvailable,

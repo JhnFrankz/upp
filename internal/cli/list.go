@@ -61,6 +61,9 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 	}
 
 	only := ParseFilter(gf.Only)
+	if len(only) > 0 {
+		FilterTools(adapterIDs(allAdapters), only, os.Stderr)
+	}
 	adapterList, err := eng.Resolve(engine.Filter{Only: only})
 	if err != nil {
 		return fmt.Errorf("cannot resolve tools: %w", err)
