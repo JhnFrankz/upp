@@ -51,13 +51,10 @@ func (a *BrewAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 // D2). It runs `brew outdated --json <pkg>` and parses the JSON array. brew
 // is an AlwaysUpdate manager, so this is still the real availability signal:
 // a brew formula present in the outdated JSON array has a newer version.
-// CheckPackage reports the installed vs latest version of an owned package
-// (e.g. `gh`, `docker`, `golang`) under brew, so an owned tool's delegated
-// Check() and the manager-group bulk path know a real update exists (design
-// D2). It runs `brew outdated --json <pkg>` and parses the JSON array. brew
-// is an AlwaysUpdate manager, so this is still the real availability signal:
-// a brew formula present in the outdated JSON array has a newer version.
 func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	if !a.Detect() {
+		return adapters.UpdateInfo{}, fmt.Errorf("brew is not installed")
+	}
 	stdout, err := commandOutputErr(ctx, "brew", "outdated", "--json", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err

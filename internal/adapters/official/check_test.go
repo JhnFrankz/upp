@@ -1408,6 +1408,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &BrewAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json gh": {stdout: `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`},
 				},
@@ -1419,6 +1420,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &BrewAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json gh": {stdout: `[]`},
 				},
@@ -1430,6 +1432,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &BrewAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json gh": {err: errors.New("brew: network error")},
 				},
@@ -1444,6 +1447,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &WingetAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
 				cmdArgs: map[string]fakeResult{
 					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
 				},
@@ -1455,6 +1459,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &WingetAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
 				cmdArgs: map[string]fakeResult{
 					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nfoo  Baz.Corp.App  1.0.0  2.0.0  winget\n"},
 				},
@@ -1466,6 +1471,7 @@ func TestCheckPackage(t *testing.T) {
 			checker: &WingetAdapter{},
 			pkg:     "gh",
 			fakes: execFakes{
+				lookPath: map[string]bool{"winget": true},
 				cmdArgs: map[string]fakeResult{
 					"winget upgrade": {stdout: ""},
 				},
@@ -1774,6 +1780,34 @@ func TestAptCheckPackage_NotInstalled(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "apt is not installed") {
 		t.Errorf("error = %q, want contains 'apt is not installed'", err.Error())
+	}
+}
+
+func TestBrewCheckPackage_NotInstalled(t *testing.T) {
+	brew := &BrewAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"brew": false},
+	})
+	_, err := brew.CheckPackage(context.Background(), "gh")
+	if err == nil {
+		t.Fatal("CheckPackage() expected error when brew is not installed, got nil")
+	}
+	if !strings.Contains(err.Error(), "brew is not installed") {
+		t.Errorf("error = %q, want contains 'brew is not installed'", err.Error())
+	}
+}
+
+func TestWingetCheckPackage_NotInstalled(t *testing.T) {
+	winget := &WingetAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"winget": false},
+	})
+	_, err := winget.CheckPackage(context.Background(), "gh")
+	if err == nil {
+		t.Fatal("CheckPackage() expected error when winget is not installed, got nil")
+	}
+	if !strings.Contains(err.Error(), "winget is not installed") {
+		t.Errorf("error = %q, want contains 'winget is not installed'", err.Error())
 	}
 }
 
