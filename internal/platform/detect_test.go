@@ -7,6 +7,7 @@ import (
 )
 
 func TestNormalizeOS(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		rawOS   string
@@ -27,6 +28,7 @@ func TestNormalizeOS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := NormalizeOS(tt.rawOS)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("NormalizeOS(%q) error = %v, wantErr %v", tt.rawOS, err, tt.wantErr)
@@ -45,6 +47,7 @@ func TestNormalizeOS(t *testing.T) {
 }
 
 func TestNormalizeArch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		rawArch string
@@ -61,6 +64,7 @@ func TestNormalizeArch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := NormalizeArch(tt.rawArch)
 			if got != tt.want {
 				t.Errorf("NormalizeArch(%q) = %q, want %q", tt.rawArch, got, tt.want)
@@ -70,6 +74,7 @@ func TestNormalizeArch(t *testing.T) {
 }
 
 func TestDetect(t *testing.T) {
+	t.Parallel()
 	p, err := Detect()
 	if err != nil {
 		t.Fatalf("Detect() returned error: %v", err)
@@ -93,6 +98,7 @@ func TestDetect(t *testing.T) {
 }
 
 func TestDetectConsistency(t *testing.T) {
+	t.Parallel()
 	p1, err1 := Detect()
 	p2, err2 := Detect()
 
@@ -111,6 +117,7 @@ func TestDetectConsistency(t *testing.T) {
 }
 
 func TestMustDetectPanics(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("MustDetect() panicked on supported platform: %v", r)

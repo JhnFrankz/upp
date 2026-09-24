@@ -6,6 +6,7 @@ import (
 )
 
 func TestConfirmAction_OfficialTools(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		riskLevel RiskLevel
@@ -17,6 +18,7 @@ func TestConfirmAction_OfficialTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:   "brew",
 				TrustLevel: TrustOfficial,
@@ -33,6 +35,7 @@ func TestConfirmAction_OfficialTools(t *testing.T) {
 }
 
 func TestConfirmAction_CustomUntrusted_CI(t *testing.T) {
+	t.Parallel()
 	// D4: CI Low→Auto (even untrusted); Medium→Err; High→Err — no prompts possible.
 	tests := []struct {
 		name      string
@@ -46,6 +49,7 @@ func TestConfirmAction_CustomUntrusted_CI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
 				TrustLevel: TrustCustomUntrusted,
@@ -62,6 +66,7 @@ func TestConfirmAction_CustomUntrusted_CI(t *testing.T) {
 }
 
 func TestConfirmAction_CustomTrusted_CI(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		riskLevel RiskLevel
@@ -74,6 +79,7 @@ func TestConfirmAction_CustomTrusted_CI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
 				TrustLevel: TrustCustomTrusted,
@@ -90,6 +96,7 @@ func TestConfirmAction_CustomTrusted_CI(t *testing.T) {
 }
 
 func TestConfirmAction_CustomHighRisk_Interactive(t *testing.T) {
+	t.Parallel()
 	// High risk always prompts — regardless of trust.
 	tests := []struct {
 		name  string
@@ -105,6 +112,7 @@ func TestConfirmAction_CustomHighRisk_Interactive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
 				TrustLevel: tt.trust,
@@ -123,6 +131,7 @@ func TestConfirmAction_CustomHighRisk_Interactive(t *testing.T) {
 }
 
 func TestConfirmAction_CustomMediumRisk_Interactive(t *testing.T) {
+	t.Parallel()
 	// Untrusted medium risk prompts; trusted medium risk shows info and proceeds.
 	tests := []struct {
 		name  string
@@ -137,6 +146,7 @@ func TestConfirmAction_CustomMediumRisk_Interactive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var reader *strings.Reader
 			if tt.input != "" {
 				reader = strings.NewReader(tt.input)
@@ -158,6 +168,7 @@ func TestConfirmAction_CustomMediumRisk_Interactive(t *testing.T) {
 }
 
 func TestConfirmAction_EnforceRiskOfficialHigh_Interactive(t *testing.T) {
+	t.Parallel()
 	// D4 reclassification: an owned tool is TrustOfficial, but with
 	// EnforceRisk:true the REAL command risk decides — so a sudo-heavy High
 	// risk must PROMPT (any trust), never short-circuit to ConfirmAuto.
@@ -173,6 +184,7 @@ func TestConfirmAction_EnforceRiskOfficialHigh_Interactive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:    "gh",
 				TrustLevel:  TrustOfficial,
@@ -192,6 +204,7 @@ func TestConfirmAction_EnforceRiskOfficialHigh_Interactive(t *testing.T) {
 }
 
 func TestConfirmAction_EnforceRiskOfficialHigh_CI(t *testing.T) {
+	t.Parallel()
 	// D4 reclassification in --ci: EnforceRisk:true + TrustOfficial + High
 	// risk MUST error (non-zero die), not auto-proceed as the official
 	// short-circuit would.
@@ -211,6 +224,7 @@ func TestConfirmAction_EnforceRiskOfficialHigh_CI(t *testing.T) {
 }
 
 func TestConfirmAction_EnforceRiskOfficialLow(t *testing.T) {
+	t.Parallel()
 	// D4 triangulation: EnforceRisk:true + TrustOfficial does NOT make every
 	// official row prompt — the RISK decides. A Low (non-sudo) command stays
 	// auto-proceed (CI) / info-proceed (interactive) because Low never
@@ -226,6 +240,7 @@ func TestConfirmAction_EnforceRiskOfficialLow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:    "gh",
 				TrustLevel:  TrustOfficial,
@@ -243,6 +258,7 @@ func TestConfirmAction_EnforceRiskOfficialLow(t *testing.T) {
 }
 
 func TestConfirmAction_CustomLowRisk_Interactive(t *testing.T) {
+	t.Parallel()
 	// Low risk always shows info and proceeds — regardless of trust.
 	tests := []struct {
 		name  string
@@ -254,6 +270,7 @@ func TestConfirmAction_CustomLowRisk_Interactive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ConfirmConfig{
 				ToolName:   "mytool",
 				TrustLevel: tt.trust,

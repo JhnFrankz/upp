@@ -3,6 +3,7 @@ package security
 import "testing"
 
 func TestClassifyCommand_HighRisk(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -39,6 +40,7 @@ func TestClassifyCommand_HighRisk(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := ClassifyCommand(tt.cmd)
 			if got != RiskHigh {
 				t.Errorf("ClassifyCommand(%q) = %v, want RiskHigh", tt.cmd, got)
@@ -48,6 +50,7 @@ func TestClassifyCommand_HighRisk(t *testing.T) {
 }
 
 func TestClassifyCommand_MediumRisk(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -66,6 +69,7 @@ func TestClassifyCommand_MediumRisk(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := ClassifyCommand(tt.cmd)
 			if got != RiskMedium {
 				t.Errorf("ClassifyCommand(%q) = %v, want RiskMedium", tt.cmd, got)
@@ -75,6 +79,7 @@ func TestClassifyCommand_MediumRisk(t *testing.T) {
 }
 
 func TestClassifyCommand_LowRisk(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -90,6 +95,7 @@ func TestClassifyCommand_LowRisk(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := ClassifyCommand(tt.cmd)
 			if got != RiskLow {
 				t.Errorf("ClassifyCommand(%q) = %v, want RiskLow", tt.cmd, got)
@@ -99,6 +105,7 @@ func TestClassifyCommand_LowRisk(t *testing.T) {
 }
 
 func TestRiskLevelString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		level RiskLevel
 		want  string
@@ -117,6 +124,7 @@ func TestRiskLevelString(t *testing.T) {
 }
 
 func TestPipeToShell(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -150,6 +158,7 @@ func TestPipeToShell(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := hasPipeToShell(tt.cmd); got != tt.want {
 				t.Errorf("hasPipeToShell(%q) = %v, want %v", tt.cmd, got, tt.want)
 			}
@@ -158,6 +167,7 @@ func TestPipeToShell(t *testing.T) {
 }
 
 func TestCommandChaining(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -174,6 +184,7 @@ func TestCommandChaining(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := hasCommandChaining(tt.cmd); got != tt.want {
 				t.Errorf("hasCommandChaining(%q) = %v, want %v", tt.cmd, got, tt.want)
 			}

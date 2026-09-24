@@ -7,6 +7,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		in      string
@@ -34,6 +35,7 @@ func TestParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := version.Parse(tt.in)
 			if tt.wantErr {
 				if err == nil {
@@ -52,6 +54,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		a, b string
@@ -73,6 +76,7 @@ func TestCompare(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a, err := version.Parse(tt.a)
 			if err != nil {
 				t.Fatalf("Parse(%q): %v", tt.a, err)
@@ -89,6 +93,7 @@ func TestCompare(t *testing.T) {
 }
 
 func TestExtractVersionFromString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -110,6 +115,7 @@ func TestExtractVersionFromString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := version.ExtractVersionFromString(tt.input)
 			if got != tt.want {
 				t.Errorf("ExtractVersionFromString(%q) = %q, want %q", tt.input, got, tt.want)
@@ -119,6 +125,7 @@ func TestExtractVersionFromString(t *testing.T) {
 }
 
 func TestExtractVersionFromOutput(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -132,6 +139,7 @@ func TestExtractVersionFromOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := version.ExtractVersionFromOutput(tt.input)
 			if got != tt.want {
 				t.Errorf("ExtractVersionFromOutput(%q) = %q, want %q", tt.input, got, tt.want)
@@ -141,6 +149,7 @@ func TestExtractVersionFromOutput(t *testing.T) {
 }
 
 func TestIsVersionLike(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  bool
@@ -161,6 +170,7 @@ func TestIsVersionLike(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
 			got := version.IsVersionLike(tt.input)
 			if got != tt.want {
 				t.Errorf("IsVersionLike(%q) = %v, want %v", tt.input, got, tt.want)
