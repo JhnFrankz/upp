@@ -50,6 +50,23 @@ func withCapturedStdout(fn func()) string {
 	return buf.String()
 }
 
+// withCapturedStderr runs fn while capturing os.Stderr.
+// Returns the captured output.
+func withCapturedStderr(fn func()) string {
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	fn()
+
+	_ = w.Close()
+	os.Stderr = origStderr
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	return buf.String()
+}
+
 // --- Filter Integration Tests ---
 
 func TestFilterTools_Integration(t *testing.T) {
