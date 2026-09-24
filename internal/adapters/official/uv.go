@@ -172,17 +172,19 @@ func (a *UvAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 				Before:  before,
 				After:   before,
 				Error:   fmt.Errorf("uv self update failed: %w", err),
+				Stderr:  stderr,
 			}, nil
 		}
 	}
 
-	_, _, err = runCmdArgsUpdate(ctx, "uv", "tool", "upgrade", "--all")
+	_, toolStderr, err := runCmdArgsUpdate(ctx, "uv", "tool", "upgrade", "--all")
 	if err != nil {
 		return adapters.Result{
 			Success: false,
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("uv tool upgrade failed: %w", err),
+			Stderr:  toolStderr,
 		}, nil
 	}
 

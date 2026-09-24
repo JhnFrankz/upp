@@ -113,7 +113,7 @@ func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command))
 	}
 
-	stdout, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
+	stdout, _, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("check command failed for %s: %w", c.id, err)
 	}
@@ -166,11 +166,12 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 		}, nil
 	}
 
-	_, err := shellExec(ctx, c.command)
+	_, stderr, err := shellExec(ctx, c.command)
 	if err != nil {
 		return Result{
 			Success:    false,
 			Error:      fmt.Errorf("update command failed for %s: %w", c.id, err),
+			Stderr:     stderr,
 			Privileges: privileges,
 		}, nil
 	}
@@ -235,12 +236,12 @@ func extractBaseCommand(cmd string) string {
 }
 
 // shellExec runs a command via the platform shell, bounded by UpdateTimeout.
-func shellExec(ctx context.Context, command string) (string, error) {
+func shellExec(ctx context.Context, command string) (string, string, error) {
 	return shellExecWithTimeout(ctx, command, UpdateTimeout)
 }
 
 // shellExecWithTimeout delegates to the shellExecWithTimeoutFn seam variable.
-func shellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, error) {
+func shellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, string, error) {
 	return shellExecWithTimeoutFn(ctx, command, timeout)
 }
 

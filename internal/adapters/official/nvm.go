@@ -128,6 +128,7 @@ func (a *NVMAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("nvm install --lts failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -137,6 +138,7 @@ func (a *NVMAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("nvm install error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 

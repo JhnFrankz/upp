@@ -74,6 +74,7 @@ func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("npm update failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -83,6 +84,7 @@ func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("npm update error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 

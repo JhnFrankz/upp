@@ -104,6 +104,7 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("apt upgrade failed: %w", err),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}
@@ -114,6 +115,7 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("apt upgrade error: %s", truncate(stderr, 200)),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}
@@ -158,6 +160,7 @@ func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("apt upgrade failed: %w", err),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}
@@ -168,6 +171,7 @@ func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("apt upgrade error: %s", truncate(stderr, 200)),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}

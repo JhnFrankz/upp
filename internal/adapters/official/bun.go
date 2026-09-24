@@ -59,6 +59,7 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("bun upgrade failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -68,6 +69,7 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("bun upgrade error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 

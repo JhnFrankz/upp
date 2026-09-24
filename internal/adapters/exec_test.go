@@ -127,7 +127,7 @@ func TestDefaultShellExecWithTimeout_TrimsOutput(t *testing.T) {
 		t.Skip("shell output path skipped on windows")
 	}
 
-	out, err := defaultShellExecWithTimeout(context.Background(), "echo hello", 5*time.Second)
+	out, _, err := defaultShellExecWithTimeout(context.Background(), "echo hello", 5*time.Second)
 	if err != nil {
 		t.Fatalf("defaultShellExecWithTimeout() error = %v", err)
 	}
@@ -143,7 +143,7 @@ func TestDefaultShellExecWithTimeout_KillsOnDeadline(t *testing.T) {
 		t.Skip("process-group kill verification requires unix")
 	}
 
-	_, err := defaultShellExecWithTimeout(context.Background(), "sleep 30", 100*time.Millisecond)
+	_, _, err := defaultShellExecWithTimeout(context.Background(), "sleep 30", 100*time.Millisecond)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("defaultShellExecWithTimeout() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
@@ -159,7 +159,7 @@ func TestDefaultShellExecWithTimeout_KillsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel before or right away
 
-	_, err := defaultShellExecWithTimeout(ctx, "sleep 30", 5*time.Second)
+	_, _, err := defaultShellExecWithTimeout(ctx, "sleep 30", 5*time.Second)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("defaultShellExecWithTimeout() error = %v, want errors.Is(err, context.Canceled)", err)
 	}

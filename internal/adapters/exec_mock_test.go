@@ -13,6 +13,7 @@ import (
 // fakeResult is the canned output of a mocked command.
 type fakeResult struct {
 	stdout string
+	stderr string
 	err    error
 }
 
@@ -31,13 +32,13 @@ func setExecFakes(t *testing.T, f execFakes) {
 	origShellExecWithTimeout := shellExecWithTimeoutFn
 	origLookPath := lookPathFn
 
-	shellExecWithTimeoutFn = func(ctx context.Context, command string, timeout time.Duration) (string, error) {
+	shellExecWithTimeoutFn = func(ctx context.Context, command string, timeout time.Duration) (string, string, error) {
 		if f.shell != nil {
 			if r, ok := f.shell[command]; ok {
-				return r.stdout, r.err
+				return r.stdout, r.stderr, r.err
 			}
 		}
-		return "", fmt.Errorf("command not mocked: %s", command)
+		return "", "", fmt.Errorf("command not mocked: %s", command)
 	}
 
 	lookPathFn = func(name string) (string, error) {
@@ -75,12 +76,12 @@ func TestExecFakes_Isolation(t *testing.T) {
 		})
 
 		// Test intercepted shellExecWithTimeoutFn
-		out, err := shellExecWithTimeoutFn(context.Background(), "mock-cmd", 1*time.Second)
+		out, _, err := shellExecWithTimeoutFn(context.Background(), "mock-cmd", 1*time.Second)
 		if err != nil || out != "mocked output" {
 			t.Errorf("shellExecWithTimeoutFn(mock-cmd) = (%q, %v), want (%q, nil)", out, err, "mocked output")
 		}
 
-		_, err = shellExecWithTimeoutFn(context.Background(), "err-cmd", 1*time.Second)
+		_, _, err = shellExecWithTimeoutFn(context.Background(), "err-cmd", 1*time.Second)
 		if err == nil || err.Error() != "exec error" {
 			t.Errorf("shellExecWithTimeoutFn(err-cmd) err = %v, want 'exec error'", err)
 		}

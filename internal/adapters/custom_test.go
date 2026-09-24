@@ -311,7 +311,7 @@ func TestCustomAdapter_Update_Failure(t *testing.T) {
 	setExecFakes(t, execFakes{
 		lookPath: map[string]bool{"fail-cmd": true},
 		shell: map[string]fakeResult{
-			"fail-cmd": {stdout: "", err: errors.New("exit status 1")},
+			"fail-cmd": {stdout: "", stderr: "command failed with trace", err: errors.New("exit status 1")},
 		},
 	})
 
@@ -325,6 +325,9 @@ func TestCustomAdapter_Update_Failure(t *testing.T) {
 	}
 	if result.Success {
 		t.Error("Update() with failing command should return Success=false")
+	}
+	if result.Stderr != "command failed with trace" {
+		t.Errorf("result.Stderr = %q, want %q", result.Stderr, "command failed with trace")
 	}
 }
 
@@ -489,7 +492,7 @@ func TestShellExec(t *testing.T) {
 		},
 	})
 
-	stdout, err := shellExec(context.Background(), "echo hello")
+	stdout, _, err := shellExec(context.Background(), "echo hello")
 	if err != nil {
 		t.Fatalf("shellExec() error = %v", err)
 	}
@@ -521,7 +524,7 @@ func TestShellExec_UpdateTimeoutKills(t *testing.T) {
 		},
 	})
 
-	_, err := shellExec(context.Background(), "sleep 2")
+	_, _, err := shellExec(context.Background(), "sleep 2")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("shellExec() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}

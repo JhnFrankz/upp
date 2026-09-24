@@ -104,6 +104,7 @@ func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Res
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("opencode update failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -113,6 +114,7 @@ func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Res
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("opencode update error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 

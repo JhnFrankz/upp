@@ -637,11 +637,15 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 	}
 
 	if updateErr != nil {
+		errStderr := result.Stderr
+		if errStderr == "" {
+			errStderr = updateErr.Error()
+		}
 		return output.ToolResult{
 			Name:   p.ToolName,
 			Status: output.StatusFailed,
 			Error:  engine.TimeoutErr(p.ToolName, "update", updateErr),
-			Stderr: updateErr.Error(),
+			Stderr: errStderr,
 		}
 	}
 
@@ -657,11 +661,15 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 	if errMsg == nil {
 		errMsg = fmt.Errorf("update failed")
 	}
+	errStderr := result.Stderr
+	if errStderr == "" {
+		errStderr = errMsg.Error()
+	}
 	return output.ToolResult{
 		Name:   p.ToolName,
 		Status: output.StatusFailed,
 		Error:  engine.TimeoutErr(p.ToolName, "update", errMsg),
-		Stderr: errMsg.Error(),
+		Stderr: errStderr,
 	}
 }
 
