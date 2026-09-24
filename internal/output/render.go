@@ -55,6 +55,8 @@ type Renderer struct {
 	mu      sync.Mutex
 }
 
+var isTerminalFn = isTerminal
+
 // NewRenderer creates a Renderer that detects color/emoji support.
 func NewRenderer(w io.Writer, quiet bool) *Renderer {
 	return NewRendererVerbose(w, quiet, false)
@@ -62,11 +64,17 @@ func NewRenderer(w io.Writer, quiet bool) *Renderer {
 
 // NewRendererVerbose creates a Renderer with explicit verbose setting.
 func NewRendererVerbose(w io.Writer, quiet, verbose bool) *Renderer {
-	color := isTerminal(w)
+	color := isTerminalFn(w)
+	emoji := color // emoji follows color support
+	noColor := os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb"
+	if noColor {
+		color = false
+		emoji = false
+	}
 	return &Renderer{
 		w:       w,
 		color:   color,
-		emoji:   color, // emoji follows color support
+		emoji:   emoji,
 		quiet:   quiet,
 		verbose: verbose,
 	}
