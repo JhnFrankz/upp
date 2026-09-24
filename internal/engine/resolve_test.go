@@ -470,10 +470,10 @@ func TestResolve_EdgeCases(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown OS passes through canonicalOS", func(t *testing.T) {
-		got := canonicalOS("freebsd")
-		if got != "freebsd" {
-			t.Errorf("canonicalOS(freebsd) = %q, want freebsd", got)
+	t.Run("unknown OS passes through ResolvingOwner safely", func(t *testing.T) {
+		got := ResolvingOwner(nil, "freebsd")
+		if got != nil {
+			t.Errorf("ResolvingOwner(nil, freebsd) = %v, want nil", got)
 		}
 	})
 
