@@ -71,6 +71,9 @@ func (a *WingetAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 // a package that lists no row is reported current (fail-closed: no phantom
 // update).
 func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	if !a.Detect() {
+		return adapters.UpdateInfo{}, fmt.Errorf("winget is not installed")
+	}
 	stdout, err := commandOutputErr(ctx, "winget", "upgrade")
 	if err != nil {
 		return adapters.UpdateInfo{}, err

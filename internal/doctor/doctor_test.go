@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -250,7 +252,7 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 		}
 	})
 
-	t.Run("active process holds lock", func(t *testing.T) {
+	t.Run("active process holds lock via TryLock fake", func(t *testing.T) {
 		deps := baseTestDeps(t)
 		tmp := t.TempDir()
 		lockPath := filepath.Join(tmp, "upp.lock")
@@ -258,6 +260,7 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 
 		deps.LockPath = func() (string, error) { return lockPath, nil }
 		deps.ProcessAlive = func(pid int) bool { return pid == 1234 }
+		deps.TryLock = func(f *os.File) error { return lock.ErrLocked }
 
 		results := Diagnose(context.Background(), deps)
 		lockRes := findResult(results, "Process Lock", "Process Lock")
@@ -267,8 +270,102 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 		if lockRes.Status != SeverityWarn {
 			t.Errorf("expected SeverityWarn for active lock held, got %v", lockRes.Status)
 		}
-		if !strings.Contains(lockRes.Message, "1234") {
-			t.Errorf("expected message to mention PID 1234, got %q", lockRes.Message)
+		if !strings.Contains(lockRes.Message, "Lock held by active process") || !strings.Contains(lockRes.Message, "1234") {
+			t.Errorf("expected message to mention active process and PID 1234, got %q", lockRes.Message)
+		}
+	})
+
+	t.Run("active process holds lock via real acquire", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		l, err := lock.Acquire(lockPath)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+		defer func() { _ = l.Release() }()
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn for active lock held, got %v", lockRes.Status)
+		}
+		if !strings.Contains(lockRes.Message, "Lock held by active process") {
+			t.Errorf("expected message to mention active process, got %q", lockRes.Message)
+		}
+	})
+
+	t.Run("lock clean release removes file and doctor reports SeverityOK", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		l, err := lock.Acquire(lockPath)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+		if err := l.Release(); err != nil {
+			t.Fatalf("failed to release lock: %v", err)
+		}
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityOK {
+			t.Errorf("expected SeverityOK after lock release, got %v", lockRes.Status)
+		}
+	})
+
+	t.Run("stale lock with alive PID not holding lock", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		_ = os.WriteFile(lockPath, []byte("5678\n"), 0o644)
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+		deps.ProcessAlive = func(pid int) bool { return pid == 5678 }
+		deps.TryLock = func(f *os.File) error { return nil }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn for stale lock, got %v", lockRes.Status)
+		}
+		if !strings.Contains(lockRes.Message, "does not hold lock") {
+			t.Errorf("expected message to mention does not hold lock, got %q", lockRes.Message)
+		}
+	})
+
+	t.Run("tryLock unexpected error", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		_ = os.WriteFile(lockPath, []byte("1234\n"), 0o644)
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+		deps.TryLock = func(f *os.File) error { return errors.New("simulated I/O failure") }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn for tryLock error, got %v", lockRes.Status)
+		}
+		if !strings.Contains(lockRes.Message, "Cannot test lock on file") {
+			t.Errorf("expected message to mention Cannot test lock on file, got %q", lockRes.Message)
 		}
 	})
 
@@ -499,6 +596,143 @@ func TestDiagnose_Network(t *testing.T) {
 		}
 		if ghRes.FixHint == "" {
 			t.Errorf("expected FixHint for network error, got empty")
+		}
+	})
+}
+
+func TestDefaultFindAllPaths_SymlinkAndHardlinkDeduplication(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink tests require special privileges on Windows")
+	}
+
+	t.Run("symlink across directories deduplicated", func(t *testing.T) {
+		tmp := t.TempDir()
+		binDir := filepath.Join(tmp, "bin")
+		usrBinDir := filepath.Join(tmp, "usr_bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(usrBinDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		targetBin := filepath.Join(usrBinDir, "tool")
+		if err := os.WriteFile(targetBin, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		symlinkBin := filepath.Join(binDir, "tool")
+		if err := os.Symlink(targetBin, symlinkBin); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("PATH", binDir+string(filepath.ListSeparator)+usrBinDir)
+
+		found := defaultFindAllPaths("tool")
+		if len(found) != 1 {
+			t.Fatalf("expected 1 deduplicated path, got %d: %v", len(found), found)
+		}
+
+		// Diagnose integration check: should not trigger shadowed warning
+		deps := baseTestDeps(t)
+		deps.FindAllPaths = defaultFindAllPaths
+		deps.LookPath = func(name string) (string, error) {
+			if name == "tool" {
+				return found[0], nil
+			}
+			return "", os.ErrNotExist
+		}
+		deps.Adapters = []adapters.Adapter{
+			&mockAdapter{name: "tool", installed: true},
+		}
+
+		results := Diagnose(context.Background(), deps)
+		res := findResult(results, "Tool Paths", "tool")
+		if res == nil {
+			t.Fatal("missing Tool Paths result for tool")
+		}
+		if res.Status != SeverityOK {
+			t.Errorf("expected SeverityOK (no shadowing), got %v: %s", res.Status, res.Message)
+		}
+	})
+
+	t.Run("hardlink across directories deduplicated", func(t *testing.T) {
+		tmp := t.TempDir()
+		dir1 := filepath.Join(tmp, "dir1")
+		dir2 := filepath.Join(tmp, "dir2")
+		if err := os.MkdirAll(dir1, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(dir2, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		bin1 := filepath.Join(dir1, "tool")
+		if err := os.WriteFile(bin1, []byte("#!/bin/sh\necho same\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		bin2 := filepath.Join(dir2, "tool")
+		if err := os.Link(bin1, bin2); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("PATH", dir1+string(filepath.ListSeparator)+dir2)
+
+		found := defaultFindAllPaths("tool")
+		if len(found) != 1 {
+			t.Fatalf("expected 1 deduplicated path for hardlinks, got %d: %v", len(found), found)
+		}
+	})
+
+	t.Run("distinct binaries both returned and shadowed status triggered", func(t *testing.T) {
+		tmp := t.TempDir()
+		dir1 := filepath.Join(tmp, "dir1")
+		dir2 := filepath.Join(tmp, "dir2")
+		if err := os.MkdirAll(dir1, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(dir2, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		bin1 := filepath.Join(dir1, "tool")
+		if err := os.WriteFile(bin1, []byte("#!/bin/sh\necho v1\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		bin2 := filepath.Join(dir2, "tool")
+		if err := os.WriteFile(bin2, []byte("#!/bin/sh\necho v2\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("PATH", dir1+string(filepath.ListSeparator)+dir2)
+
+		found := defaultFindAllPaths("tool")
+		if len(found) != 2 {
+			t.Fatalf("expected 2 distinct paths, got %d: %v", len(found), found)
+		}
+
+		// Diagnose integration check: should trigger shadowed warning
+		deps := baseTestDeps(t)
+		deps.FindAllPaths = defaultFindAllPaths
+		deps.LookPath = func(name string) (string, error) {
+			if name == "tool" {
+				return found[0], nil
+			}
+			return "", os.ErrNotExist
+		}
+		deps.Adapters = []adapters.Adapter{
+			&mockAdapter{name: "tool", installed: true},
+		}
+
+		results := Diagnose(context.Background(), deps)
+		res := findResult(results, "Tool Paths", "tool")
+		if res == nil {
+			t.Fatal("missing Tool Paths result for tool")
+		}
+		if res.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn (shadowed), got %v: %s", res.Status, res.Message)
+		}
+		if !strings.Contains(res.Message, "shadowed") {
+			t.Errorf("expected shadowed message, got %q", res.Message)
 		}
 	})
 }

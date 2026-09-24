@@ -100,14 +100,14 @@ func ClassifyCommand(cmd string) RiskLevel {
 
 	// 1. Keyword matching — high risk first (short-circuits).
 	for _, kw := range HighRiskKeywords {
-		if strings.Contains(lower, kw) {
+		if strings.Contains(lower, strings.ToLower(kw)) {
 			return RiskHigh
 		}
 	}
 
 	// 2. Keyword matching — medium risk.
 	for _, kw := range MediumRiskKeywords {
-		if strings.Contains(lower, kw) {
+		if strings.Contains(lower, strings.ToLower(kw)) {
 			return RiskMedium
 		}
 	}

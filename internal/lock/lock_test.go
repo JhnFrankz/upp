@@ -132,3 +132,62 @@ func TestErrAlreadyRunningMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseDeletesLockFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "test.lock")
+
+	l, err := lock.Acquire(lockPath)
+	if err != nil {
+		t.Fatalf("Acquire failed: %v", err)
+	}
+
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("expected lock file to exist, got: %v", err)
+	}
+
+	if err := l.Release(); err != nil {
+		t.Fatalf("Release failed: %v", err)
+	}
+
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatalf("expected lock file to be removed after Release, but stat err was: %v", err)
+	}
+}
+
+func TestTryLockAndUnlock(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "file.lock")
+
+	f1, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("failed to open f1: %v", err)
+	}
+	defer func() { _ = f1.Close() }()
+
+	if err := lock.TryLock(f1); err != nil {
+		t.Fatalf("TryLock on f1 failed: %v", err)
+	}
+
+	// Second open file descriptor on the same path should fail with ErrLocked
+	f2, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("failed to open f2: %v", err)
+	}
+	defer func() { _ = f2.Close() }()
+
+	err2 := lock.TryLock(f2)
+	if !errors.Is(err2, lock.ErrLocked) {
+		t.Fatalf("expected ErrLocked on f2, got: %v", err2)
+	}
+
+	// Unlock f1, then f2 should be able to acquire
+	if err := lock.Unlock(f1); err != nil {
+		t.Fatalf("Unlock f1 failed: %v", err)
+	}
+
+	if err := lock.TryLock(f2); err != nil {
+		t.Fatalf("TryLock on f2 after f1 unlock failed: %v", err)
+	}
+	_ = lock.Unlock(f2)
+}
