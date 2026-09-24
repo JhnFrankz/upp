@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -28,6 +29,7 @@ type DoctorDeps struct {
 	LoadConfig   func() (*config.Config, error)
 	LockPath     func() (string, error)
 	ProcessAlive func(pid int) bool
+	TryLock      func(f *os.File) error
 	LookPath     func(name string) (string, error)
 	FindAllPaths func(name string) []string
 	Platform     platform.Platform
@@ -45,6 +47,7 @@ func DefaultDoctorDeps() DoctorDeps {
 		LoadConfig:   config.Load,
 		LockPath:     lock.DefaultLockPath,
 		ProcessAlive: defaultProcessAlive,
+		TryLock:      lock.TryLock,
 		LookPath:     exec.LookPath,
 		FindAllPaths: defaultFindAllPaths,
 		Platform:     p,
@@ -146,6 +149,9 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 	}
 	if deps.ProcessAlive == nil {
 		deps.ProcessAlive = defaultProcessAlive
+	}
+	if deps.TryLock == nil {
+		deps.TryLock = lock.TryLock
 	}
 	if deps.LookPath == nil {
 		deps.LookPath = exec.LookPath
@@ -386,7 +392,28 @@ func checkProcessLock(deps DoctorDeps) []CheckResult {
 		}
 	}
 
-	if deps.ProcessAlive(pid) {
+	f, oerr := os.OpenFile(lockPath, os.O_RDWR, 0o600)
+	if oerr != nil {
+		return []CheckResult{
+			{
+				Category: "Process Lock",
+				Name:     "Process Lock",
+				Status:   SeverityWarn,
+				Message:  fmt.Sprintf("Cannot open lock file: %v", oerr),
+				Detail:   lockPath,
+				FixHint:  fmt.Sprintf("Remove inaccessible lock file: rm %s", lockPath),
+			},
+		}
+	}
+
+	tryLock := deps.TryLock
+	if tryLock == nil {
+		tryLock = lock.TryLock
+	}
+
+	lockErr := tryLock(f)
+	if errors.Is(lockErr, lock.ErrLocked) {
+		_ = f.Close()
 		return []CheckResult{
 			{
 				Category: "Process Lock",
@@ -399,12 +426,28 @@ func checkProcessLock(deps DoctorDeps) []CheckResult {
 		}
 	}
 
+	_ = lock.Unlock(f)
+	_ = f.Close()
+
+	if !deps.ProcessAlive(pid) {
+		return []CheckResult{
+			{
+				Category: "Process Lock",
+				Name:     "Process Lock",
+				Status:   SeverityWarn,
+				Message:  fmt.Sprintf("Stale lock file detected (PID: %d is dead)", pid),
+				Detail:   lockPath,
+				FixHint:  fmt.Sprintf("Remove stale lock file: rm %s", lockPath),
+			},
+		}
+	}
+
 	return []CheckResult{
 		{
 			Category: "Process Lock",
 			Name:     "Process Lock",
 			Status:   SeverityWarn,
-			Message:  fmt.Sprintf("Stale lock file detected (PID: %d is dead)", pid),
+			Message:  fmt.Sprintf("Stale lock file detected (PID: %d does not hold lock)", pid),
 			Detail:   lockPath,
 			FixHint:  fmt.Sprintf("Remove stale lock file: rm %s", lockPath),
 		},

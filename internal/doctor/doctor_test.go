@@ -13,6 +13,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -251,7 +252,7 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 		}
 	})
 
-	t.Run("active process holds lock", func(t *testing.T) {
+	t.Run("active process holds lock via TryLock fake", func(t *testing.T) {
 		deps := baseTestDeps(t)
 		tmp := t.TempDir()
 		lockPath := filepath.Join(tmp, "upp.lock")
@@ -259,6 +260,7 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 
 		deps.LockPath = func() (string, error) { return lockPath, nil }
 		deps.ProcessAlive = func(pid int) bool { return pid == 1234 }
+		deps.TryLock = func(f *os.File) error { return lock.ErrLocked }
 
 		results := Diagnose(context.Background(), deps)
 		lockRes := findResult(results, "Process Lock", "Process Lock")
@@ -268,8 +270,57 @@ func TestDiagnose_ProcessLock(t *testing.T) {
 		if lockRes.Status != SeverityWarn {
 			t.Errorf("expected SeverityWarn for active lock held, got %v", lockRes.Status)
 		}
-		if !strings.Contains(lockRes.Message, "1234") {
-			t.Errorf("expected message to mention PID 1234, got %q", lockRes.Message)
+		if !strings.Contains(lockRes.Message, "Lock held by active process") || !strings.Contains(lockRes.Message, "1234") {
+			t.Errorf("expected message to mention active process and PID 1234, got %q", lockRes.Message)
+		}
+	})
+
+	t.Run("active process holds lock via real acquire", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		l, err := lock.Acquire(lockPath)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+		defer func() { _ = l.Release() }()
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn for active lock held, got %v", lockRes.Status)
+		}
+		if !strings.Contains(lockRes.Message, "Lock held by active process") {
+			t.Errorf("expected message to mention active process, got %q", lockRes.Message)
+		}
+	})
+
+	t.Run("lock clean release removes file and doctor reports SeverityOK", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		lockPath := filepath.Join(tmp, "upp.lock")
+		l, err := lock.Acquire(lockPath)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+		if err := l.Release(); err != nil {
+			t.Fatalf("failed to release lock: %v", err)
+		}
+
+		deps.LockPath = func() (string, error) { return lockPath, nil }
+
+		results := Diagnose(context.Background(), deps)
+		lockRes := findResult(results, "Process Lock", "Process Lock")
+		if lockRes == nil {
+			t.Fatal("missing Process Lock result")
+		}
+		if lockRes.Status != SeverityOK {
+			t.Errorf("expected SeverityOK after lock release, got %v", lockRes.Status)
 		}
 	})
 

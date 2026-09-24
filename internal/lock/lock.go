@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-var errLocked = errors.New("file is locked")
+// ErrLocked indicates that the file is currently locked by another process.
+var ErrLocked = errors.New("file is locked")
+
+var errLocked = ErrLocked
 
 // ErrAlreadyRunning indicates that another instance of upp currently holds the process lock.
 type ErrAlreadyRunning struct {
@@ -108,11 +111,24 @@ func (l *Lock) Release() error {
 	if l == nil || l.file == nil {
 		return nil
 	}
+	_ = os.Remove(l.path)
 	unlockErr := unlock(l.file)
 	closeErr := l.file.Close()
 	l.file = nil
+	_ = os.Remove(l.path)
 	if unlockErr != nil {
 		return unlockErr
 	}
 	return closeErr
+}
+
+// TryLock attempts to acquire an advisory lock on the file without blocking.
+// If the file is already locked, it returns ErrLocked.
+func TryLock(f *os.File) error {
+	return tryLock(f)
+}
+
+// Unlock releases an advisory lock on the file.
+func Unlock(f *os.File) error {
+	return unlock(f)
 }

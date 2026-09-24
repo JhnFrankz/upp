@@ -132,3 +132,25 @@ func TestErrAlreadyRunningMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseDeletesLockFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "test.lock")
+
+	l, err := lock.Acquire(lockPath)
+	if err != nil {
+		t.Fatalf("Acquire failed: %v", err)
+	}
+
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("expected lock file to exist, got: %v", err)
+	}
+
+	if err := l.Release(); err != nil {
+		t.Fatalf("Release failed: %v", err)
+	}
+
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatalf("expected lock file to be removed after Release, but stat err was: %v", err)
+	}
+}
