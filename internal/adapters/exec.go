@@ -31,7 +31,7 @@ var (
 // deadline. The returned error is errors.Is-detectable as
 // context.DeadlineExceeded. On Windows only the direct child is terminated.
 // Delegates to the shared RunCommandWithTimeout implementation.
-func defaultShellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, error) {
+func defaultShellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -47,8 +47,8 @@ func defaultShellExecWithTimeout(ctx context.Context, command string, timeout ti
 		setpgid(cmd)
 	}
 
-	stdout, _, err := RunCommandWithTimeout(ctx, cmd)
-	return strings.TrimSpace(stdout), err
+	stdout, stderr, err := RunCommandWithTimeout(ctx, cmd)
+	return strings.TrimSpace(stdout), strings.TrimSpace(stderr), err
 }
 
 // RunCommandWithTimeout runs a started command under ctx, killing the whole

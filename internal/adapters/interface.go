@@ -79,6 +79,7 @@ type Result struct {
 	Before     string
 	After      string
 	Error      error
+	Stderr     string
 	Privileges []string // e.g., ["sudo"]
 }
 

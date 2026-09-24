@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -780,6 +781,56 @@ func TestNewRenderer_NonTTY(t *testing.T) {
 	}
 	if r.emoji {
 		t.Error("renderer for non-TTY should not use emoji")
+	}
+}
+
+func TestNewRenderer_NoColor(t *testing.T) {
+	orig := isTerminalFn
+	isTerminalFn = func(w io.Writer) bool { return true }
+	defer func() { isTerminalFn = orig }()
+
+	t.Setenv("NO_COLOR", "1")
+	var buf bytes.Buffer
+	r := NewRenderer(&buf, false)
+	if r.color {
+		t.Error("expected color to be false when NO_COLOR is set")
+	}
+	if r.emoji {
+		t.Error("expected emoji to be false when NO_COLOR is set")
+	}
+
+	r.ToolLine(ToolResult{Name: "mytool", Status: StatusUpdated})
+	out := buf.String()
+	if strings.Contains(out, "\033[") {
+		t.Errorf("unexpected ANSI color sequence in output: %q", out)
+	}
+	if strings.Contains(out, "✅") {
+		t.Errorf("unexpected emoji in output: %q", out)
+	}
+}
+
+func TestNewRenderer_TermDumb(t *testing.T) {
+	orig := isTerminalFn
+	isTerminalFn = func(w io.Writer) bool { return true }
+	defer func() { isTerminalFn = orig }()
+
+	t.Setenv("TERM", "dumb")
+	var buf bytes.Buffer
+	r := NewRenderer(&buf, false)
+	if r.color {
+		t.Error("expected color to be false when TERM=dumb")
+	}
+	if r.emoji {
+		t.Error("expected emoji to be false when TERM=dumb")
+	}
+
+	r.ToolLine(ToolResult{Name: "mytool", Status: StatusUpdated})
+	out := buf.String()
+	if strings.Contains(out, "\033[") {
+		t.Errorf("unexpected ANSI color sequence in output: %q", out)
+	}
+	if strings.Contains(out, "✅") {
+		t.Errorf("unexpected emoji in output: %q", out)
 	}
 }
 

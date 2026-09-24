@@ -6,6 +6,7 @@ import (
 )
 
 func TestDetectPrivileges(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cmd  string
@@ -135,6 +136,7 @@ func TestDetectPrivileges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := DetectPrivileges(tt.cmd)
 			if !reflect.DeepEqual(got, tt.want) && (len(got) != 0 || len(tt.want) != 0) {
 				t.Errorf("DetectPrivileges(%q) = %v, want %v", tt.cmd, got, tt.want)

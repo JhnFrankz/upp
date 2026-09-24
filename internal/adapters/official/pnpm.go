@@ -99,6 +99,7 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("pnpm update failed (even after recovery): %w (stderr: %s)", err2, truncate(stderr2, 200)),
+			Stderr:  stderr2,
 		}, nil
 	}
 
@@ -107,6 +108,7 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 		Before:  before,
 		After:   before,
 		Error:   fmt.Errorf("pnpm update failed: %w", err),
+		Stderr:  stderr,
 	}, nil
 }
 

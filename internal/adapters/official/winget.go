@@ -105,6 +105,7 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("winget upgrade failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -114,6 +115,7 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -158,6 +160,7 @@ func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("winget upgrade failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -167,6 +170,7 @@ func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 

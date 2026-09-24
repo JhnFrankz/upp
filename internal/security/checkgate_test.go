@@ -9,6 +9,7 @@ import (
 // before it is allowed to run without consent (spec security-model: custom
 // check-command gate).
 func TestCheckNeedsConsent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		check string
@@ -27,6 +28,7 @@ func TestCheckNeedsConsent(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := CheckNeedsConsent(tc.check)
 			if got != tc.want {
 				t.Errorf("CheckNeedsConsent(CheckCommand=%q) = %v, want %v", tc.check, got, tc.want)

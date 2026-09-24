@@ -80,6 +80,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("scoop update failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -89,6 +90,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("scoop update error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 

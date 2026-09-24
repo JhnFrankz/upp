@@ -75,6 +75,7 @@ func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("pacman update failed: %w", err),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}
@@ -85,6 +86,7 @@ func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("pacman update error: %s", truncate(stderr, 200)),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}
@@ -194,6 +196,7 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("pacman update failed: %w", err),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}
@@ -204,6 +207,7 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("pacman update error: %s", truncate(stderr, 200)),
+			Stderr:     stderr,
 			Privileges: []string{"sudo"},
 		}, nil
 	}

@@ -2401,3 +2401,31 @@ func TestRunUpdate_DryRunSkipsLock(t *testing.T) {
 		t.Error("expected dry-run to not acquire process lock")
 	}
 }
+
+func TestExecutePlannedUpdate_PreservesStderr(t *testing.T) {
+	fake := &fakeUpdateAdapter{
+		name:   "failing-adapter",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		result: adapters.Result{
+			Success: false,
+			Error:   errors.New("update command failed"),
+			Stderr:  "fatal compilation error\nstack trace",
+		},
+	}
+	planned := engine.PlannedUpdate{
+		ToolID:      "failing-adapter",
+		ToolName:    "failing-adapter",
+		RiskCommand: "failing-adapter update",
+		Trust:       security.TrustOfficial,
+	}
+	var buf bytes.Buffer
+	r := output.NewRendererForced(&buf, false, false, false, false)
+	got := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fake, 1, 1, r, "linux")
+	if got.Status != output.StatusFailed {
+		t.Fatalf("executePlannedUpdate status = %v, want StatusFailed", got.Status)
+	}
+	if got.Stderr != "fatal compilation error\nstack trace" {
+		t.Errorf("executePlannedUpdate Stderr = %q, want %q", got.Stderr, "fatal compilation error\nstack trace")
+	}
+}

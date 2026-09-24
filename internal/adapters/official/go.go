@@ -485,6 +485,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 				Before:     before,
 				After:      before,
 				Error:      fmt.Errorf("go update failed: %w", errMsg),
+				Stderr:     stderr,
 				Privileges: privileges,
 			}, nil
 		}
@@ -505,6 +506,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 			Before:     before,
 			After:      before,
 			Error:      fmt.Errorf("go update failed: %w", errMsg),
+			Stderr:     stderr,
 			Privileges: privileges,
 		}, nil
 	}

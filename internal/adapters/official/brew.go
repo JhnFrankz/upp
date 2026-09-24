@@ -92,6 +92,7 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("brew upgrade failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -101,6 +102,7 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("brew upgrade error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -144,6 +146,7 @@ func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("brew upgrade failed: %w", err),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -153,6 +156,7 @@ func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 			Before:  before,
 			After:   before,
 			Error:   fmt.Errorf("brew upgrade error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
 		}, nil
 	}
 
@@ -177,17 +181,4 @@ func (a *BrewAdapter) Info() adapters.ToolInfo {
 		SelfUpdateCommand:    brewSelfUpdateCmd,
 		PackageUpdateCommand: brewPackageUpdateTemplate,
 	}
-}
-
-// extractVersionFromString extracts a version from a "brew X.Y.Z" string.
-func extractVersionFromString(s string) string {
-	s = strings.TrimSpace(s)
-	// "Homebrew 4.1.0" → "4.1.0"
-	fields := strings.Fields(s)
-	for _, field := range fields {
-		if isVersionLike(field) {
-			return field
-		}
-	}
-	return s
 }

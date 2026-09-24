@@ -9,20 +9,6 @@ import (
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
-// canonicalOS normalizes OS strings (e.g. "darwin" to platform.OSMacOS).
-func canonicalOS(osName string) string {
-	switch strings.ToLower(osName) {
-	case "darwin", "macos":
-		return platform.OSMacOS
-	case "linux":
-		return platform.OSLinux
-	case "windows":
-		return platform.OSWindows
-	default:
-		return osName
-	}
-}
-
 // Resolve discovers, instantiates, and filters active tool adapters according to
 // the engine platform, configuration, and filter parameters.
 func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
@@ -31,7 +17,10 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 	if e.adapters != nil {
 		source = e.adapters
 	} else {
-		canonOS := canonicalOS(e.osName)
+		canonOS := e.osName
+		if norm, err := platform.NormalizeOS(e.osName); err == nil {
+			canonOS = norm
+		}
 		platformAdapters := official.AdaptersForPlatform(canonOS)
 		for _, a := range platformAdapters {
 			info := a.Info()
@@ -122,7 +111,10 @@ func ResolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters
 	if a == nil {
 		return nil
 	}
-	canonOS := canonicalOS(osName)
+	canonOS := osName
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		canonOS = norm
+	}
 
 	if len(allAdapters) > 0 && allAdapters[0] != nil {
 		info := a.Info()
@@ -164,7 +156,10 @@ func OwnedPackage(a adapters.Adapter, osName string) string {
 	if pkg, ok := info.ManagerPackage[osName]; ok && pkg != "" {
 		return pkg
 	}
-	canonOS := canonicalOS(osName)
+	canonOS := osName
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		canonOS = norm
+	}
 	if pkg, ok := info.ManagerPackage[canonOS]; ok {
 		return pkg
 	}

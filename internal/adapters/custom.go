@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JhnFrankz/upp/internal/security"
+	"github.com/JhnFrankz/upp/internal/version"
 )
 
 // CustomAdapter implements Adapter for user-defined tools from config.
@@ -113,7 +114,7 @@ func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command))
 	}
 
-	stdout, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
+	stdout, _, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("check command failed for %s: %w", c.id, err)
 	}
@@ -166,11 +167,12 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 		}, nil
 	}
 
-	_, err := shellExec(ctx, c.command)
+	_, stderr, err := shellExec(ctx, c.command)
 	if err != nil {
 		return Result{
 			Success:    false,
 			Error:      fmt.Errorf("update command failed for %s: %w", c.id, err),
+			Stderr:     stderr,
 			Privileges: privileges,
 		}, nil
 	}
@@ -235,66 +237,20 @@ func extractBaseCommand(cmd string) string {
 }
 
 // shellExec runs a command via the platform shell, bounded by UpdateTimeout.
-func shellExec(ctx context.Context, command string) (string, error) {
+func shellExec(ctx context.Context, command string) (string, string, error) {
 	return shellExecWithTimeout(ctx, command, UpdateTimeout)
 }
 
 // shellExecWithTimeout delegates to the shellExecWithTimeoutFn seam variable.
-func shellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, error) {
+func shellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, string, error) {
 	return shellExecWithTimeoutFn(ctx, command, timeout)
 }
 
 // extractVersionFromOutput extracts a version-like string from command output.
 func extractVersionFromOutput(output string) string {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		version := findVersionInLine(line)
-		if version != "" {
-			return version
-		}
-	}
-	return output
+	return version.ExtractVersionFromOutput(output)
 }
 
-// findVersionInLine scans a line for a version-like token.
-func findVersionInLine(line string) string {
-	fields := strings.Fields(line)
-	for _, field := range fields {
-		cleaned := strings.Trim(field, "(),:;")
-		if isVersionLike(cleaned) {
-			return cleaned
-		}
-	}
-	return ""
-}
-
-// isVersionLike returns true if the string looks like a version number.
 func isVersionLike(s string) bool {
-	if s == "" {
-		return false
-	}
-	start := 0
-	for start < len(s) && ((s[start] >= 'a' && s[start] <= 'z') || (s[start] >= 'A' && s[start] <= 'Z')) {
-		start++
-	}
-	if start >= len(s) {
-		return false
-	}
-	if s[start] < '0' || s[start] > '9' {
-		return false
-	}
-	dotFound := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if c == '.' {
-			dotFound = true
-		} else if (c < '0' || c > '9') && c != '.' && c != '-' && c != '+' {
-			break
-		}
-	}
-	return dotFound
+	return version.IsVersionLike(s)
 }

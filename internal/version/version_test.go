@@ -7,6 +7,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		in      string
@@ -34,6 +35,7 @@ func TestParse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := version.Parse(tt.in)
 			if tt.wantErr {
 				if err == nil {
@@ -52,6 +54,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestCompare(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		a, b string
@@ -73,6 +76,7 @@ func TestCompare(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a, err := version.Parse(tt.a)
 			if err != nil {
 				t.Fatalf("Parse(%q): %v", tt.a, err)
@@ -83,6 +87,93 @@ func TestCompare(t *testing.T) {
 			}
 			if got := a.Compare(b); got != tt.want {
 				t.Errorf("%q.Compare(%q) = %d, want %d", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractVersionFromString(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"empty string", "", ""},
+		{"no version", "command not found", ""},
+		{"semver", "1.2.3", "1.2.3"},
+		{"v-prefix", "v1.2.3", "v1.2.3"},
+		{"go version", "go version go1.22.0 linux/amd64", "go1.22.0"},
+		{"node version", "v20.11.0", "v20.11.0"},
+		{"brew version", "Homebrew 4.1.0", "4.1.0"},
+		{"pnpm version", "pnpm: 8.14.0", "8.14.0"},
+		{"multiline", "first line\n1.2.3\nthird line", "1.2.3"},
+		{"pre-release", "1.2.3-rc1", "1.2.3-rc1"},
+		{"build metadata", "1.2.3+build.123", "1.2.3+build.123"},
+		{"four-part", "1.2.3.4", "1.2.3.4"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := version.ExtractVersionFromString(tt.input)
+			if got != tt.want {
+				t.Errorf("ExtractVersionFromString(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractVersionFromOutput(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"finds version in output", "tool version 2.5.1 (stable)", "2.5.1"},
+		{"falls back to raw string when no version", "unrecognized text", "unrecognized text"},
+		{"empty string fallback", "", ""},
+		{"multiline with version", "Header info\nRelease 3.0.0-beta\nFooter", "3.0.0-beta"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := version.ExtractVersionFromOutput(tt.input)
+			if got != tt.want {
+				t.Errorf("ExtractVersionFromOutput(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsVersionLike(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"", false},
+		{"1", false},
+		{"1.2", true},
+		{"1.2.3", true},
+		{"1.2.3.4", true},
+		{"v1.2.3", true},
+		{"go1.22.0", true},
+		{"abc", false},
+		{"abc.def", false},
+		{"1.2.3-rc1", true},
+		{"1.2.3-beta.1", true},
+		{"1.2.3+build", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			got := version.IsVersionLike(tt.input)
+			if got != tt.want {
+				t.Errorf("IsVersionLike(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}

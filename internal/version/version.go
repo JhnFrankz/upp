@@ -116,3 +116,70 @@ func (v Version) Compare(o Version) int {
 	}
 	return 0
 }
+
+// ExtractVersionFromString attempts to extract a version string from command output or a version header.
+// It looks for semver-like patterns (v1.2.3, 1.2.3, 1.2.3-rc1, etc.) in each line.
+// Returns empty string if no version token is found.
+func ExtractVersionFromString(s string) string {
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		version := findVersionInLine(line)
+		if version != "" {
+			return version
+		}
+	}
+	return ""
+}
+
+// ExtractVersionFromOutput extracts a version string from command output,
+// falling back to the entire raw output string if no version token is identified.
+func ExtractVersionFromOutput(s string) string {
+	v := ExtractVersionFromString(s)
+	if v != "" {
+		return v
+	}
+	return s
+}
+
+// findVersionInLine scans a line for a version-like token.
+func findVersionInLine(line string) string {
+	fields := strings.Fields(line)
+	for _, field := range fields {
+		cleaned := strings.Trim(field, "(),:;")
+		if IsVersionLike(cleaned) {
+			return cleaned
+		}
+	}
+	return ""
+}
+
+// IsVersionLike returns true if the string looks like a version number.
+func IsVersionLike(s string) bool {
+	if s == "" {
+		return false
+	}
+	start := 0
+	for start < len(s) && ((s[start] >= 'a' && s[start] <= 'z') || (s[start] >= 'A' && s[start] <= 'Z')) {
+		start++
+	}
+	if start >= len(s) {
+		return false
+	}
+	if s[start] < '0' || s[start] > '9' {
+		return false
+	}
+	dotFound := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if c == '.' {
+			dotFound = true
+		} else if (c < '0' || c > '9') && c != '.' && c != '-' && c != '+' {
+			break
+		}
+	}
+	return dotFound
+}

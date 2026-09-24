@@ -3,6 +3,7 @@ package engine
 import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // ToolGroup represents a logical group of tools: a manager header line
@@ -192,7 +193,10 @@ func ownerIDOf(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adap
 		}
 		return ""
 	}
-	canonOS := canonicalOS(osName)
+	canonOS := osName
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		canonOS = norm
+	}
 	if a.Info().Manager != nil {
 		if id := a.Info().Manager[osName]; id != "" {
 			return id
