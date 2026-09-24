@@ -312,9 +312,9 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		return adapters.UpdateInfo{}, fmt.Errorf("go is not installed")
 	}
 
-	// Delegated check path: go is owned by brew on macOS and winget on Windows.
-	// On Linux, if go is installed in /usr/bin under apt or pacman, delegate to
-	// that package manager; if manual (e.g. /usr/local/go), check go.dev directly.
+	current := commandOutput(ctx, "go", "version")
+	current = extractGoVersion(current)
+
 	plat, _ := platform.NormalizeOS(runtime.GOOS)
 	owner := ResolveOwner("go", plat)
 	pkg := a.Info().ManagerPackage[plat]
@@ -323,6 +323,13 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	}
 
 	if owner != nil {
+		if !owner.Detect() {
+			return adapters.UpdateInfo{
+				CurrentVersion:  current,
+				LatestVersion:   current,
+				UpdateAvailable: false,
+			}, nil
+		}
 		if checker, ok := owner.(adapters.PackageChecker); ok {
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
@@ -331,9 +338,6 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		}
 		return adapters.UpdateInfo{}, fmt.Errorf("go's manager %s does not support per-package checks", runtime.GOOS)
 	}
-
-	current := commandOutput(ctx, "go", "version")
-	current = extractGoVersion(current)
 
 	latest := current
 	updateAvailable := false

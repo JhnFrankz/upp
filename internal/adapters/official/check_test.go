@@ -744,7 +744,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "darwin",
 			fakes: execFakes{
-				lookPath: map[string]bool{"go": true},
+				lookPath: map[string]bool{"go": true, "brew": true},
 				cmdArgs: map[string]fakeResult{
 					"brew outdated --json golang": {stdout: `[{"name":"golang","installed_versions":["1.21.0"],"current_version":"1.22.0"}]`},
 				},
@@ -756,7 +756,7 @@ func TestCheck(t *testing.T) {
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "windows",
 			fakes: execFakes{
-				lookPath: map[string]bool{"go": true},
+				lookPath: map[string]bool{"go": true, "winget": true},
 				cmdArgs: map[string]fakeResult{
 					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\nGo  GoLang.Go  1.21.0  1.22.0  winget\n"},
 				},
