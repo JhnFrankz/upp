@@ -1904,6 +1904,41 @@ func TestRunUpdate_DryRunPlannedFlags(t *testing.T) {
 	}
 }
 
+// TestRunUpdate_DryRunIdenticalVersionClarity proves that when a tool reports
+// UpdateAvailable: true but CurrentVersion == LatestVersion, dry-run renders
+// "(<ver> → update available)" instead of "(<ver> → <ver>)".
+func TestRunUpdate_DryRunIdenticalVersionClarity(t *testing.T) {
+	npm := &fakeUpdateAdapter{
+		name:   "npm",
+		kind:   adapters.KindTool,
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "10.2.4",
+			LatestVersion:   "10.2.4",
+			UpdateAvailable: true,
+		},
+	}
+
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return []adapters.Adapter{npm}
+		},
+		stdinIsTTY: func() bool { return false },
+	}
+	uf := &UpdateFlags{DryRun: true}
+	out := withCapturedStdout(func() {
+		if err := runUpdate(&GlobalFlags{}, uf, deps); err != nil {
+			t.Fatalf("dry-run error: %v", err)
+		}
+	})
+
+	want := "(10.2.4 → update available)"
+	if !strings.Contains(out, want) {
+		t.Errorf("dry-run output must contain %q; got:\n%s", want, out)
+	}
+}
+
 // TestRunUpdate_OnlyNarrowsGroupBatch proves spec bulk-update "Only filter
 // narrows batch" (renamed/adapted from the deleted --skip variant): the
 // existing `--only` filter narrows the default delegated batch — `upp update
