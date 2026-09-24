@@ -213,8 +213,7 @@ func TestRunList_UnknownOnlyToolWarning(t *testing.T) {
 	deps := listDeps{buildAdapterList: fakeAdapterList(tool)}
 	gf := &GlobalFlags{Only: "unknown-tool"}
 
-	var errOut string
-	errOut = withCapturedStderr(func() {
+	errOut := withCapturedStderr(func() {
 		_ = withCapturedStdout(func() {
 			if err := runList(context.Background(), gf, deps); err != nil {
 				t.Fatalf("runList returned error: %v", err)
