@@ -182,16 +182,3 @@ func (a *BrewAdapter) Info() adapters.ToolInfo {
 		PackageUpdateCommand: brewPackageUpdateTemplate,
 	}
 }
-
-// extractVersionFromString extracts a version from a "brew X.Y.Z" string.
-func extractVersionFromString(s string) string {
-	s = strings.TrimSpace(s)
-	// "Homebrew 4.1.0" → "4.1.0"
-	fields := strings.Fields(s)
-	for _, field := range fields {
-		if isVersionLike(field) {
-			return field
-		}
-	}
-	return s
-}

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/version"
 )
 
 // Test seam (D1): package-level function variables swapped by tests via
@@ -120,19 +121,12 @@ func defaultLinuxManager() string {
 // extractVersion attempts to extract a version string from command output.
 // It looks for semver-like patterns (v1.2.3, 1.2.3, 1.2.3-rc1, etc.).
 func extractVersion(output string) string {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		// Try to find a version-like string in the line.
-		version := findVersionInLine(line)
-		if version != "" {
-			return version
-		}
-	}
-	return ""
+	return version.ExtractVersionFromString(output)
+}
+
+// extractVersionFromString extracts a version from a version string or command output.
+func extractVersionFromString(s string) string {
+	return version.ExtractVersionFromString(s)
 }
 
 // parseVersionFromHeader extracts a version from the first line (header) of command output.
@@ -142,52 +136,14 @@ func parseVersionFromHeader(out string) string {
 		if line == "" {
 			continue
 		}
-		return findVersionInLine(line)
-	}
-	return ""
-}
-
-// findVersionInLine scans a line for a version-like token.
-func findVersionInLine(line string) string {
-	fields := strings.Fields(line)
-	for _, field := range fields {
-		cleaned := strings.Trim(field, "(),:;")
-		if isVersionLike(cleaned) {
-			return cleaned
-		}
+		return version.ExtractVersionFromString(line)
 	}
 	return ""
 }
 
 // isVersionLike returns true if the string looks like a version number.
 func isVersionLike(s string) bool {
-	if s == "" {
-		return false
-	}
-	// Strip leading letters (e.g., "go" in "go1.22.0").
-	start := 0
-	for start < len(s) && ((s[start] >= 'a' && s[start] <= 'z') || (s[start] >= 'A' && s[start] <= 'Z')) {
-		start++
-	}
-	if start >= len(s) {
-		return false
-	}
-	// Must start with a digit after stripping letters.
-	if s[start] < '0' || s[start] > '9' {
-		return false
-	}
-	// Must contain at least one dot.
-	dotFound := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if c == '.' {
-			dotFound = true
-		} else if (c < '0' || c > '9') && c != '.' && c != '-' && c != '+' {
-			// Allow digits, dots, hyphens, plus — stop at any letter (pre-release tags)
-			break
-		}
-	}
-	return dotFound
+	return version.IsVersionLike(s)
 }
 
 // commandOutput runs a command and returns its trimmed stdout.

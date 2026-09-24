@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JhnFrankz/upp/internal/security"
+	"github.com/JhnFrankz/upp/internal/version"
 )
 
 // CustomAdapter implements Adapter for user-defined tools from config.
@@ -247,55 +248,9 @@ func shellExecWithTimeout(ctx context.Context, command string, timeout time.Dura
 
 // extractVersionFromOutput extracts a version-like string from command output.
 func extractVersionFromOutput(output string) string {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		version := findVersionInLine(line)
-		if version != "" {
-			return version
-		}
-	}
-	return output
+	return version.ExtractVersionFromOutput(output)
 }
 
-// findVersionInLine scans a line for a version-like token.
-func findVersionInLine(line string) string {
-	fields := strings.Fields(line)
-	for _, field := range fields {
-		cleaned := strings.Trim(field, "(),:;")
-		if isVersionLike(cleaned) {
-			return cleaned
-		}
-	}
-	return ""
-}
-
-// isVersionLike returns true if the string looks like a version number.
 func isVersionLike(s string) bool {
-	if s == "" {
-		return false
-	}
-	start := 0
-	for start < len(s) && ((s[start] >= 'a' && s[start] <= 'z') || (s[start] >= 'A' && s[start] <= 'Z')) {
-		start++
-	}
-	if start >= len(s) {
-		return false
-	}
-	if s[start] < '0' || s[start] > '9' {
-		return false
-	}
-	dotFound := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if c == '.' {
-			dotFound = true
-		} else if (c < '0' || c > '9') && c != '.' && c != '-' && c != '+' {
-			break
-		}
-	}
-	return dotFound
+	return version.IsVersionLike(s)
 }
