@@ -60,6 +60,7 @@ func defaultFindAllPaths(name string) []string {
 	}
 	dirs := filepath.SplitList(pathEnv)
 	var found []string
+	var foundFi []os.FileInfo
 	seen := make(map[string]bool)
 
 	exts := []string{""}
@@ -79,10 +80,31 @@ func defaultFindAllPaths(name string) []string {
 					continue
 				}
 				clean := filepath.Clean(target)
-				if !seen[clean] {
-					seen[clean] = true
-					found = append(found, clean)
+				evalPath := clean
+				if ep, err := filepath.EvalSymlinks(target); err == nil {
+					evalPath = filepath.Clean(ep)
 				}
+				if seen[clean] || seen[evalPath] {
+					break
+				}
+
+				isSame := false
+				for _, existingFi := range foundFi {
+					if os.SameFile(fi, existingFi) {
+						isSame = true
+						break
+					}
+				}
+				if isSame {
+					seen[clean] = true
+					seen[evalPath] = true
+					break
+				}
+
+				seen[clean] = true
+				seen[evalPath] = true
+				foundFi = append(foundFi, fi)
+				found = append(found, clean)
 				break
 			}
 		}

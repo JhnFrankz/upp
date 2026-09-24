@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -499,6 +500,115 @@ func TestDiagnose_Network(t *testing.T) {
 		}
 		if ghRes.FixHint == "" {
 			t.Errorf("expected FixHint for network error, got empty")
+		}
+	})
+}
+
+func TestDefaultFindAllPaths_SymlinkAndHardlinkDeduplication(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink tests require special privileges on Windows")
+	}
+
+	t.Run("symlink across directories deduplicated", func(t *testing.T) {
+		tmp := t.TempDir()
+		binDir := filepath.Join(tmp, "bin")
+		usrBinDir := filepath.Join(tmp, "usr_bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(usrBinDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		targetBin := filepath.Join(usrBinDir, "tool")
+		if err := os.WriteFile(targetBin, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		symlinkBin := filepath.Join(binDir, "tool")
+		if err := os.Symlink(targetBin, symlinkBin); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("PATH", binDir+string(filepath.ListSeparator)+usrBinDir)
+
+		found := defaultFindAllPaths("tool")
+		if len(found) != 1 {
+			t.Fatalf("expected 1 deduplicated path, got %d: %v", len(found), found)
+		}
+
+		// Diagnose integration check: should not trigger shadowed warning
+		deps := baseTestDeps(t)
+		deps.FindAllPaths = defaultFindAllPaths
+		deps.LookPath = func(name string) (string, error) {
+			if name == "tool" {
+				return found[0], nil
+			}
+			return "", os.ErrNotExist
+		}
+		deps.Adapters = []adapters.Adapter{
+			&mockAdapter{name: "tool", installed: true},
+		}
+
+		results := Diagnose(context.Background(), deps)
+		res := findResult(results, "Tool Paths", "tool")
+		if res == nil {
+			t.Fatal("missing Tool Paths result for tool")
+		}
+		if res.Status != SeverityOK {
+			t.Errorf("expected SeverityOK (no shadowing), got %v: %s", res.Status, res.Message)
+		}
+	})
+
+	t.Run("distinct binaries both returned and shadowed status triggered", func(t *testing.T) {
+		tmp := t.TempDir()
+		dir1 := filepath.Join(tmp, "dir1")
+		dir2 := filepath.Join(tmp, "dir2")
+		if err := os.MkdirAll(dir1, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(dir2, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		bin1 := filepath.Join(dir1, "tool")
+		if err := os.WriteFile(bin1, []byte("#!/bin/sh\necho v1\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		bin2 := filepath.Join(dir2, "tool")
+		if err := os.WriteFile(bin2, []byte("#!/bin/sh\necho v2\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Setenv("PATH", dir1+string(filepath.ListSeparator)+dir2)
+
+		found := defaultFindAllPaths("tool")
+		if len(found) != 2 {
+			t.Fatalf("expected 2 distinct paths, got %d: %v", len(found), found)
+		}
+
+		// Diagnose integration check: should trigger shadowed warning
+		deps := baseTestDeps(t)
+		deps.FindAllPaths = defaultFindAllPaths
+		deps.LookPath = func(name string) (string, error) {
+			if name == "tool" {
+				return found[0], nil
+			}
+			return "", os.ErrNotExist
+		}
+		deps.Adapters = []adapters.Adapter{
+			&mockAdapter{name: "tool", installed: true},
+		}
+
+		results := Diagnose(context.Background(), deps)
+		res := findResult(results, "Tool Paths", "tool")
+		if res == nil {
+			t.Fatal("missing Tool Paths result for tool")
+		}
+		if res.Status != SeverityWarn {
+			t.Errorf("expected SeverityWarn (shadowed), got %v: %s", res.Status, res.Message)
+		}
+		if !strings.Contains(res.Message, "shadowed") {
+			t.Errorf("expected shadowed message, got %q", res.Message)
 		}
 	})
 }
