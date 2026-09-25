@@ -3,7 +3,6 @@ package official
 import (
 	"context"
 	"fmt"
-	"runtime"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -35,7 +34,7 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 	// `brew outdated --json docker`, `winget upgrade`).
 	// runtime.GOOS is translated to the platform key because the manager and
 	// package maps are keyed by PLATFORM constants, not runtime.GOOS (darwin).
-	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
 	if owner := ResolveOwner("docker", plat); owner != nil {
 		if !owner.Detect() {
 			return adapters.UpdateInfo{
@@ -47,14 +46,14 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 		if checker, ok := owner.(adapters.PackageChecker); ok {
 			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
-				return adapters.UpdateInfo{}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
+				return adapters.UpdateInfo{}, fmt.Errorf("docker has no manager package on %s", runtimeGOOSFn())
 			}
 			return checker.CheckPackage(ctx, pkg)
 		}
-		return adapters.UpdateInfo{}, fmt.Errorf("docker's manager %s does not support per-package checks", runtime.GOOS)
+		return adapters.UpdateInfo{}, fmt.Errorf("docker's manager %s does not support per-package checks", runtimeGOOSFn())
 	}
 
-	return adapters.UpdateInfo{}, fmt.Errorf("docker has no resolving owner on %s", runtime.GOOS)
+	return adapters.UpdateInfo{}, fmt.Errorf("docker has no resolving owner on %s", runtimeGOOSFn())
 }
 
 func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
@@ -65,7 +64,7 @@ func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	// Delegated update path: an owned tool delegates to its resolving manager's
 	// PackageUpdater interface to upgrade its specific package name (e.g. `docker-ce`),
 	// rather than triggering manager self-update.
-	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
 	if owner := ResolveOwner("docker", plat); owner != nil {
 		if dryRun {
 			return adapters.Result{Success: true}, nil
@@ -73,17 +72,17 @@ func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
 			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
-				return adapters.Result{Success: false}, fmt.Errorf("docker has no manager package on %s", runtime.GOOS)
+				return adapters.Result{Success: false}, fmt.Errorf("docker has no manager package on %s", runtimeGOOSFn())
 			}
 			return updater.UpdatePackage(ctx, pkg)
 		}
-		return adapters.Result{Success: false}, fmt.Errorf("docker's manager %s does not support per-package updates", runtime.GOOS)
+		return adapters.Result{Success: false}, fmt.Errorf("docker's manager %s does not support per-package updates", runtimeGOOSFn())
 	}
 
 	// Fail-closed fallback if ownership map ever regresses.
 	return adapters.Result{
 		Success: false,
-		Error:   fmt.Errorf("docker has no resolving owner on %s", runtime.GOOS),
+		Error:   fmt.Errorf("docker has no resolving owner on %s", runtimeGOOSFn()),
 	}, nil
 }
 

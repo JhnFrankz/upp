@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -21,6 +22,7 @@ type fakeResult struct {
 // binary name (or "name arg1 arg2..." for a specific invocation), lookPath
 // by binary name.
 type execFakes struct {
+	goos            string
 	shell           map[string]fakeResult
 	cmdArgs         map[string]fakeResult
 	lookPath        map[string]bool
@@ -54,6 +56,13 @@ func setExecFakes(t *testing.T, f execFakes) {
 	origGoDownloadAndVerify := goDownloadAndVerifyFn
 	origGoExtractTarball := goExtractTarballFn
 	origGoTargetExists := goTargetExistsFn
+	origRuntimeGOOS := runtimeGOOSFn
+
+	if f.goos != "" {
+		runtimeGOOSFn = func() string { return f.goos }
+	} else {
+		runtimeGOOSFn = func() string { return runtime.GOOS }
+	}
 
 	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
 		r := f.shell[command]
@@ -218,5 +227,6 @@ func setExecFakes(t *testing.T, f execFakes) {
 		goDownloadAndVerifyFn = origGoDownloadAndVerify
 		goExtractTarballFn = origGoExtractTarball
 		goTargetExistsFn = origGoTargetExists
+		runtimeGOOSFn = origRuntimeGOOS
 	})
 }

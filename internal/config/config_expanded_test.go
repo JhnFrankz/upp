@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // --- Config Migration Tests ---
@@ -264,9 +266,12 @@ func TestConfigDir_Linux(t *testing.T) {
 }
 
 func TestConfigPath_Windows(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("skipping Windows path test on non-Windows")
+	origDetect := detectPlatformFn
+	detectPlatformFn = func() (platform.Platform, error) {
+		return platform.Platform{OS: platform.OSWindows, Arch: "x86_64"}, nil
 	}
+	t.Cleanup(func() { detectPlatformFn = origDetect })
+
 	tmpDir := t.TempDir()
 	appData := filepath.Join(tmpDir, "AppData", "Roaming")
 	t.Setenv("APPDATA", appData)
@@ -283,9 +288,12 @@ func TestConfigPath_Windows(t *testing.T) {
 }
 
 func TestConfigDir_Windows(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("skipping Windows path test on non-Windows")
+	origDetect := detectPlatformFn
+	detectPlatformFn = func() (platform.Platform, error) {
+		return platform.Platform{OS: platform.OSWindows, Arch: "x86_64"}, nil
 	}
+	t.Cleanup(func() { detectPlatformFn = origDetect })
+
 	tmpDir := t.TempDir()
 	appData := filepath.Join(tmpDir, "AppData", "Roaming")
 	t.Setenv("APPDATA", appData)

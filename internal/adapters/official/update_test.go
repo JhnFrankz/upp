@@ -1132,11 +1132,11 @@ func TestUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.goos != "" && tt.goos != runtime.GOOS {
-				t.Skipf("row is for %s, running on %s", tt.goos, runtime.GOOS)
-			}
 			if tt.setup != nil {
 				tt.setup(t)
+			}
+			if tt.goos != "" {
+				tt.fakes.goos = tt.goos
 			}
 			setExecFakes(t, tt.fakes)
 
@@ -1274,11 +1274,11 @@ func TestUpdateDelegation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.goos != "" && tt.goos != runtime.GOOS {
-				t.Skipf("row is for %s, running on %s", tt.goos, runtime.GOOS)
-			}
 			if tt.setup != nil {
 				tt.setup(t)
+			}
+			if tt.goos != "" {
+				tt.fakes.goos = tt.goos
 			}
 			setExecFakes(t, tt.fakes)
 

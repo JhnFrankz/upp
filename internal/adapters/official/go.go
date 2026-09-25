@@ -292,7 +292,7 @@ func (a *GoAdapter) Detect() bool {
 }
 
 func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
-	if runtime.GOOS != "linux" {
+	if runtimeGOOSFn() != "linux" {
 		return nil, ""
 	}
 	bin := goBinaryPathFn()
@@ -315,10 +315,10 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	current := commandOutput(ctx, "go", "version")
 	current = extractGoVersion(current)
 
-	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
 	owner := ResolveOwner("go", plat)
 	pkg := a.Info().ManagerPackage[plat]
-	if owner == nil && runtime.GOOS == "linux" {
+	if owner == nil && runtimeGOOSFn() == "linux" {
 		owner, pkg = a.linuxOwner()
 	}
 
@@ -332,11 +332,11 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		}
 		if checker, ok := owner.(adapters.PackageChecker); ok {
 			if pkg == "" {
-				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
+				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtimeGOOSFn())
 			}
 			return checker.CheckPackage(ctx, pkg)
 		}
-		return adapters.UpdateInfo{}, fmt.Errorf("go's manager %s does not support per-package checks", runtime.GOOS)
+		return adapters.UpdateInfo{}, fmt.Errorf("go's manager %s does not support per-package checks", runtimeGOOSFn())
 	}
 
 	latest := current
@@ -378,10 +378,10 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
 	}
 
-	plat, _ := platform.NormalizeOS(runtime.GOOS)
+	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
 	owner := ResolveOwner("go", plat)
 	pkg := a.Info().ManagerPackage[plat]
-	if owner == nil && runtime.GOOS == "linux" {
+	if owner == nil && runtimeGOOSFn() == "linux" {
 		owner, pkg = a.linuxOwner()
 	}
 
@@ -391,11 +391,11 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
 			if pkg == "" {
-				return adapters.Result{Success: false}, fmt.Errorf("go has no manager package on %s", runtime.GOOS)
+				return adapters.Result{Success: false}, fmt.Errorf("go has no manager package on %s", runtimeGOOSFn())
 			}
 			return updater.UpdatePackage(ctx, pkg)
 		}
-		return adapters.Result{Success: false}, fmt.Errorf("go's manager %s does not support per-package updates", runtime.GOOS)
+		return adapters.Result{Success: false}, fmt.Errorf("go's manager %s does not support per-package updates", runtimeGOOSFn())
 	}
 
 	before := extractGoVersion(commandOutput(ctx, "go", "version"))
@@ -410,12 +410,12 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 
 	privileges := []string{"sudo"}
 
-	if runtime.GOOS != "linux" {
+	if runtimeGOOSFn() != "linux" {
 		return adapters.Result{
 			Success: false,
 			Before:  before,
 			After:   before,
-			Error:   fmt.Errorf("unsupported platform: %s", runtime.GOOS),
+			Error:   fmt.Errorf("unsupported platform: %s", runtimeGOOSFn()),
 		}, nil
 	}
 
@@ -430,7 +430,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 		}, nil
 	}
 
-	rel, err := goReleaseFn(ctx, runtime.GOOS, runtime.GOARCH)
+	rel, err := goReleaseFn(ctx, runtimeGOOSFn(), runtime.GOARCH)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
