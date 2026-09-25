@@ -72,7 +72,7 @@ func ConfigDir() (string, error) {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
-	p, err := platform.Detect()
+	p, err := detectPlatformFn()
 	if err != nil {
 		// Fallback to Linux-style path for unsupported platforms
 		return filepath.Join(home, ".config", "upp"), nil
