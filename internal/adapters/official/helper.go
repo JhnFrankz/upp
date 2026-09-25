@@ -14,12 +14,16 @@ import (
 	"github.com/JhnFrankz/upp/internal/version"
 )
 
+// runtimeGOOSFn is the seam for querying runtime.GOOS. Swapped in tests via setExecFakes.
+var runtimeGOOSFn = func() string { return runtime.GOOS }
+
 // Test seam (D1): package-level function variables swapped by tests via
 // setExecFakes so adapters can be exercised hermetically without executing
 // real subprocesses. Production behavior is preserved — the vars initialize
 // to the real implementations and are only replaced inside tests. The public
 // leaf functions (runCmd, runCmdArgs, lookPath) delegate to the vars, so both
 // adapters and wrappers stay hermetic when a test swaps the seam.
+
 var (
 	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
 		if ctx == nil {
