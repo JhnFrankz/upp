@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
@@ -735,4 +736,68 @@ func TestDefaultFindAllPaths_SymlinkAndHardlinkDeduplication(t *testing.T) {
 			t.Errorf("expected shadowed message, got %q", res.Message)
 		}
 	})
+}
+
+func TestDoctor_NetworkParallel(t *testing.T) {
+	deps := DoctorDeps{
+		HTTPGet: func(ctx context.Context, url string) (int, error) {
+			time.Sleep(50 * time.Millisecond)
+			return 200, nil
+		},
+	}
+
+	start := time.Now()
+	results := checkNetwork(context.Background(), deps)
+	duration := time.Since(start)
+
+	if duration >= 85*time.Millisecond {
+		t.Errorf("checkNetwork took %v, expected < 85ms (indicating parallel execution)", duration)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Name != "api.github.com" {
+		t.Errorf("results[0].Name = %q, want api.github.com", results[0].Name)
+	}
+	if results[1].Name != "go.dev" {
+		t.Errorf("results[1].Name = %q, want go.dev", results[1].Name)
+	}
+	for i, res := range results {
+		if res.Status != SeverityOK {
+			t.Errorf("results[%d].Status = %v, want SeverityOK", i, res.Status)
+		}
+	}
+}
+
+func TestDoctor_Network_ContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	deps := DoctorDeps{
+		HTTPGet: func(ctx context.Context, url string) (int, error) {
+			t.Errorf("HTTPGet called unexpectedly for %s with canceled context", url)
+			return 200, nil
+		},
+	}
+
+	start := time.Now()
+	results := checkNetwork(ctx, deps)
+	duration := time.Since(start)
+
+	if duration >= 50*time.Millisecond {
+		t.Errorf("checkNetwork with canceled context took %v, expected immediate abort", duration)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	for i, res := range results {
+		if res.Status != SeverityWarn {
+			t.Errorf("results[%d].Status = %v, want SeverityWarn", i, res.Status)
+		}
+		if !strings.Contains(res.Message, "aborted") && !strings.Contains(res.Message, "canceled") {
+			t.Errorf("results[%d].Message = %q, want abort/canceled message", i, res.Message)
+		}
+	}
 }
