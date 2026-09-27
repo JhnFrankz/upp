@@ -31,6 +31,15 @@ type Platform struct {
 // to upp's canonical OS identifier. It is case-insensitive and trims whitespace.
 // Returns an error if the OS is unsupported.
 func NormalizeOS(rawOS string) (string, error) {
+	switch rawOS {
+	case "linux":
+		return OSLinux, nil
+	case "darwin", "macos":
+		return OSMacOS, nil
+	case "windows":
+		return OSWindows, nil
+	}
+
 	switch strings.ToLower(strings.TrimSpace(rawOS)) {
 	case "linux":
 		return OSLinux, nil
@@ -46,6 +55,13 @@ func NormalizeOS(rawOS string) (string, error) {
 // NormalizeArch converts a raw architecture string (like runtime.GOARCH or "x86_64")
 // to upp's canonical architecture identifier. It is case-insensitive and trims whitespace.
 func NormalizeArch(rawArch string) string {
+	switch rawArch {
+	case "amd64", "x86_64":
+		return ArchX86_64
+	case "arm64", "aarch64":
+		return ArchArm64
+	}
+
 	switch strings.ToLower(strings.TrimSpace(rawArch)) {
 	case "amd64", "x86_64":
 		return ArchX86_64
