@@ -103,7 +103,8 @@ func fetchGoDevVersion(ctx context.Context) (string, error) {
 	}
 	buf := make([]byte, 512)
 	n, _ := resp.Body.Read(buf)
-	line := strings.TrimSpace(strings.Split(string(buf[:n]), "\n")[0])
+	firstLine, _, _ := strings.Cut(string(buf[:n]), "\n")
+	line := strings.TrimSpace(firstLine)
 	return line, nil
 }
 
