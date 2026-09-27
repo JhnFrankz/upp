@@ -178,3 +178,23 @@ func TestIsVersionLike(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkParse(b *testing.B) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"clean", "v1.2.3"},
+		{"untagged", "v1.2.3-19-gd40e428"},
+		{"dirty", "v1.2.3-dirty"},
+	}
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, _ = version.Parse(tc.in)
+			}
+		})
+	}
+}

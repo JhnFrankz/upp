@@ -65,17 +65,33 @@ func Parse(s string) (Version, error) {
 // parseTag parses the "X.Y.Z" prefix into three non-negative integers.
 func parseTag(s string) ([3]int, error) {
 	var tag [3]int
-	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
+	p0, rest, ok := strings.Cut(s, ".")
+	if !ok {
 		return tag, fmt.Errorf("tag %q must be X.Y.Z", s)
 	}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return tag, fmt.Errorf("tag %q: component %q is not a non-negative integer", s, p)
-		}
-		tag[i] = n
+	p1, p2, ok := strings.Cut(rest, ".")
+	if !ok || strings.Contains(p2, ".") {
+		return tag, fmt.Errorf("tag %q must be X.Y.Z", s)
 	}
+
+	n0, err0 := strconv.Atoi(p0)
+	if err0 != nil || n0 < 0 {
+		return tag, fmt.Errorf("tag %q: component %q is not a non-negative integer", s, p0)
+	}
+	tag[0] = n0
+
+	n1, err1 := strconv.Atoi(p1)
+	if err1 != nil || n1 < 0 {
+		return tag, fmt.Errorf("tag %q: component %q is not a non-negative integer", s, p1)
+	}
+	tag[1] = n1
+
+	n2, err2 := strconv.Atoi(p2)
+	if err2 != nil || n2 < 0 {
+		return tag, fmt.Errorf("tag %q: component %q is not a non-negative integer", s, p2)
+	}
+	tag[2] = n2
+
 	return tag, nil
 }
 
