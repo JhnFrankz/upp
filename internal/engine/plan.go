@@ -22,15 +22,46 @@ func ResolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters
 	return a.Info().UpdatePolicy
 }
 
-// findAdapter searches adapterList for an adapter whose Name or ID matches toolID or toolName.
-func findAdapter(adapterList []adapters.Adapter, toolID, toolName string) adapters.Adapter {
+type adapterIndex map[string]adapters.Adapter
+
+func buildAdapterIndex(adapterList []adapters.Adapter) adapterIndex {
+	idx := make(adapterIndex, len(adapterList)*4)
 	for _, a := range adapterList {
 		info := a.Info()
-		if info.ID == toolID || a.Name() == toolID || (toolName != "" && (info.ID == toolName || a.Name() == toolName)) {
+		if info.ID != "" {
+			idx[info.ID] = a
+			idx[strings.ToLower(info.ID)] = a
+		}
+		name := a.Name()
+		if name != "" {
+			idx[name] = a
+			idx[strings.ToLower(name)] = a
+		}
+	}
+	return idx
+}
+
+func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
+	if a, ok := idx[toolID]; ok {
+		return a
+	}
+	if a, ok := idx[strings.ToLower(toolID)]; ok {
+		return a
+	}
+	if toolName != "" {
+		if a, ok := idx[toolName]; ok {
+			return a
+		}
+		if a, ok := idx[strings.ToLower(toolName)]; ok {
 			return a
 		}
 	}
 	return nil
+}
+
+// findAdapter searches adapterList for an adapter whose Name or ID matches toolID or toolName.
+func findAdapter(adapterList []adapters.Adapter, toolID, toolName string) adapters.Adapter {
+	return buildAdapterIndex(adapterList).find(toolID, toolName)
 }
 
 // Plan formulates an executable UpdatePlan from check outcomes and filter options.
@@ -60,6 +91,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 	} else {
 		allAdapters, _ = e.Resolve(Filter{})
 	}
+	idx := buildAdapterIndex(allAdapters)
 
 	for _, oc := range outcomes {
 		if len(onlySet) > 0 {
@@ -78,7 +110,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		case StatusSkipped, StatusUnknown:
 			plan.Skipped = append(plan.Skipped, oc)
 		case StatusAvailable, StatusCurrent:
-			a := findAdapter(allAdapters, oc.ToolID, oc.ToolName)
+			a := idx.find(oc.ToolID, oc.ToolName)
 			if a == nil {
 				a = official.AdapterByName(oc.ToolID)
 				if a == nil && oc.ToolName != "" {
