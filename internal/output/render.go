@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -294,6 +295,11 @@ func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
 
 // --- Summary ---
 
+// Summary renders the final summary of an update or check run.
+func (r *Renderer) Summary(summary Summary) {
+	r.UpdateSummary(summary)
+}
+
 // UpdateSummary renders the final summary of an update or check run.
 func (r *Renderer) UpdateSummary(summary Summary) {
 	updated, skipped, failed := countByStatus(summary.Results)
@@ -329,12 +335,16 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
 	}
 
-	_, _ = fmt.Fprintln(r.w)
+	var sb strings.Builder
+	sb.Grow(len(summary.Results)*48 + 128)
+	sb.WriteByte('\n')
 
 	// All skipped (or empty) → special message. Current and deselected tools
 	// ARE installed/pending, so they keep this branch from firing (D6, PC2).
 	if updated == 0 && available == 0 && failed == 0 && current == 0 && deselected == 0 {
-		_, _ = fmt.Fprintf(r.w, "%s All tools not installed. Nothing to do.\n", r.statusIcon(StatusSkipped))
+		sb.WriteString(r.statusIcon(StatusSkipped))
+		sb.WriteString(" All tools not installed. Nothing to do.\n")
+		_, _ = io.WriteString(r.w, sb.String())
 		return
 	}
 
@@ -347,28 +357,53 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0 && deselected == 0
 
 	if failed > 0 {
-		_, _ = fmt.Fprintf(r.w, "%s %s. Review errors above.\n", r.statusIcon(StatusFailed), summaryLine)
+		sb.WriteString(r.statusIcon(StatusFailed))
+		sb.WriteByte(' ')
+		sb.WriteString(summaryLine)
+		sb.WriteString(". Review errors above.\n")
 	} else if allClean {
 		// Spec ux-patterns Summary Report "All succeed": the clean line
 		// counts failures explicitly even when zero ("N updated, 0 failed").
-		_, _ = fmt.Fprintf(r.w, "%s %s, 0 failed. All clean!\n", r.statusIcon(StatusUpdated), summaryLine)
+		sb.WriteString(r.statusIcon(StatusUpdated))
+		sb.WriteByte(' ')
+		sb.WriteString(summaryLine)
+		sb.WriteString(", 0 failed. All clean!\n")
 	} else if updated > 0 || available > 0 {
-		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusUpdated), summaryLine)
+		sb.WriteString(r.statusIcon(StatusUpdated))
+		sb.WriteByte(' ')
+		sb.WriteString(summaryLine)
+		sb.WriteByte('\n')
 	} else if deselected > 0 {
 		// All pending work was deselected: report it under the deselected icon,
 		// never as current.
-		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusDeselected), summaryLine)
+		sb.WriteString(r.statusIcon(StatusDeselected))
+		sb.WriteByte(' ')
+		sb.WriteString(summaryLine)
+		sb.WriteByte('\n')
 	} else {
-		_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusCurrent), summaryLine)
+		sb.WriteString(r.statusIcon(StatusCurrent))
+		sb.WriteByte(' ')
+		sb.WriteString(summaryLine)
+		sb.WriteByte('\n')
 	}
 
 	// List tools per category in non-quiet mode
 	if !r.quiet {
-		r.detailSummary(summary)
+		r.detailSummary(&sb, summary)
+	}
+	_, _ = io.WriteString(r.w, sb.String())
+}
+
+func writeJoinedNames(sb *strings.Builder, results []ToolResult) {
+	for i, r := range results {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(r.Name)
 	}
 }
 
-func (r *Renderer) detailSummary(summary Summary) {
+func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary) {
 	updated := filterByStatus(summary.Results, StatusUpdated)
 	current := filterByStatus(summary.Results, StatusCurrent)
 	skipped := filterByStatus(summary.Results, StatusSkipped)
@@ -376,29 +411,44 @@ func (r *Renderer) detailSummary(summary Summary) {
 	failed := filterByStatus(summary.Results, StatusFailed)
 
 	if len(updated) > 0 {
-		ids := toolNames(updated)
-		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.green("Updated:"), strings.Join(ids, ", "))
+		sb.WriteString("  ")
+		sb.WriteString(r.green("Updated:"))
+		sb.WriteByte(' ')
+		writeJoinedNames(sb, updated)
+		sb.WriteByte('\n')
 	}
 	if len(current) > 0 {
-		ids := toolNames(current)
-		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.green("Up to date:"), strings.Join(ids, ", "))
+		sb.WriteString("  ")
+		sb.WriteString(r.green("Up to date:"))
+		sb.WriteByte(' ')
+		writeJoinedNames(sb, current)
+		sb.WriteByte('\n')
 	}
 	if len(skipped) > 0 {
-		ids := toolNames(skipped)
-		_, _ = fmt.Fprintf(r.w, "  Skipped: %s\n", strings.Join(ids, ", "))
+		sb.WriteString("  Skipped: ")
+		writeJoinedNames(sb, skipped)
+		sb.WriteByte('\n')
 	}
 	if len(deselected) > 0 {
-		ids := toolNames(deselected)
-		_, _ = fmt.Fprintf(r.w, "  Deselected: %s\n", strings.Join(ids, ", "))
+		sb.WriteString("  Deselected: ")
+		writeJoinedNames(sb, deselected)
+		sb.WriteByte('\n')
 	}
 	if len(failed) > 0 {
-		ids := toolNames(failed)
-		_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.red("Failed:"), strings.Join(ids, ", "))
+		sb.WriteString("  ")
+		sb.WriteString(r.red("Failed:"))
+		sb.WriteByte(' ')
+		writeJoinedNames(sb, failed)
+		sb.WriteByte('\n')
 		if r.verbose && !r.quiet {
 			for _, f := range failed {
 				if f.Stderr != "" {
 					for _, line := range strings.Split(strings.TrimSpace(f.Stderr), "\n") {
-						_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
+						sb.WriteString("    ")
+						sb.WriteString(r.dim("│"))
+						sb.WriteByte(' ')
+						sb.WriteString(r.dim(line))
+						sb.WriteByte('\n')
 					}
 				}
 			}
@@ -695,7 +745,7 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 	hasWarnings := doctor.HasWarnings(results)
 
 	if quiet && !hasErrors && !hasWarnings {
-		_, _ = fmt.Fprintln(r.w, "upp doctor: all checks passed.")
+		_, _ = io.WriteString(r.w, "upp doctor: all checks passed.\n")
 		return
 	}
 
@@ -723,33 +773,48 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		categoryMap[cat] = append(categoryMap[cat], res)
 	}
 
+	var sb strings.Builder
+	sb.Grow(len(displayResults)*96 + 256)
+
 	firstCategory := true
 	for _, cat := range categoryOrder {
 		if !firstCategory {
-			_, _ = fmt.Fprintln(r.w)
+			sb.WriteByte('\n')
 		}
 		firstCategory = false
-		_, _ = fmt.Fprintln(r.w, cat)
+		sb.WriteString(cat)
+		sb.WriteByte('\n')
 
 		items := categoryMap[cat]
 		for _, item := range items {
 			icon := r.doctorIcon(item.Status)
+			sb.WriteString("  ")
+			sb.WriteString(icon)
+			sb.WriteByte(' ')
 			if item.Name != "" {
-				_, _ = fmt.Fprintf(r.w, "  %s %s: %s\n", icon, item.Name, item.Message)
+				sb.WriteString(item.Name)
+				sb.WriteString(": ")
+				sb.WriteString(item.Message)
+				sb.WriteByte('\n')
 			} else {
-				_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, item.Message)
+				sb.WriteString(item.Message)
+				sb.WriteByte('\n')
 			}
 
 			if verbose && item.Detail != "" {
 				for _, line := range strings.Split(item.Detail, "\n") {
 					if line != "" {
-						_, _ = fmt.Fprintf(r.w, "    %s\n", line)
+						sb.WriteString("    ")
+						sb.WriteString(line)
+						sb.WriteByte('\n')
 					}
 				}
 			}
 
 			if item.FixHint != "" {
-				_, _ = fmt.Fprintf(r.w, "    Hint: %s\n", item.FixHint)
+				sb.WriteString("    Hint: ")
+				sb.WriteString(item.FixHint)
+				sb.WriteByte('\n')
 			}
 		}
 	}
@@ -768,5 +833,12 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		}
 	}
 
-	_, _ = fmt.Fprintf(r.w, "\nResults: %d passed, %d warnings, %d errors.\n", passedCount, warnCount, errCount)
+	sb.WriteString("\nResults: ")
+	sb.WriteString(strconv.Itoa(passedCount))
+	sb.WriteString(" passed, ")
+	sb.WriteString(strconv.Itoa(warnCount))
+	sb.WriteString(" warnings, ")
+	sb.WriteString(strconv.Itoa(errCount))
+	sb.WriteString(" errors.\n")
+	_, _ = io.WriteString(r.w, sb.String())
 }

@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -104,15 +105,21 @@ func (b *CheckBoard) Finish() {
 // and returns the cursor to the bottom row. Caller holds b.mu; color only.
 func (b *CheckBoard) rewriteRow(index int) {
 	up := len(b.lines) - 1 - index
+	rowLen := len(b.lines[index])
 	var sb strings.Builder
+	sb.Grow(rowLen + 32)
 	sb.WriteByte('\r')
 	if up > 0 {
-		fmt.Fprintf(&sb, "\x1b[%dA", up)
+		sb.WriteString("\x1b[")
+		sb.WriteString(strconv.Itoa(up))
+		sb.WriteByte('A')
 	}
 	sb.WriteString("\x1b[K")
 	sb.WriteString(b.lines[index])
 	if up > 0 {
-		fmt.Fprintf(&sb, "\x1b[%dB", up)
+		sb.WriteString("\x1b[")
+		sb.WriteString(strconv.Itoa(up))
+		sb.WriteByte('B')
 	}
 	sb.WriteByte('\r')
 	_, _ = io.WriteString(b.w, sb.String())
