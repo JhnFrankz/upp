@@ -3,9 +3,11 @@ package selfupdate
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -58,21 +60,24 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 	if _, err := io.Copy(hasher, f); err != nil {
 		return err
 	}
-	want := fmt.Sprintf("%x", hasher.Sum(nil))
+	want := hex.EncodeToString(hasher.Sum(nil))
 
-	for _, line := range strings.Split(string(checksums), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for len(checksums) > 0 {
+		var line []byte
+		line, checksums, _ = bytes.Cut(checksums, []byte("\n"))
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
 			continue
 		}
-		fields := strings.Fields(line)
+		fields := bytes.Fields(line)
 		if len(fields) != 2 {
 			continue
 		}
-		sum, entry := fields[0], strings.TrimPrefix(fields[1], "*")
+		entry := string(bytes.TrimPrefix(fields[1], []byte("*")))
 		if entry != name {
 			continue
 		}
+		sum := string(fields[0])
 		if len(sum) != sha256.Size*2 {
 			return fmt.Errorf("%w: malformed checksum entry for %s", ErrChecksumMismatch, name)
 		}
