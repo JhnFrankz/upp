@@ -280,7 +280,9 @@ func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
 // CheckPackage can find any owned package's row (e.g. gh, GoLang.Go). An
 // absent or unparseable row yields found=false (current, no update).
 func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string, found bool) {
-	for _, line := range strings.Split(out, "\n") {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
@@ -310,7 +312,9 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 // (e.g. "v1.8.2311") is tolerated — the string is returned unchanged, since
 // the winget versions genuinely carry the leading v.
 func parseWingetUpgradeOutput(out string) (current, latest string, found bool) {
-	for _, line := range strings.Split(out, "\n") {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
@@ -344,7 +348,9 @@ func parseWingetUpgradeOutput(out string) (current, latest string, found bool) {
 // token is followed by two version-like fields, so a banner like
 // "WARN Scoop is out of date." is skipped and the real table row is found.
 func parseScoopStatusOutput(out string) (current, latest string, found bool) {
-	for _, line := range strings.Split(out, "\n") {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue

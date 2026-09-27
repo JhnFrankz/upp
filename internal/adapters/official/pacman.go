@@ -102,24 +102,35 @@ func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 
 // parsePacmanQOutput extracts the package version from `pacman -Q <pkg>` output.
 func parsePacmanQOutput(out string) string {
-	fields := strings.Fields(out)
-	if len(fields) >= 2 {
-		return fields[1]
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		return "unknown"
 	}
-	if len(fields) == 1 {
-		return fields[0]
+	idx := strings.IndexAny(trimmed, " \t\n\r")
+	if idx == -1 {
+		return trimmed
 	}
-	return "unknown"
+	rest := strings.TrimSpace(trimmed[idx:])
+	if rest == "" {
+		return trimmed[:idx]
+	}
+	end := strings.IndexAny(rest, " \t\n\r")
+	if end == -1 {
+		return rest
+	}
+	return rest[:end]
 }
 
 // parsePacmanSiOutput extracts the candidate version from `pacman -Si <pkg>` output.
 func parsePacmanSiOutput(out string) string {
-	for _, line := range strings.Split(out, "\n") {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "Version") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) == 2 {
-				val := strings.TrimSpace(parts[1])
+			before, after, found := strings.Cut(trimmed, ":")
+			if found && strings.TrimSpace(before) == "Version" {
+				val := strings.TrimSpace(after)
 				if val != "" {
 					return val
 				}
