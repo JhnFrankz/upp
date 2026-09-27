@@ -18,12 +18,13 @@ func BenchmarkRenderer_DoctorResults(b *testing.B) {
 		msg := "All checks passed successfully"
 		hint := ""
 		detail := ""
-		if i%3 == 1 {
+		switch i % 3 {
+		case 1:
 			status = doctor.SeverityWarn
 			msg = "Non-critical configuration notice detected"
 			hint = "Run check again with --fix if applicable"
 			detail = "diagnostic detail line 1\ndiagnostic detail line 2"
-		} else if i%3 == 2 {
+		case 2:
 			status = doctor.SeverityError
 			msg = "Required component is missing or misconfigured"
 			hint = "Install missing dependency"
