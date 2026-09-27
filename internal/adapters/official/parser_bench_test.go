@@ -105,3 +105,12 @@ git        2.43.0     2.44.0
 		_, _, _ = parseScoopStatusOutput(fixture)
 	}
 }
+
+func BenchmarkParseVersionFromHeader(b *testing.B) {
+	fixture := "ToolName v3.2.1 (c) 2026\nSecond line\nThird line\n"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = parseVersionFromHeader(fixture)
+	}
+}

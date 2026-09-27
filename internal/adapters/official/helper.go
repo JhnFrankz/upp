@@ -135,12 +135,14 @@ func extractVersionFromString(s string) string {
 
 // parseVersionFromHeader extracts a version from the first line (header) of command output.
 func parseVersionFromHeader(out string) string {
-	for _, line := range strings.Split(out, "\n") {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		return version.ExtractVersionFromString(line)
+		return extractVersionFromString(line)
 	}
 	return ""
 }

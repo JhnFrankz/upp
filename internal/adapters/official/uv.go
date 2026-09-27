@@ -79,8 +79,10 @@ func (a *UvAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 }
 
 func extractUvLatestVersion(output, current string) string {
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
+	rem := output
+	for len(rem) > 0 {
+		var line string
+		line, rem, _ = strings.Cut(rem, "\n")
 		fields := strings.Fields(line)
 		for i, f := range fields {
 			if strings.EqualFold(f, "to") && i+1 < len(fields) {
@@ -91,7 +93,10 @@ func extractUvLatestVersion(output, current string) string {
 			}
 		}
 	}
-	for _, line := range lines {
+	rem = output
+	for len(rem) > 0 {
+		var line string
+		line, rem, _ = strings.Cut(rem, "\n")
 		fields := strings.Fields(line)
 		for i := len(fields) - 1; i >= 0; i-- {
 			cleaned := strings.Trim(fields[i], "(),:;\"'")
