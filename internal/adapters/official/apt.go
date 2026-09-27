@@ -36,17 +36,25 @@ func (a *AptAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 // parseAptPolicyOutput parses the stdout of `apt-cache policy <pkg>`.
 func parseAptPolicyOutput(out string) (string, string) {
 	var current, latest string
-	for _, line := range strings.Split(out, "\n") {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "Installed:") {
-			parts := strings.Fields(trimmed)
-			if len(parts) >= 2 {
-				current = parts[1]
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "Installed:"))
+			if val != "" {
+				if idx := strings.IndexAny(val, " \t\r"); idx != -1 {
+					val = val[:idx]
+				}
+				current = val
 			}
 		} else if strings.HasPrefix(trimmed, "Candidate:") {
-			parts := strings.Fields(trimmed)
-			if len(parts) >= 2 {
-				latest = parts[1]
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "Candidate:"))
+			if val != "" {
+				if idx := strings.IndexAny(val, " \t\r"); idx != -1 {
+					val = val[:idx]
+				}
+				latest = val
 			}
 		}
 	}
