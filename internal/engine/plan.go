@@ -59,11 +59,6 @@ func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
 	return nil
 }
 
-// findAdapter searches adapterList for an adapter whose Name or ID matches toolID or toolName.
-func findAdapter(adapterList []adapters.Adapter, toolID, toolName string) adapters.Adapter {
-	return buildAdapterIndex(adapterList).find(toolID, toolName)
-}
-
 // Plan formulates an executable UpdatePlan from check outcomes and filter options.
 func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error) {
 	plan := UpdatePlan{
