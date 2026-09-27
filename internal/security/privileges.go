@@ -16,32 +16,24 @@ var (
 // elevation tokens (runas, admin).
 func DetectPrivileges(cmd string) []string {
 	var privs []string
-	seen := make(map[string]bool)
-
-	add := func(p string) {
-		if !seen[p] {
-			seen[p] = true
-			privs = append(privs, p)
-		}
-	}
 
 	if reSudo.MatchString(cmd) {
-		add("sudo")
+		privs = append(privs, "sudo")
 	}
 	if reDoas.MatchString(cmd) {
-		add("doas")
+		privs = append(privs, "doas")
 	}
 	if rePkexec.MatchString(cmd) {
-		add("pkexec")
+		privs = append(privs, "pkexec")
 	}
 	if reSu.MatchString(cmd) {
-		add("su")
+		privs = append(privs, "su")
 	}
 	if reRunas.MatchString(cmd) {
-		add("runas")
+		privs = append(privs, "runas")
 	}
 	if reAdmin.MatchString(cmd) {
-		add("admin")
+		privs = append(privs, "admin")
 	}
 	return privs
 }
