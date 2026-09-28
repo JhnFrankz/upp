@@ -198,3 +198,30 @@ func BenchmarkParse(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkExtractVersionFromString_SingleLine(b *testing.B) {
+	const singleLine = "git version 2.44.0 (Apple Git-146)"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = version.ExtractVersionFromString(singleLine)
+	}
+}
+
+func BenchmarkExtractVersionFromString_MultiLine(b *testing.B) {
+	const multiLineHeader = "Apple clang version 15.0.0 (clang-1500.3.9.4)\nTarget: arm64-apple-darwin23.4.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = version.ExtractVersionFromString(multiLineHeader)
+	}
+}
+
+func BenchmarkExtractVersionFromString_NotFound(b *testing.B) {
+	const noVersionHeader = "Some custom tool\nCopyright (C) 2026\nAll rights reserved."
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = version.ExtractVersionFromString(noVersionHeader)
+	}
+}
