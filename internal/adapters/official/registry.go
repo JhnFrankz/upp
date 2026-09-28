@@ -54,7 +54,7 @@ func AllAdapters() []adapters.Adapter {
 // OS constants should come from the platform package (e.g., platform.OSLinux).
 func AdaptersForPlatform(os string) []adapters.Adapter {
 	all := AllAdapters()
-	var filtered []adapters.Adapter
+	filtered := make([]adapters.Adapter, 0, len(all))
 	for _, a := range all {
 		info := a.Info()
 		for _, p := range info.Platforms {
@@ -78,32 +78,81 @@ func AdaptersForCurrentPlatform() []adapters.Adapter {
 
 // AdapterByName returns the adapter with the given tool ID, or nil if not found.
 func AdapterByName(id string) adapters.Adapter {
-	for _, a := range AllAdapters() {
-		if a.Name() == id {
-			return a
-		}
+	switch id {
+	case "apt":
+		return &AptAdapter{}
+	case "brew":
+		return &BrewAdapter{}
+	case "bun":
+		return &BunAdapter{}
+	case "docker":
+		return &DockerAdapter{}
+	case "gh":
+		return &GhAdapter{}
+	case "go":
+		return &GoAdapter{}
+	case "npm":
+		return &NpmAdapter{}
+	case "nvm":
+		return &NVMAdapter{}
+	case "opencode":
+		return &OpenCodeAdapter{}
+	case "pacman":
+		return &PacmanAdapter{}
+	case "pnpm":
+		return &PnpmAdapter{}
+	case "scoop":
+		return &ScoopAdapter{}
+	case "uv":
+		return &UvAdapter{}
+	case "winget":
+		return &WingetAdapter{}
+	default:
+		return nil
 	}
-	return nil
 }
 
 // IsOfficial reports whether the given tool ID belongs to an official adapter.
 func IsOfficial(id string) bool {
-	return AdapterByName(id) != nil
+	switch id {
+	case "apt", "brew", "bun", "docker", "gh", "go", "npm", "nvm", "opencode", "pacman", "pnpm", "scoop", "uv", "winget":
+		return true
+	default:
+		return false
+	}
 }
 
 // IsManager reports whether the given tool ID belongs to a declared manager-kind
 // official adapter (apt, brew, pacman, winget, scoop).
 func IsManager(id string) bool {
-	a := AdapterByName(id)
-	return a != nil && a.Info().Kind == adapters.KindManager
+	switch id {
+	case "apt", "brew", "pacman", "winget", "scoop":
+		return true
+	default:
+		return false
+	}
 }
+
+var (
+	platformsLinux             = []string{platform.OSLinux}
+	platformsLinuxMacOS        = []string{platform.OSLinux, platform.OSMacOS}
+	platformsWindows           = []string{platform.OSWindows}
+	platformsLinuxMacOSWindows = []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}
+)
 
 // PlatformsFor returns the slice of platform names supported by the official
 // adapter with the given tool ID, or nil if the tool is unknown.
 func PlatformsFor(id string) []string {
-	a := AdapterByName(id)
-	if a == nil {
+	switch id {
+	case "apt", "pacman":
+		return platformsLinux
+	case "brew":
+		return platformsLinuxMacOS
+	case "winget", "scoop":
+		return platformsWindows
+	case "bun", "docker", "gh", "go", "npm", "nvm", "opencode", "pnpm", "uv":
+		return platformsLinuxMacOSWindows
+	default:
 		return nil
 	}
-	return a.Info().Platforms
 }
