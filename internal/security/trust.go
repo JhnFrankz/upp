@@ -89,6 +89,26 @@ var MediumRiskKeywords = []string{
 	"apt purge",
 }
 
+var (
+	highRiskKeywordsLower   []string
+	mediumRiskKeywordsLower []string
+)
+
+func init() {
+	syncRiskKeywordsLower()
+}
+
+func syncRiskKeywordsLower() {
+	highRiskKeywordsLower = make([]string, len(HighRiskKeywords))
+	for i, kw := range HighRiskKeywords {
+		highRiskKeywordsLower[i] = strings.ToLower(kw)
+	}
+	mediumRiskKeywordsLower = make([]string, len(MediumRiskKeywords))
+	for i, kw := range MediumRiskKeywords {
+		mediumRiskKeywordsLower[i] = strings.ToLower(kw)
+	}
+}
+
 // ClassifyCommand uses a hybrid approach to determine the risk level of a command.
 // It checks keyword matching first, then pattern matching for chaining/piping.
 func ClassifyCommand(cmd string) RiskLevel {
@@ -99,15 +119,15 @@ func ClassifyCommand(cmd string) RiskLevel {
 	lower := strings.ToLower(cmd)
 
 	// 1. Keyword matching — high risk first (short-circuits).
-	for _, kw := range HighRiskKeywords {
-		if strings.Contains(lower, strings.ToLower(kw)) {
+	for _, kw := range highRiskKeywordsLower {
+		if strings.Contains(lower, kw) {
 			return RiskHigh
 		}
 	}
 
 	// 2. Keyword matching — medium risk.
-	for _, kw := range MediumRiskKeywords {
-		if strings.Contains(lower, strings.ToLower(kw)) {
+	for _, kw := range mediumRiskKeywordsLower {
+		if strings.Contains(lower, kw) {
 			return RiskMedium
 		}
 	}
@@ -118,7 +138,7 @@ func ClassifyCommand(cmd string) RiskLevel {
 	}
 
 	// 4. Pattern matching — pipe to shell is always high risk.
-	if hasPipeToShell(cmd) {
+	if hasPipeToShell(cmd, lower) {
 		return RiskHigh
 	}
 
@@ -153,10 +173,15 @@ var pipeInterpreters = []string{
 
 // hasPipeToShell detects piping output to a shell or script interpreter,
 // both spaced ("| sh", "| python") and compact ("|sh", "|python") variants.
-func hasPipeToShell(cmd string) bool {
-	lower := strings.ToLower(strings.TrimSpace(cmd))
+func hasPipeToShell(cmd string, lower ...string) bool {
+	var l string
+	if len(lower) > 0 {
+		l = lower[0]
+	} else {
+		l = strings.ToLower(cmd)
+	}
 	for _, interp := range pipeInterpreters {
-		if strings.Contains(lower, "| "+interp) || strings.Contains(lower, "|"+interp) {
+		if strings.Contains(l, "| "+interp) || strings.Contains(l, "|"+interp) {
 			return true
 		}
 	}
