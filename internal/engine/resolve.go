@@ -22,6 +22,11 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 			canonOS = norm
 		}
 		platformAdapters := official.AdaptersForPlatform(canonOS)
+		customCount := 0
+		if e.cfg != nil {
+			customCount = len(e.cfg.Custom)
+		}
+		source = make([]adapters.Adapter, 0, len(platformAdapters)+customCount)
 		for _, a := range platformAdapters {
 			info := a.Info()
 			if e.cfg != nil && e.cfg.Tools != nil {
@@ -73,7 +78,7 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 			onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 		}
 
-		filtered := make([]adapters.Adapter, 0)
+		filtered := make([]adapters.Adapter, 0, len(filter.Only))
 		for _, a := range source {
 			nameLower := strings.ToLower(a.Name())
 			idLower := strings.ToLower(a.Info().ID)
