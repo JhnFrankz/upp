@@ -109,8 +109,9 @@ func parseDescribeSuffix(s string) error {
 	if hash == "" {
 		return fmt.Errorf("empty commit hash in %q", s)
 	}
-	for _, r := range hash {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+	for i := 0; i < len(hash); i++ {
+		b := hash[i]
+		if (b < '0' || b > '9') && (b < 'a' || b > 'f') {
 			return fmt.Errorf("commit hash %q is not hexadecimal", hash)
 		}
 	}
@@ -137,8 +138,9 @@ func (v Version) Compare(o Version) int {
 // It looks for semver-like patterns (v1.2.3, 1.2.3, 1.2.3-rc1, etc.) in each line.
 // Returns empty string if no version token is found.
 func ExtractVersionFromString(s string) string {
-	lines := strings.Split(s, "\n")
-	for _, line := range lines {
+	for len(s) > 0 {
+		var line string
+		line, s, _ = strings.Cut(s, "\n")
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -161,16 +163,49 @@ func ExtractVersionFromOutput(s string) string {
 	return s
 }
 
-// findVersionInLine scans a line for a version-like token.
+// findVersionInLine scans a line for a version-like token without heap allocations.
 func findVersionInLine(line string) string {
-	fields := strings.Fields(line)
-	for _, field := range fields {
-		cleaned := strings.Trim(field, "(),:;")
+	for len(line) > 0 {
+		// Skip leading whitespace
+		i := 0
+		for i < len(line) && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') {
+			i++
+		}
+		line = line[i:]
+		if len(line) == 0 {
+			break
+		}
+		// Find token boundary
+		j := 0
+		for j < len(line) && line[j] != ' ' && line[j] != '\t' && line[j] != '\r' {
+			j++
+		}
+		field := line[:j]
+		line = line[j:]
+
+		cleaned := trimPunctuation(field)
 		if IsVersionLike(cleaned) {
 			return cleaned
 		}
 	}
 	return ""
+}
+
+// trimPunctuation strips leading and trailing delimiters ((),:;) using sub-slicing (0 allocs).
+func trimPunctuation(s string) string {
+	start := 0
+	for start < len(s) && isPunctuation(s[start]) {
+		start++
+	}
+	end := len(s)
+	for end > start && isPunctuation(s[end-1]) {
+		end--
+	}
+	return s[start:end]
+}
+
+func isPunctuation(b byte) bool {
+	return b == '(' || b == ')' || b == ',' || b == ':' || b == ';'
 }
 
 // IsVersionLike returns true if the string looks like a version number.
