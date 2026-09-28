@@ -95,15 +95,16 @@ func ParseFilter(only string) []string {
 // FilterTools applies the --only filter to a list of tool IDs.
 // It warns about unknown tool names and returns the filtered list.
 func FilterTools(tools, onlyList []string, stderr io.Writer) []string {
+	if len(onlyList) == 0 {
+		return tools
+	}
+
 	toolSet := make(map[string]bool, len(tools))
 	for _, t := range tools {
 		toolSet[strings.ToLower(t)] = true
 	}
 
-	if len(onlyList) > 0 {
-		return filterOnly(tools, onlyList, toolSet, stderr)
-	}
-	return tools
+	return filterOnly(tools, onlyList, toolSet, stderr)
 }
 
 func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Writer) []string {
@@ -129,6 +130,13 @@ func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Wri
 }
 
 func parseCommaList(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	if !strings.Contains(s, ",") {
+		return []string{s}
+	}
 	var result []string
 	for _, item := range strings.Split(s, ",") {
 		trimmed := strings.TrimSpace(item)
