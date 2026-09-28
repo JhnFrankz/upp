@@ -63,7 +63,7 @@ func defaultFindAllPaths(name string) []string {
 		return nil
 	}
 	dirs := filepath.SplitList(pathEnv)
-	var found []string
+	found := make([]string, 0, 2)
 	var foundFi []os.FileInfo
 	seen := make(map[string]bool)
 
@@ -116,14 +116,18 @@ func defaultFindAllPaths(name string) []string {
 	return found
 }
 
+// defaultDoctorHTTPClient is reused across HTTP checks to enable connection pooling and keep-alives.
+var defaultDoctorHTTPClient = &http.Client{
+	Timeout: 3 * time.Second,
+}
+
 func defaultHTTPGet(ctx context.Context, url string) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("User-Agent", "upp")
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := defaultDoctorHTTPClient.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -170,7 +174,11 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 		deps.Adapters = official.AdaptersForCurrentPlatform()
 	}
 
-	var results []CheckResult
+	estimatedCap := 16
+	if len(deps.Adapters) > 0 {
+		estimatedCap += len(deps.Adapters)
+	}
+	results := make([]CheckResult, 0, estimatedCap)
 	results = append(results, checkStorageAndConfig(deps)...)
 	results = append(results, checkProcessLock(deps)...)
 	results = append(results, checkPackageManagers(deps)...)
