@@ -229,11 +229,14 @@ func (c *CustomAdapter) IsTrusted() bool {
 
 // extractBaseCommand gets the first token from a command string.
 func extractBaseCommand(cmd string) string {
-	fields := strings.Fields(cmd)
-	if len(fields) == 0 {
+	cmd = strings.TrimLeft(cmd, " \t\r\n")
+	if cmd == "" {
 		return ""
 	}
-	return fields[0]
+	if idx := strings.IndexAny(cmd, " \t\r\n"); idx != -1 {
+		return cmd[:idx]
+	}
+	return cmd
 }
 
 // shellExec runs a command via the platform shell, bounded by UpdateTimeout.

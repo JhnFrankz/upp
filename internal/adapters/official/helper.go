@@ -258,8 +258,12 @@ type brewOutdatedEntry struct {
 // fail-closed helper convention — the caller distinguishes that from a real
 // subprocess failure via commandOutputErr.
 func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "[]" || trimmed == "" {
+		return "", "", false
+	}
 	var entries []brewOutdatedEntry
-	if err := json.Unmarshal([]byte(out), &entries); err != nil {
+	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
 		return "", "", false
 	}
 	if len(entries) == 0 {

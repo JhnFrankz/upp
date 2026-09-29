@@ -28,6 +28,24 @@ func BenchmarkParseBrewOutdatedJSON(b *testing.B) {
 	}
 }
 
+func BenchmarkParseBrewOutdatedJSON_Empty(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = parseBrewOutdatedJSON("[]\n")
+		_, _, _ = parseBrewOutdatedJSON("[]")
+	}
+}
+
+func BenchmarkParseBrewOutdatedJSON_Outdated(b *testing.B) {
+	fixture := `[{"name":"foo","installed_versions":["1.0.0"],"current_version":"1.1.0"}]`
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = parseBrewOutdatedJSON(fixture)
+	}
+}
+
 func BenchmarkParsePacmanQOutput(b *testing.B) {
 	fixture := "github-cli 2.45.0-1\n"
 	b.ReportAllocs()
