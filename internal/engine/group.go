@@ -157,6 +157,15 @@ func OwnerGroupLabel(a adapters.Adapter, osName string, tools []adapters.Adapter
 			}
 		}
 	}
+	return OwnerGroupLabelWithManagers(a, osName, presentManagers, allAdapters...)
+}
+
+// OwnerGroupLabelWithManagers returns the manager display label that owns a on osName,
+// using a precomputed map of present manager names and IDs.
+func OwnerGroupLabelWithManagers(a adapters.Adapter, osName string, presentManagers map[string]bool, allAdapters ...[]adapters.Adapter) string {
+	if a == nil || a.Info().Kind == adapters.KindManager {
+		return ""
+	}
 	ownerID := ownerIDOf(a, osName, allAdapters...)
 	if ownerID == "" || !presentManagers[ownerID] {
 		return ""
