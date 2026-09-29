@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -820,4 +821,49 @@ func TestDiagnose_ContextCanceled(t *testing.T) {
 	if invoked {
 		t.Fatal("Diagnose with canceled context should return early without executing check phases")
 	}
+}
+
+func TestGetPathDirs_CachingAndInvalidation(t *testing.T) {
+	t.Setenv("PATH", "")
+	if got := getPathDirs(); got != nil {
+		t.Errorf("getPathDirs() on empty PATH = %v, want nil", got)
+	}
+
+	testPath := "/bin" + string(filepath.ListSeparator) + "/usr/bin"
+	t.Setenv("PATH", testPath)
+	dirs1 := getPathDirs()
+	if len(dirs1) != 2 || dirs1[0] != "/bin" || dirs1[1] != "/usr/bin" {
+		t.Fatalf("unexpected getPathDirs() = %v", dirs1)
+	}
+
+	dirs2 := getPathDirs()
+	if len(dirs2) != len(dirs1) || &dirs1[0] != &dirs2[0] {
+		t.Errorf("expected cached slice pointer to be reused, got %p vs %p", dirs1, dirs2)
+	}
+
+	newPath := "/opt/bin"
+	t.Setenv("PATH", newPath)
+	dirs3 := getPathDirs()
+	if len(dirs3) != 1 || dirs3[0] != "/opt/bin" {
+		t.Fatalf("expected invalidated cache with new path, got %v", dirs3)
+	}
+}
+
+func TestGetPathDirs_Concurrent(t *testing.T) {
+	orig := os.Getenv("PATH")
+	defer func() {
+		_ = os.Setenv("PATH", orig)
+	}()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				_ = getPathDirs()
+			}
+		}(i)
+	}
+	wg.Wait()
 }

@@ -57,12 +57,40 @@ func DefaultDoctorDeps() DoctorDeps {
 	}
 }
 
-func defaultFindAllPaths(name string) []string {
+var (
+	pathEnvMu      sync.RWMutex
+	cachedPathEnv  string
+	cachedPathDirs []string
+)
+
+func getPathDirs() []string {
 	pathEnv := os.Getenv("PATH")
 	if pathEnv == "" {
 		return nil
 	}
-	dirs := filepath.SplitList(pathEnv)
+	pathEnvMu.RLock()
+	if pathEnv == cachedPathEnv && cachedPathDirs != nil {
+		dirs := cachedPathDirs
+		pathEnvMu.RUnlock()
+		return dirs
+	}
+	pathEnvMu.RUnlock()
+
+	pathEnvMu.Lock()
+	defer pathEnvMu.Unlock()
+	if pathEnv == cachedPathEnv && cachedPathDirs != nil {
+		return cachedPathDirs
+	}
+	cachedPathEnv = pathEnv
+	cachedPathDirs = filepath.SplitList(pathEnv)
+	return cachedPathDirs
+}
+
+func defaultFindAllPaths(name string) []string {
+	dirs := getPathDirs()
+	if len(dirs) == 0 {
+		return nil
+	}
 	found := make([]string, 0, 2)
 	var foundFi []os.FileInfo
 	seen := make(map[string]bool)
