@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/version"
@@ -113,13 +114,42 @@ func lookPath(name string) bool {
 	return lookPathFn(name)
 }
 
+var (
+	linuxManagerMu     sync.RWMutex
+	cachedLinuxManager string
+)
+
+func resetLinuxManagerCache() {
+	linuxManagerMu.Lock()
+	cachedLinuxManager = ""
+	linuxManagerMu.Unlock()
+}
+
 // defaultLinuxManager resolves the default Linux package manager for official tools.
 // It returns "pacman" if apt is absent and pacman is present on PATH, otherwise "apt".
 func defaultLinuxManager() string {
-	if !lookPath("apt") && lookPath("pacman") {
-		return "pacman"
+	if runtimeGOOSFn() != "linux" {
+		return "apt"
 	}
-	return "apt"
+	linuxManagerMu.RLock()
+	if cachedLinuxManager != "" {
+		mgr := cachedLinuxManager
+		linuxManagerMu.RUnlock()
+		return mgr
+	}
+	linuxManagerMu.RUnlock()
+
+	linuxManagerMu.Lock()
+	defer linuxManagerMu.Unlock()
+	if cachedLinuxManager != "" {
+		return cachedLinuxManager
+	}
+	mgr := "apt"
+	if !lookPathFn("apt") && lookPathFn("pacman") {
+		mgr = "pacman"
+	}
+	cachedLinuxManager = mgr
+	return mgr
 }
 
 // extractVersion attempts to extract a version string from command output.
