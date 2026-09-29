@@ -20,6 +20,8 @@ type ToolGroup struct {
 	Adapters []adapters.Adapter
 }
 
+var canonicalManagerIDs = []string{"apt", "brew", "pacman", "winget", "scoop"}
+
 // GroupByOwner buckets the given adapters into manager-grouped buckets in
 // canonical discovery order: (1) manager groups first, in official.AllAdapters
 // order (apt, brew, winget, scoop, pacman); (2) each manager's owned tools;
@@ -57,16 +59,9 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 	var groups []ToolGroup
 	visitedManagers := make(map[string]bool)
 
-	// (1) Manager groups in canonical official.AllAdapters() order
-	for _, m := range official.AllAdapters() {
-		mi := m.Info()
-		if mi.Kind != adapters.KindManager {
-			continue
-		}
-		mgrAdapter, present := presentManagers[mi.ID]
-		if !present {
-			mgrAdapter, present = presentManagers[m.Name()]
-		}
+	// (1) Manager groups in canonical order
+	for _, mgrID := range canonicalManagerIDs {
+		mgrAdapter, present := presentManagers[mgrID]
 		if !present {
 			continue
 		}
@@ -74,15 +69,18 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 			continue
 		}
 		visitedManagers[mgrAdapter.Name()] = true
-		visitedManagers[mi.ID] = true
-		visitedManagers[m.Name()] = true
+		visitedManagers[mgrID] = true
+		visitedManagers[mgrAdapter.Info().ID] = true
 
-		owned := ownerTools[mi.ID]
-		if mgrAdapter.Name() != mi.ID && len(ownerTools[mgrAdapter.Name()]) > 0 {
+		owned := ownerTools[mgrID]
+		if len(owned) == 0 {
+			owned = ownerTools[mgrAdapter.Name()]
+		}
+		if mgrAdapter.Name() != mgrID && len(ownerTools[mgrAdapter.Name()]) > 0 && len(ownerTools[mgrID]) > 0 {
 			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
 		}
 
-		header := managerDisplayName(mi.ID, allAdapters...)
+		header := managerDisplayName(mgrID, allAdapters...)
 		adaps := make([]adapters.Adapter, 0, 1+len(owned))
 		adaps = append(adaps, mgrAdapter)
 		adaps = append(adaps, owned...)

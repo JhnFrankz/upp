@@ -57,16 +57,23 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 	}
 	eng := engine.New(cfg, p.OS, opts...)
 	if allAdapters == nil {
-		allAdapters, _ = eng.Resolve(engine.Filter{})
+		var err error
+		allAdapters, err = eng.Resolve(engine.Filter{})
+		if err != nil {
+			return fmt.Errorf("cannot resolve tools: %w", err)
+		}
 	}
 
 	only := ParseFilter(gf.Only)
 	if len(only) > 0 {
 		FilterTools(adapterIDs(allAdapters), only, os.Stderr)
 	}
-	adapterList, err := eng.Resolve(engine.Filter{Only: only})
-	if err != nil {
-		return fmt.Errorf("cannot resolve tools: %w", err)
+
+	var adapterList []adapters.Adapter
+	if len(only) == 0 {
+		adapterList = allAdapters
+	} else {
+		adapterList = engine.FilterAdapters(allAdapters, only)
 	}
 
 	r := output.NewRenderer(os.Stdout, gf.Quiet)

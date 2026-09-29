@@ -53,18 +53,52 @@ func AllAdapters() []adapters.Adapter {
 // AdaptersForPlatform returns only the adapters relevant to the given OS.
 // OS constants should come from the platform package (e.g., platform.OSLinux).
 func AdaptersForPlatform(os string) []adapters.Adapter {
-	all := AllAdapters()
-	filtered := make([]adapters.Adapter, 0, len(all))
-	for _, a := range all {
-		info := a.Info()
-		for _, p := range info.Platforms {
-			if p == os {
-				filtered = append(filtered, a)
-				break
-			}
+	switch os {
+	case platform.OSLinux:
+		return []adapters.Adapter{
+			&AptAdapter{},
+			&BrewAdapter{},
+			&PacmanAdapter{},
+			&NVMAdapter{},
+			&NpmAdapter{},
+			&PnpmAdapter{},
+			&BunAdapter{},
+			&UvAdapter{},
+			&GhAdapter{},
+			&DockerAdapter{},
+			&GoAdapter{},
+			&OpenCodeAdapter{},
 		}
+	case platform.OSMacOS:
+		return []adapters.Adapter{
+			&BrewAdapter{},
+			&NVMAdapter{},
+			&NpmAdapter{},
+			&PnpmAdapter{},
+			&BunAdapter{},
+			&UvAdapter{},
+			&GhAdapter{},
+			&DockerAdapter{},
+			&GoAdapter{},
+			&OpenCodeAdapter{},
+		}
+	case platform.OSWindows:
+		return []adapters.Adapter{
+			&WingetAdapter{},
+			&ScoopAdapter{},
+			&NVMAdapter{},
+			&NpmAdapter{},
+			&PnpmAdapter{},
+			&BunAdapter{},
+			&UvAdapter{},
+			&GhAdapter{},
+			&DockerAdapter{},
+			&GoAdapter{},
+			&OpenCodeAdapter{},
+		}
+	default:
+		return nil
 	}
-	return filtered
 }
 
 // AdaptersForCurrentPlatform returns adapters for the detected runtime OS.

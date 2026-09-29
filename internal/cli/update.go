@@ -136,7 +136,11 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 	}
 	eng := engine.New(cfg, p.OS, opts...)
 	if allAdapters == nil {
-		allAdapters, _ = eng.Resolve(engine.Filter{})
+		var err error
+		allAdapters, err = eng.Resolve(engine.Filter{})
+		if err != nil {
+			return fmt.Errorf("cannot resolve tools: %w", err)
+		}
 	}
 
 	onlyList := ParseFilter(gf.Only)
@@ -144,9 +148,11 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		FilterTools(adapterIDs(allAdapters), onlyList, os.Stderr)
 	}
 
-	filteredAdapters, err := eng.Resolve(engine.Filter{Only: onlyList})
-	if err != nil {
-		return fmt.Errorf("cannot resolve tools: %w", err)
+	var filteredAdapters []adapters.Adapter
+	if len(onlyList) == 0 {
+		filteredAdapters = allAdapters
+	} else {
+		filteredAdapters = engine.FilterAdapters(allAdapters, onlyList)
 	}
 
 	r := output.NewRendererVerbose(os.Stdout, gf.Quiet, gf.Verbose)
