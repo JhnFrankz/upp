@@ -404,6 +404,22 @@ func TestAdapterByName(t *testing.T) {
 	}
 }
 
+func TestAdapterSingletons(t *testing.T) {
+	tools := []string{"apt", "brew", "bun", "docker", "gh", "go", "npm", "nvm", "opencode", "pacman", "pnpm", "scoop", "uv", "winget"}
+	for _, tool := range tools {
+		t.Run(tool, func(t *testing.T) {
+			a1 := AdapterByName(tool)
+			a2 := AdapterByName(tool)
+			if a1 == nil || a2 == nil {
+				t.Fatalf("AdapterByName(%q) returned nil", tool)
+			}
+			if a1 != a2 {
+				t.Errorf("AdapterByName(%q) returned different instances (%p != %p), expected singleton", tool, a1, a2)
+			}
+		})
+	}
+}
+
 func TestAdaptersForCurrentPlatform(t *testing.T) {
 	p, err := platform.Detect()
 	if err != nil {
