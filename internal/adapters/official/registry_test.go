@@ -326,7 +326,7 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 	}
 
 	t.Run("pacman-linux-when-apt-absent", func(t *testing.T) {
-		setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": false, "pacman": true}})
+		setExecFakes(t, execFakes{goos: "linux", lookPath: map[string]bool{"apt": false, "pacman": true}})
 		var owned []string
 		for _, a := range AllAdapters() {
 			info := a.Info()
