@@ -96,14 +96,17 @@ func FilterAdapters(adapterList []adapters.Adapter, only []string) []adapters.Ad
 	filtered := make([]adapters.Adapter, 0, len(only))
 	for _, a := range adapterList {
 		nameLower := strings.ToLower(a.Name())
-		idLower := strings.ToLower(a.Info().ID)
 		if _, ok := onlySet[nameLower]; ok {
 			filtered = append(filtered, a)
 			continue
 		}
-		if _, ok := onlySet[idLower]; ok {
-			filtered = append(filtered, a)
-			continue
+		// Only query Info() if name didn't match:
+		info := a.Info()
+		if info.ID != "" && info.ID != a.Name() {
+			if _, ok := onlySet[strings.ToLower(info.ID)]; ok {
+				filtered = append(filtered, a)
+				continue
+			}
 		}
 	}
 	return filtered

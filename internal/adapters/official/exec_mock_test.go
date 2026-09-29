@@ -45,6 +45,8 @@ type execFakes struct {
 func setExecFakes(t *testing.T, f execFakes) {
 	t.Helper()
 
+	resetLinuxManagerCache()
+
 	origRunCmd := runCmdFn
 	origRunCmdArgs := runCmdArgsFn
 	origRunCmdArgsUpdate := runCmdArgsUpdateFn
@@ -228,5 +230,6 @@ func setExecFakes(t *testing.T, f execFakes) {
 		goExtractTarballFn = origGoExtractTarball
 		goTargetExistsFn = origGoTargetExists
 		runtimeGOOSFn = origRuntimeGOOS
+		resetLinuxManagerCache()
 	})
 }

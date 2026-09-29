@@ -29,25 +29,48 @@ func OwnerMetadata() OwnerMetadataSummary {
 	return meta
 }
 
+var (
+	aptAdapter      = &AptAdapter{}
+	brewAdapter     = &BrewAdapter{}
+	bunAdapter      = &BunAdapter{}
+	dockerAdapter   = &DockerAdapter{}
+	ghAdapter       = &GhAdapter{}
+	goAdapter       = &GoAdapter{}
+	npmAdapter      = &NpmAdapter{}
+	nvmAdapter      = &NVMAdapter{}
+	openCodeAdapter = &OpenCodeAdapter{}
+	pacmanAdapter   = &PacmanAdapter{}
+	pnpmAdapter     = &PnpmAdapter{}
+	scoopAdapter    = &ScoopAdapter{}
+	uvAdapter       = &UvAdapter{}
+	wingetAdapter   = &WingetAdapter{}
+
+	allAdapters = []adapters.Adapter{
+		aptAdapter, brewAdapter, pacmanAdapter, wingetAdapter, scoopAdapter,
+		nvmAdapter, npmAdapter, pnpmAdapter, bunAdapter, uvAdapter,
+		ghAdapter, dockerAdapter, goAdapter, openCodeAdapter,
+	}
+
+	linuxAdapters = []adapters.Adapter{
+		aptAdapter, brewAdapter, pacmanAdapter, nvmAdapter, npmAdapter,
+		pnpmAdapter, bunAdapter, uvAdapter, ghAdapter, dockerAdapter,
+		goAdapter, openCodeAdapter,
+	}
+	macosAdapters = []adapters.Adapter{
+		brewAdapter, nvmAdapter, npmAdapter, pnpmAdapter, bunAdapter,
+		uvAdapter, ghAdapter, dockerAdapter, goAdapter, openCodeAdapter,
+	}
+	windowsAdapters = []adapters.Adapter{
+		wingetAdapter, scoopAdapter, nvmAdapter, npmAdapter, pnpmAdapter,
+		bunAdapter, uvAdapter, ghAdapter, dockerAdapter, goAdapter,
+		openCodeAdapter,
+	}
+)
+
 // AllAdapters returns every official adapter, regardless of platform.
 // The caller is responsible for filtering by platform if needed.
 func AllAdapters() []adapters.Adapter {
-	return []adapters.Adapter{
-		&AptAdapter{},
-		&BrewAdapter{},
-		&PacmanAdapter{},
-		&WingetAdapter{},
-		&ScoopAdapter{},
-		&NVMAdapter{},
-		&NpmAdapter{},
-		&PnpmAdapter{},
-		&BunAdapter{},
-		&UvAdapter{},
-		&GhAdapter{},
-		&DockerAdapter{},
-		&GoAdapter{},
-		&OpenCodeAdapter{},
-	}
+	return append([]adapters.Adapter(nil), allAdapters...)
 }
 
 // AdaptersForPlatform returns only the adapters relevant to the given OS.
@@ -55,47 +78,11 @@ func AllAdapters() []adapters.Adapter {
 func AdaptersForPlatform(os string) []adapters.Adapter {
 	switch os {
 	case platform.OSLinux:
-		return []adapters.Adapter{
-			&AptAdapter{},
-			&BrewAdapter{},
-			&PacmanAdapter{},
-			&NVMAdapter{},
-			&NpmAdapter{},
-			&PnpmAdapter{},
-			&BunAdapter{},
-			&UvAdapter{},
-			&GhAdapter{},
-			&DockerAdapter{},
-			&GoAdapter{},
-			&OpenCodeAdapter{},
-		}
+		return append([]adapters.Adapter(nil), linuxAdapters...)
 	case platform.OSMacOS:
-		return []adapters.Adapter{
-			&BrewAdapter{},
-			&NVMAdapter{},
-			&NpmAdapter{},
-			&PnpmAdapter{},
-			&BunAdapter{},
-			&UvAdapter{},
-			&GhAdapter{},
-			&DockerAdapter{},
-			&GoAdapter{},
-			&OpenCodeAdapter{},
-		}
+		return append([]adapters.Adapter(nil), macosAdapters...)
 	case platform.OSWindows:
-		return []adapters.Adapter{
-			&WingetAdapter{},
-			&ScoopAdapter{},
-			&NVMAdapter{},
-			&NpmAdapter{},
-			&PnpmAdapter{},
-			&BunAdapter{},
-			&UvAdapter{},
-			&GhAdapter{},
-			&DockerAdapter{},
-			&GoAdapter{},
-			&OpenCodeAdapter{},
-		}
+		return append([]adapters.Adapter(nil), windowsAdapters...)
 	default:
 		return nil
 	}
@@ -114,33 +101,33 @@ func AdaptersForCurrentPlatform() []adapters.Adapter {
 func AdapterByName(id string) adapters.Adapter {
 	switch id {
 	case "apt":
-		return &AptAdapter{}
+		return aptAdapter
 	case "brew":
-		return &BrewAdapter{}
+		return brewAdapter
 	case "bun":
-		return &BunAdapter{}
+		return bunAdapter
 	case "docker":
-		return &DockerAdapter{}
+		return dockerAdapter
 	case "gh":
-		return &GhAdapter{}
+		return ghAdapter
 	case "go":
-		return &GoAdapter{}
+		return goAdapter
 	case "npm":
-		return &NpmAdapter{}
+		return npmAdapter
 	case "nvm":
-		return &NVMAdapter{}
+		return nvmAdapter
 	case "opencode":
-		return &OpenCodeAdapter{}
+		return openCodeAdapter
 	case "pacman":
-		return &PacmanAdapter{}
+		return pacmanAdapter
 	case "pnpm":
-		return &PnpmAdapter{}
+		return pnpmAdapter
 	case "scoop":
-		return &ScoopAdapter{}
+		return scoopAdapter
 	case "uv":
-		return &UvAdapter{}
+		return uvAdapter
 	case "winget":
-		return &WingetAdapter{}
+		return wingetAdapter
 	default:
 		return nil
 	}

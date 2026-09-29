@@ -68,6 +68,9 @@ func TestDynamicLinuxManager_Info(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.fakes.goos == "" {
+				tt.fakes.goos = "linux"
+			}
 			setExecFakes(t, tt.fakes)
 
 			// gh assertions
@@ -278,6 +281,67 @@ func TestDynamicLinuxManager_UpdateDelegation(t *testing.T) {
 		}
 		if !res.Success {
 			t.Errorf("docker.Update(true) Success = false, want true")
+		}
+	})
+}
+
+func TestDefaultLinuxManager_OSGatingAndCaching(t *testing.T) {
+	t.Run("non-linux returns apt without lookPath checks", func(t *testing.T) {
+		lookPathCalled := false
+		setExecFakes(t, execFakes{
+			goos: "darwin",
+			lookPath: map[string]bool{
+				"apt":    false,
+				"pacman": true,
+			},
+		})
+		origLookPathFn := lookPathFn
+		lookPathFn = func(name string) bool {
+			lookPathCalled = true
+			return origLookPathFn(name)
+		}
+		defer func() { lookPathFn = origLookPathFn }()
+
+		got := defaultLinuxManager()
+		if got != "apt" {
+			t.Errorf("defaultLinuxManager() on darwin = %q, want \"apt\"", got)
+		}
+		if lookPathCalled {
+			t.Errorf("lookPathFn was called on non-linux OS")
+		}
+	})
+
+	t.Run("linux caches result thread-safely across calls", func(t *testing.T) {
+		lookPathCalls := 0
+		setExecFakes(t, execFakes{
+			goos: "linux",
+			lookPath: map[string]bool{
+				"apt":    false,
+				"pacman": true,
+			},
+		})
+		origLookPathFn := lookPathFn
+		lookPathFn = func(name string) bool {
+			lookPathCalls++
+			return origLookPathFn(name)
+		}
+		defer func() { lookPathFn = origLookPathFn }()
+
+		got1 := defaultLinuxManager()
+		if got1 != "pacman" {
+			t.Errorf("defaultLinuxManager() call 1 = %q, want \"pacman\"", got1)
+		}
+		firstCount := lookPathCalls
+		if firstCount == 0 {
+			t.Errorf("expected lookPath calls on first invocation")
+		}
+
+		got2 := defaultLinuxManager()
+		if got2 != "pacman" {
+			t.Errorf("defaultLinuxManager() call 2 = %q, want \"pacman\"", got2)
+		}
+		if lookPathCalls != firstCount {
+			t.Errorf("lookPath was called again on second invocation: got %d calls, want %d", lookPathCalls, firstCount)
 		}
 	})
 }

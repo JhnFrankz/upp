@@ -444,6 +444,16 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 	}
 	adapterMap := adapterByID(filteredAdapters)
 
+	presentManagers := make(map[string]bool)
+	for _, t := range grouped {
+		if t.Info().Kind == adapters.KindManager {
+			presentManagers[t.Name()] = true
+			if id := t.Info().ID; id != "" {
+				presentManagers[id] = true
+			}
+		}
+	}
+
 	pending := make([]output.SelectOption, 0, len(plan.Updates))
 	for _, u := range plan.Updates {
 		label := u.ToolName
@@ -452,7 +462,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		}
 		var group string
 		if a, ok := adapterMap[u.ToolID]; ok {
-			group = engine.OwnerGroupLabel(a, osName, grouped, allAdapters...)
+			group = engine.OwnerGroupLabelWithManagers(a, osName, presentManagers, allAdapters...)
 		}
 		pending = append(pending, output.SelectOption{
 			ID:      u.ToolID,

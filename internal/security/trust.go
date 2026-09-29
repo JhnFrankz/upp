@@ -112,7 +112,7 @@ func syncRiskKeywordsLower() {
 // ClassifyCommand uses a hybrid approach to determine the risk level of a command.
 // It checks keyword matching first, then pattern matching for chaining/piping.
 func ClassifyCommand(cmd string) RiskLevel {
-	if reHighRiskWord.MatchString(cmd) {
+	if (containsFold(cmd, "eval") || containsFold(cmd, "sudo") || containsFold(cmd, "doas") || containsFold(cmd, "pkexec") || containsFold(cmd, "runas")) && reHighRiskWord.MatchString(cmd) {
 		return RiskHigh
 	}
 
@@ -174,6 +174,9 @@ var pipeInterpreters = []string{
 // hasPipeToShell detects piping output to a shell or script interpreter,
 // both spaced ("| sh", "| python") and compact ("|sh", "|python") variants.
 func hasPipeToShell(cmd string, lower ...string) bool {
+	if !strings.ContainsRune(cmd, '|') {
+		return false
+	}
 	var l string
 	if len(lower) > 0 {
 		l = lower[0]

@@ -326,7 +326,7 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 	}
 
 	t.Run("pacman-linux-when-apt-absent", func(t *testing.T) {
-		setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": false, "pacman": true}})
+		setExecFakes(t, execFakes{goos: "linux", lookPath: map[string]bool{"apt": false, "pacman": true}})
 		var owned []string
 		for _, a := range AllAdapters() {
 			info := a.Info()
@@ -399,6 +399,22 @@ func TestAdapterByName(t *testing.T) {
 				} else if a.Name() != tt.name {
 					t.Errorf("AdapterByName(%q).Name() = %q", tt.name, a.Name())
 				}
+			}
+		})
+	}
+}
+
+func TestAdapterSingletons(t *testing.T) {
+	tools := []string{"apt", "brew", "bun", "docker", "gh", "go", "npm", "nvm", "opencode", "pacman", "pnpm", "scoop", "uv", "winget"}
+	for _, tool := range tools {
+		t.Run(tool, func(t *testing.T) {
+			a1 := AdapterByName(tool)
+			a2 := AdapterByName(tool)
+			if a1 == nil || a2 == nil {
+				t.Fatalf("AdapterByName(%q) returned nil", tool)
+			}
+			if a1 != a2 {
+				t.Errorf("AdapterByName(%q) returned different instances (%p != %p), expected singleton", tool, a1, a2)
 			}
 		})
 	}
