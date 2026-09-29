@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 )
 
 // CheckBoard paints a live pre-check board: exactly one stable line per
@@ -169,12 +171,52 @@ func sanitizeBoardError(err error) string {
 			break
 		}
 	}
-	s = strings.Join(strings.Fields(s), " ")
-	const maxLen = 60
-	if len(s) > maxLen {
-		s = s[:maxLen] + "..."
+	var sb strings.Builder
+	sb.Grow(len(s))
+	inSpace := false
+	for i := 0; i < len(s); {
+		b := s[i]
+		if b < utf8.RuneSelf {
+			if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
+				if !inSpace && sb.Len() > 0 {
+					sb.WriteByte(' ')
+					inSpace = true
+				}
+			} else {
+				sb.WriteByte(b)
+				inSpace = false
+			}
+			i++
+		} else {
+			r, size := utf8.DecodeRuneInString(s[i:])
+			if unicode.IsSpace(r) {
+				if !inSpace && sb.Len() > 0 {
+					sb.WriteByte(' ')
+					inSpace = true
+				}
+			} else {
+				sb.WriteString(s[i : i+size])
+				inSpace = false
+			}
+			i += size
+		}
 	}
-	return s
+	res := strings.TrimRight(sb.String(), " ")
+
+	const maxLen = 60
+	if utf8.RuneCountInString(res) > maxLen {
+		runeCount := 0
+		byteIndex := 0
+		for i := range res {
+			if runeCount == maxLen {
+				byteIndex = i
+				break
+			}
+			runeCount++
+		}
+		return res[:byteIndex] + "..."
+	}
+	return res
 }
 
 // boardMarkerLine builds "  <marker> <name>[ <detail>|: <errDetail>]" with the

@@ -426,6 +426,11 @@ func TestSanitizeBoardError(t *testing.T) {
 			err:  errors.New("  apt-cache \t policy   failed \t with   code 1  "),
 			want: "apt-cache policy failed with code 1",
 		},
+		{
+			name: "utf8 multi-byte characters truncated safely at rune boundary",
+			err:  errors.New("error en el repositorio: paquete con caracteres especiales áéíóú ñññññññññññññ extra"),
+			want: "error en el repositorio: paquete con caracteres especiales á...",
+		},
 	}
 
 	for _, tt := range tests {
