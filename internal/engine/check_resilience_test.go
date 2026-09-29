@@ -259,3 +259,28 @@ func TestEngine_Check_ConcurrentPanicRecovery(t *testing.T) {
 			initialGoroutines, finalGoroutines, initialGoroutines+1)
 	}
 }
+
+func TestSafeCheck_ContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	adapter := &testResilienceAdapter{
+		id:   "tool-cancel",
+		name: "Tool Cancel",
+		checkFn: func(ctx context.Context) (adapters.UpdateInfo, error) {
+			t.Fatal("Check should not be called when context is canceled")
+			return adapters.UpdateInfo{}, nil
+		},
+	}
+
+	oc := safeCheck(ctx, adapter)
+	if oc.Status != StatusFailed {
+		t.Errorf("oc.Status = %v, want StatusFailed", oc.Status)
+	}
+	if !errors.Is(oc.Err, context.Canceled) {
+		t.Errorf("oc.Err = %v, want context.Canceled", oc.Err)
+	}
+	if oc.ToolID != "tool-cancel" || oc.ToolName != "Tool Cancel" {
+		t.Errorf("oc identity mismatch: id=%q, name=%q", oc.ToolID, oc.ToolName)
+	}
+}

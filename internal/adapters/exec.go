@@ -3,7 +3,6 @@ package adapters
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -81,41 +80,23 @@ func RunCommandWithTimeout(ctx context.Context, cmd *exec.Cmd) (stdout, stderr s
 	cmd.Stderr = &stderrBuf
 	cmd.WaitDelay = execReapDelay
 
-	if err := cmd.Start(); err != nil {
-		return stdoutBuf.String(), stderrBuf.String(), err
-	}
-
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	select {
-	case err := <-done:
-		if err != nil && ctx.Err() != nil {
-			// The command finished (or closed its pipes) exactly as the
-			// caller's context deadline fired. On a deadline-class Wait error
-			// the child may still have live descendants holding the pipes:
-			// the caller's context deadline (context.DeadlineExceeded) raced
-			// the child's successful exit, or WaitDelay expired because the
-			// child closed its pipes but descendants keep them open — kill
-			// the group so they cannot outlive the timeout. Any other
-			// done-branch error means the process is already reaped, so no
-			// kill runs (a killed PID would be a stale-PID hazard).
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, exec.ErrWaitDelay) {
-				killProcessGroup(cmd)
+	if cmd.Cancel == nil {
+		cmd.Cancel = func() error {
+			killProcessGroup(cmd)
+			if cmd.Process != nil {
+				return cmd.Process.Kill()
 			}
-			// Classify deterministically as a timeout on both paths, matching
-			// the pre-select behavior (err != nil && ctx.Err() != nil).
-			return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
+			return nil
 		}
-		return stdoutBuf.String(), stderrBuf.String(), err
-	case <-ctx.Done():
-		// Wait has not returned, so the process is still ours: kill the whole
-		// group so descendants cannot keep holding the pipes (hanging Wait)
-		// or keep mutating state after the reported timeout.
-		killProcessGroup(cmd)
-		<-done // reap; WaitDelay bounds the wait if a descendant holds the pipes
-		// Go's exec.Wait returns the raw exit error, so chain the deadline
-		// error to stay errors.Is(err, context.DeadlineExceeded)-detectable.
-		return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), "killed after timeout")
 	}
+
+	err = cmd.Run()
+	if err != nil && ctx.Err() != nil {
+		killProcessGroup(cmd)
+		return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
+	}
+	if err != nil {
+		return stdoutBuf.String(), stderrBuf.String(), err
+	}
+	return stdoutBuf.String(), stderrBuf.String(), nil
 }

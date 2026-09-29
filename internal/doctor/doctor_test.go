@@ -801,3 +801,23 @@ func TestDoctor_Network_ContextCanceled(t *testing.T) {
 		}
 	}
 }
+
+func TestDiagnose_ContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	invoked := false
+	deps := baseTestDeps(t)
+	deps.ConfigPath = func() (string, error) {
+		invoked = true
+		return "", errors.New("should not be called")
+	}
+
+	results := Diagnose(ctx, deps)
+	if len(results) != 0 {
+		t.Fatalf("Diagnose with canceled context returned %d results, want 0", len(results))
+	}
+	if invoked {
+		t.Fatal("Diagnose with canceled context should return early without executing check phases")
+	}
+}

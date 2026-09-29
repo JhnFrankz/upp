@@ -179,10 +179,25 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 		estimatedCap += len(deps.Adapters)
 	}
 	results := make([]CheckResult, 0, estimatedCap)
+	if ctx.Err() != nil {
+		return results
+	}
 	results = append(results, checkStorageAndConfig(deps)...)
+	if ctx.Err() != nil {
+		return results
+	}
 	results = append(results, checkProcessLock(deps)...)
+	if ctx.Err() != nil {
+		return results
+	}
 	results = append(results, checkPackageManagers(deps)...)
+	if ctx.Err() != nil {
+		return results
+	}
 	results = append(results, checkToolPaths(deps)...)
+	if ctx.Err() != nil {
+		return results
+	}
 	results = append(results, checkNetwork(ctx, deps)...)
 
 	return results
