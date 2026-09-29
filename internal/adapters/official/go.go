@@ -557,8 +557,13 @@ func goTarballURL(goarch string) string {
 // extractGoVersion extracts the version from "go version go1.22.0 linux/amd64".
 func extractGoVersion(output string) string {
 	// Format: "go version go1.22.0 linux/amd64"
-	fields := strings.Fields(output)
-	for _, field := range fields {
+	rem := output
+	for {
+		var field string
+		field, rem = nextField(rem)
+		if field == "" {
+			break
+		}
 		if strings.HasPrefix(field, "go") && len(field) > 2 {
 			return field[2:] // strip "go" prefix
 		}

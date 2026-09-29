@@ -278,6 +278,24 @@ func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
 	return current, e.CurrentVersion, found
 }
 
+// nextField extracts the next whitespace-delimited token and returns the token and remaining string.
+// It performs no heap allocations.
+func nextField(s string) (field, rest string) {
+	i := 0
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+		i++
+	}
+	s = s[i:]
+	if len(s) == 0 {
+		return "", ""
+	}
+	j := 0
+	for j < len(s) && s[j] != ' ' && s[j] != '\t' && s[j] != '\r' && s[j] != '\n' {
+		j++
+	}
+	return s[:j], s[j:]
+}
+
 // parseWingetPackageUpgradeOutput scans the no-argument `winget upgrade`
 // listing (the read-only form CheckPackage runs) for the row whose manifest Id
 // matches pkgID and returns (current, latest, found). It
@@ -289,22 +307,21 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 	for len(out) > 0 {
 		var line string
 		line, out, _ = strings.Cut(out, "\n")
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		// Locate the Id field; the two fields after it are Current and
-		// Latest. Anchor on the manifest Id so a wrong key at the display
-		// Name or Source column cannot mis-align the version positions.
-		for i := 0; i < len(fields); i++ {
-			if !strings.EqualFold(fields[i], pkgID) {
-				continue
+		rest := line
+		for {
+			var field string
+			field, rest = nextField(rest)
+			if field == "" {
+				break
 			}
-			// Id, Current, Latest must all be present in the row.
-			if i+2 < len(fields) {
-				return fields[i+1], fields[i+2], true
+			if strings.EqualFold(field, pkgID) {
+				c, restAfterCurrent := nextField(rest)
+				l, _ := nextField(restAfterCurrent)
+				if c != "" && l != "" {
+					return c, l, true
+				}
+				return "", "", false
 			}
-			return "", "", false
 		}
 	}
 	return "", "", false
@@ -318,28 +335,7 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 // (e.g. "v1.8.2311") is tolerated — the string is returned unchanged, since
 // the winget versions genuinely carry the leading v.
 func parseWingetUpgradeOutput(out string) (current, latest string, found bool) {
-	for len(out) > 0 {
-		var line string
-		line, out, _ = strings.Cut(out, "\n")
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		// Locate the Id field; the two fields after it are Current and
-		// Latest. Anchor on the manifest Id so a wrong key at the display
-		// Name or Source column cannot mis-align the version positions.
-		for i := 0; i < len(fields); i++ {
-			if !strings.EqualFold(fields[i], wingetSelfID) {
-				continue
-			}
-			// Id, Current, Latest must all be present in the row.
-			if i+2 < len(fields) {
-				return fields[i+1], fields[i+2], true
-			}
-			return "", "", false
-		}
-	}
-	return "", "", false
+	return parseWingetPackageUpgradeOutput(out, wingetSelfID)
 }
 
 // parseScoopStatusOutput scans `scoop status` output for the scoop self row
@@ -357,25 +353,25 @@ func parseScoopStatusOutput(out string) (current, latest string, found bool) {
 	for len(out) > 0 {
 		var line string
 		line, out, _ = strings.Cut(out, "\n")
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		// Locate the tool-name field; the two fields after it are Installed
-		// and Latest. Both MUST be version-like — a WARN banner ("WARN Scoop
-		// is out of date.") contains "Scoop" but its trailing fields are
-		// words, not versions, so it cannot masquerade as a data row.
-		for i := 0; i < len(fields); i++ {
-			if !strings.EqualFold(fields[i], "scoop") {
+		rest := line
+		for {
+			var field string
+			field, rest = nextField(rest)
+			if field == "" {
+				break
+			}
+			if !strings.EqualFold(field, "scoop") {
 				continue
 			}
-			if i+2 >= len(fields) {
+			c, restAfterCurrent := nextField(rest)
+			l, _ := nextField(restAfterCurrent)
+			if c == "" || l == "" {
 				continue
 			}
-			if !isVersionLike(fields[i+1]) || !isVersionLike(fields[i+2]) {
+			if !isVersionLike(c) || !isVersionLike(l) {
 				continue
 			}
-			return fields[i+1], fields[i+2], true
+			return c, l, true
 		}
 	}
 	return "", "", false
