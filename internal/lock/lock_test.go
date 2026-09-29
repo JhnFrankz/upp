@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/lock"
@@ -190,4 +191,38 @@ func TestTryLockAndUnlock(t *testing.T) {
 		t.Fatalf("TryLock on f2 after f1 unlock failed: %v", err)
 	}
 	_ = lock.Unlock(f2)
+}
+
+func TestLock_ConcurrentRelease(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "concurrent.lock")
+
+	l, err := lock.Acquire(lockPath)
+	if err != nil {
+		t.Fatalf("Acquire failed: %v", err)
+	}
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = l.Release()
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d Release() returned error: %v", i, err)
+		}
+	}
+
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Errorf("expected lock file removed, got err: %v", err)
+	}
 }

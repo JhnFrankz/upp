@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // ErrLocked indicates that the file is currently locked by another process.
@@ -30,6 +31,8 @@ func (e *ErrAlreadyRunning) Error() string {
 type Lock struct {
 	path string
 	file *os.File
+	once sync.Once
+	err  error
 }
 
 // DefaultLockPath resolves cacheDir/upp/upp.lock using os.UserCacheDir(),
@@ -108,20 +111,27 @@ func readPID(path string) int {
 
 // Release releases the lock and closes the underlying file.
 func (l *Lock) Release() error {
-	if l == nil || l.file == nil {
+	if l == nil {
 		return nil
 	}
-	err := os.Remove(l.path)
-	unlockErr := unlock(l.file)
-	closeErr := l.file.Close()
-	l.file = nil
-	if err != nil {
-		_ = os.Remove(l.path)
-	}
-	if unlockErr != nil {
-		return unlockErr
-	}
-	return closeErr
+	l.once.Do(func() {
+		if l.file == nil {
+			return
+		}
+		err := os.Remove(l.path)
+		unlockErr := unlock(l.file)
+		closeErr := l.file.Close()
+		l.file = nil
+		if err != nil {
+			_ = os.Remove(l.path)
+		}
+		if unlockErr != nil {
+			l.err = unlockErr
+			return
+		}
+		l.err = closeErr
+	})
+	return l.err
 }
 
 // TryLock attempts to acquire an advisory lock on the file without blocking.
