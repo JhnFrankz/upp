@@ -397,15 +397,6 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	_, _ = io.WriteString(r.w, sb.String())
 }
 
-func writeJoinedNames(sb *strings.Builder, results []ToolResult) {
-	for i, r := range results {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(r.Name)
-	}
-}
-
 func hasStatus(results []ToolResult, status Status) bool {
 	for i := range results {
 		if results[i].Status == status {
