@@ -3,6 +3,7 @@ package engine
 import (
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -32,5 +33,16 @@ func BenchmarkEngine_Resolve_Filtered(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Resolve failed: %v", err)
 		}
+	}
+}
+
+func BenchmarkFilterAdapters(b *testing.B) {
+	allAdapters := official.AdaptersForPlatform(platform.OSLinux)
+	only := []string{"go", "npm"}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = FilterAdapters(allAdapters, only)
 	}
 }

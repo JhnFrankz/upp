@@ -73,31 +73,40 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 	}
 
 	if len(filter.Only) > 0 {
-		onlySet := make(map[string]struct{}, len(filter.Only))
-		for _, name := range filter.Only {
-			onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
-		}
-
-		filtered := make([]adapters.Adapter, 0, len(filter.Only))
-		for _, a := range source {
-			nameLower := strings.ToLower(a.Name())
-			idLower := strings.ToLower(a.Info().ID)
-			if _, ok := onlySet[nameLower]; ok {
-				filtered = append(filtered, a)
-				continue
-			}
-			if _, ok := onlySet[idLower]; ok {
-				filtered = append(filtered, a)
-				continue
-			}
-		}
-		return filtered, nil
+		return FilterAdapters(source, filter.Only), nil
 	}
 
 	if source == nil {
 		return []adapters.Adapter{}, nil
 	}
 	return source, nil
+}
+
+// FilterAdapters filters a slice of adapters by tool ID or Name using the given filter list.
+func FilterAdapters(adapterList []adapters.Adapter, only []string) []adapters.Adapter {
+	if len(only) == 0 {
+		return adapterList
+	}
+
+	onlySet := make(map[string]struct{}, len(only))
+	for _, name := range only {
+		onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+
+	filtered := make([]adapters.Adapter, 0, len(only))
+	for _, a := range adapterList {
+		nameLower := strings.ToLower(a.Name())
+		idLower := strings.ToLower(a.Info().ID)
+		if _, ok := onlySet[nameLower]; ok {
+			filtered = append(filtered, a)
+			continue
+		}
+		if _, ok := onlySet[idLower]; ok {
+			filtered = append(filtered, a)
+			continue
+		}
+	}
+	return filtered
 }
 
 // adapterByName finds an adapter by Name or ID in the provided adapter list.
