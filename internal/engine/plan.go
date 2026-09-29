@@ -61,11 +61,12 @@ func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
 
 // Plan formulates an executable UpdatePlan from check outcomes and filter options.
 func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error) {
+	n := len(outcomes)
 	plan := UpdatePlan{
-		Updates: make([]PlannedUpdate, 0),
-		Skipped: make([]CheckOutcome, 0),
-		Current: make([]CheckOutcome, 0),
-		Failed:  make([]CheckOutcome, 0),
+		Updates: make([]PlannedUpdate, 0, n),
+		Skipped: make([]CheckOutcome, 0, n/4),
+		Current: make([]CheckOutcome, 0, n),
+		Failed:  make([]CheckOutcome, 0, n/4),
 	}
 
 	if len(outcomes) == 0 {
@@ -114,7 +115,13 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 			}
 
 			owner := ResolvingOwner(a, e.osName, allAdapters)
-			policy := ResolveEffectiveUpdatePolicy(a, e.osName, allAdapters)
+			policy := adapters.PolicyGated
+			if a != nil {
+				policy = a.Info().UpdatePolicy
+				if owner != nil {
+					policy = owner.Info().UpdatePolicy
+				}
+			}
 
 			isEligible := false
 			if policy == adapters.PolicyAlwaysUpdate {
