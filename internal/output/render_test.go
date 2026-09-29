@@ -1106,6 +1106,38 @@ func TestUpdateSummary_VerboseFailureDiagnostics(t *testing.T) {
 	}
 }
 
+func TestUpdateSummary_VerboseMultilineFailureDiagnostics(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, true)
+
+	summary := Summary{
+		Results: []ToolResult{
+			{
+				Name:   "cargo",
+				Status: StatusFailed,
+				Error:  fmt.Errorf("build failed"),
+				Stderr: "error[E0432]: unresolved import\n   --> src/main.rs:1:5\n    |\n1   | use foo::bar;\n    |     ^^^",
+			},
+		},
+		DryRun: false,
+	}
+
+	r.UpdateSummary(summary)
+
+	out := buf.String()
+	expectedLines := []string{
+		"error[E0432]: unresolved import",
+		"--> src/main.rs:1:5",
+		"use foo::bar;",
+		"^^^",
+	}
+	for _, expected := range expectedLines {
+		if !strings.Contains(out, expected) {
+			t.Errorf("expected verbose update summary to contain line %q, got:\n%s", expected, out)
+		}
+	}
+}
+
 // TestUpdateSummary_NoMisleadingAllCleanWithPending proves spec ux-patterns:
 // UpdateSummary with pending updates in dry-run mode prints "N would update"
 // and never claims "All clean!" or "All tools up to date.".
