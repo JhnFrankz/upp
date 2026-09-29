@@ -220,7 +220,10 @@ func (r *Renderer) verboseToolLine(result ToolResult) {
 		}
 		_, _ = fmt.Fprintf(r.w, "  %s %s%s\n", icon, r.red(result.Name), errMsg)
 		if r.verbose && !r.quiet && result.Stderr != "" {
-			for _, line := range strings.Split(strings.TrimSpace(result.Stderr), "\n") {
+			rem := strings.TrimSpace(result.Stderr)
+			for len(rem) > 0 {
+				var line string
+				line, rem, _ = strings.Cut(rem, "\n")
 				_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
 			}
 		}
@@ -394,56 +397,67 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	_, _ = io.WriteString(r.w, sb.String())
 }
 
-func writeJoinedNames(sb *strings.Builder, results []ToolResult) {
-	for i, r := range results {
-		if i > 0 {
-			sb.WriteString(", ")
+func hasStatus(results []ToolResult, status Status) bool {
+	for i := range results {
+		if results[i].Status == status {
+			return true
 		}
-		sb.WriteString(r.Name)
 	}
+	return false
+}
+
+func writeJoinedNamesForStatus(sb *strings.Builder, results []ToolResult, status Status) bool {
+	first := true
+	for i := range results {
+		if results[i].Status == status {
+			if !first {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(results[i].Name)
+			first = false
+		}
+	}
+	return !first
 }
 
 func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary) {
-	updated := filterByStatus(summary.Results, StatusUpdated)
-	current := filterByStatus(summary.Results, StatusCurrent)
-	skipped := filterByStatus(summary.Results, StatusSkipped)
-	deselected := filterByStatus(summary.Results, StatusDeselected)
-	failed := filterByStatus(summary.Results, StatusFailed)
-
-	if len(updated) > 0 {
+	if hasStatus(summary.Results, StatusUpdated) {
 		sb.WriteString("  ")
 		sb.WriteString(r.green("Updated:"))
 		sb.WriteByte(' ')
-		writeJoinedNames(sb, updated)
+		writeJoinedNamesForStatus(sb, summary.Results, StatusUpdated)
 		sb.WriteByte('\n')
 	}
-	if len(current) > 0 {
+	if hasStatus(summary.Results, StatusCurrent) {
 		sb.WriteString("  ")
 		sb.WriteString(r.green("Up to date:"))
 		sb.WriteByte(' ')
-		writeJoinedNames(sb, current)
+		writeJoinedNamesForStatus(sb, summary.Results, StatusCurrent)
 		sb.WriteByte('\n')
 	}
-	if len(skipped) > 0 {
+	if hasStatus(summary.Results, StatusSkipped) {
 		sb.WriteString("  Skipped: ")
-		writeJoinedNames(sb, skipped)
+		writeJoinedNamesForStatus(sb, summary.Results, StatusSkipped)
 		sb.WriteByte('\n')
 	}
-	if len(deselected) > 0 {
+	if hasStatus(summary.Results, StatusDeselected) {
 		sb.WriteString("  Deselected: ")
-		writeJoinedNames(sb, deselected)
+		writeJoinedNamesForStatus(sb, summary.Results, StatusDeselected)
 		sb.WriteByte('\n')
 	}
-	if len(failed) > 0 {
+	if hasStatus(summary.Results, StatusFailed) {
 		sb.WriteString("  ")
 		sb.WriteString(r.red("Failed:"))
 		sb.WriteByte(' ')
-		writeJoinedNames(sb, failed)
+		writeJoinedNamesForStatus(sb, summary.Results, StatusFailed)
 		sb.WriteByte('\n')
 		if r.verbose && !r.quiet {
-			for _, f := range failed {
-				if f.Stderr != "" {
-					for _, line := range strings.Split(strings.TrimSpace(f.Stderr), "\n") {
+			for i := range summary.Results {
+				if summary.Results[i].Status == StatusFailed && summary.Results[i].Stderr != "" {
+					rem := strings.TrimSpace(summary.Results[i].Stderr)
+					for len(rem) > 0 {
+						var line string
+						line, rem, _ = strings.Cut(rem, "\n")
 						sb.WriteString("    ")
 						sb.WriteString(r.dim("│"))
 						sb.WriteByte(' ')
@@ -802,7 +816,10 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 			}
 
 			if verbose && item.Detail != "" {
-				for _, line := range strings.Split(item.Detail, "\n") {
+				rem := item.Detail
+				for len(rem) > 0 {
+					var line string
+					line, rem, _ = strings.Cut(rem, "\n")
 					if line != "" {
 						sb.WriteString("    ")
 						sb.WriteString(line)

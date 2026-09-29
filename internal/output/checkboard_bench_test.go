@@ -20,3 +20,12 @@ func BenchmarkCheckBoard_RewriteRow(b *testing.B) {
 		cb.rewriteRow(5)
 	}
 }
+
+func BenchmarkSanitizeBoardError(b *testing.B) {
+	err := fmt.Errorf("   \n   first error line with details\n   second error line that should be ignored\n")
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = sanitizeBoardError(err)
+	}
+}

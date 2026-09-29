@@ -25,6 +25,7 @@ type CheckBoard struct {
 	w        io.Writer
 	color    bool
 	lines    []string // rendered text of each board row, canonical order
+	scratch  []byte   // reusable ANSI scratch buffer; guarded by mu
 	mu       sync.Mutex
 	finished bool
 }
@@ -105,24 +106,23 @@ func (b *CheckBoard) Finish() {
 // and returns the cursor to the bottom row. Caller holds b.mu; color only.
 func (b *CheckBoard) rewriteRow(index int) {
 	up := len(b.lines) - 1 - index
-	rowLen := len(b.lines[index])
-	var sb strings.Builder
-	sb.Grow(rowLen + 32)
-	sb.WriteByte('\r')
+	row := b.lines[index]
+	b.scratch = b.scratch[:0]
+	b.scratch = append(b.scratch, '\r')
 	if up > 0 {
-		sb.WriteString("\x1b[")
-		sb.WriteString(strconv.Itoa(up))
-		sb.WriteByte('A')
+		b.scratch = append(b.scratch, "\x1b["...)
+		b.scratch = strconv.AppendInt(b.scratch, int64(up), 10)
+		b.scratch = append(b.scratch, 'A')
 	}
-	sb.WriteString("\x1b[K")
-	sb.WriteString(b.lines[index])
+	b.scratch = append(b.scratch, "\x1b[K"...)
+	b.scratch = append(b.scratch, row...)
 	if up > 0 {
-		sb.WriteString("\x1b[")
-		sb.WriteString(strconv.Itoa(up))
-		sb.WriteByte('B')
+		b.scratch = append(b.scratch, "\x1b["...)
+		b.scratch = strconv.AppendInt(b.scratch, int64(up), 10)
+		b.scratch = append(b.scratch, 'B')
 	}
-	sb.WriteByte('\r')
-	_, _ = io.WriteString(b.w, sb.String())
+	b.scratch = append(b.scratch, '\r')
+	_, _ = b.w.Write(b.scratch)
 }
 
 // boardPendingLine renders a not-yet-checked row.
@@ -159,7 +159,10 @@ func sanitizeBoardError(err error) string {
 	if s == "" {
 		return ""
 	}
-	for _, line := range strings.Split(s, "\n") {
+	rem := s
+	for len(rem) > 0 {
+		var line string
+		line, rem, _ = strings.Cut(rem, "\n")
 		line = strings.TrimSpace(line)
 		if line != "" {
 			s = line
