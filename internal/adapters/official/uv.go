@@ -83,12 +83,20 @@ func extractUvLatestVersion(output, current string) string {
 	for len(rem) > 0 {
 		var line string
 		line, rem, _ = strings.Cut(rem, "\n")
-		fields := strings.Fields(line)
-		for i, f := range fields {
-			if strings.EqualFold(f, "to") && i+1 < len(fields) {
-				target := strings.Trim(fields[i+1], "(),:;\"'")
-				if isVersionLike(target) {
-					return target
+		rest := line
+		for {
+			var field string
+			field, rest = nextField(rest)
+			if field == "" {
+				break
+			}
+			if strings.EqualFold(field, "to") {
+				next, _ := nextField(rest)
+				if next != "" {
+					target := strings.Trim(next, "(),:;\"'")
+					if isVersionLike(target) {
+						return target
+					}
 				}
 			}
 		}
@@ -97,12 +105,21 @@ func extractUvLatestVersion(output, current string) string {
 	for len(rem) > 0 {
 		var line string
 		line, rem, _ = strings.Cut(rem, "\n")
-		fields := strings.Fields(line)
-		for i := len(fields) - 1; i >= 0; i-- {
-			cleaned := strings.Trim(fields[i], "(),:;\"'")
-			if isVersionLike(cleaned) && cleaned != current {
-				return cleaned
+		var candidate string
+		rest := line
+		for {
+			var field string
+			field, rest = nextField(rest)
+			if field == "" {
+				break
 			}
+			cleaned := strings.Trim(field, "(),:;\"'")
+			if isVersionLike(cleaned) && cleaned != current {
+				candidate = cleaned
+			}
+		}
+		if candidate != "" {
+			return candidate
 		}
 	}
 	return current

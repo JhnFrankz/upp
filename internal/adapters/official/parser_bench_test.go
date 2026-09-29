@@ -28,6 +28,24 @@ func BenchmarkParseBrewOutdatedJSON(b *testing.B) {
 	}
 }
 
+func BenchmarkParseBrewOutdatedJSON_Empty(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = parseBrewOutdatedJSON("[]\n")
+		_, _, _ = parseBrewOutdatedJSON("[]")
+	}
+}
+
+func BenchmarkParseBrewOutdatedJSON_Outdated(b *testing.B) {
+	fixture := `[{"name":"foo","installed_versions":["1.0.0"],"current_version":"1.1.0"}]`
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = parseBrewOutdatedJSON(fixture)
+	}
+}
+
 func BenchmarkParsePacmanQOutput(b *testing.B) {
 	fixture := "github-cli 2.45.0-1\n"
 	b.ReportAllocs()
@@ -84,11 +102,12 @@ func BenchmarkParseWingetPackageUpgradeOutput(b *testing.B) {
 App Installer                 Microsoft.AppInstaller         1.22.11261.0   1.24.1101.0    winget
 GitHub CLI                    GitHub.cli                     2.40.0         2.45.0         winget
 Docker Desktop                Docker.DockerDesktop           4.28.0         4.29.0         winget
+PowerToys                     Microsoft.PowerToys            0.78.0         0.80.0         winget
 `
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = parseWingetPackageUpgradeOutput(fixture, "GitHub.cli")
+		_, _, _ = parseWingetPackageUpgradeOutput(fixture, "Microsoft.PowerToys")
 	}
 }
 
@@ -103,6 +122,26 @@ git        2.43.0     2.44.0
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _, _ = parseScoopStatusOutput(fixture)
+	}
+}
+
+func BenchmarkExtractUvLatestVersion(b *testing.B) {
+	fixture := `Updating uv from 0.1.10 to 0.1.14
+Some other detail line
+`
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = extractUvLatestVersion(fixture, "0.1.10")
+	}
+}
+
+func BenchmarkExtractGoVersion(b *testing.B) {
+	fixture := "go version go1.22.4 linux/amd64"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = extractGoVersion(fixture)
 	}
 }
 

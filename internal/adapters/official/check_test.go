@@ -1703,6 +1703,101 @@ func TestExtractUvVersion(t *testing.T) {
 	}
 }
 
+func TestExtractUvLatestVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		current string
+		want    string
+	}{
+		{
+			name:    "updating from to",
+			output:  "Updating uv from 0.1.10 to 0.1.14\n",
+			current: "0.1.10",
+			want:    "0.1.14",
+		},
+		{
+			name:    "would update to with punctuation",
+			output:  "Would update uv to 0.2.0 (from 0.1.0)",
+			current: "0.1.0",
+			want:    "0.2.0",
+		},
+		{
+			name:    "fallback to token on line",
+			output:  "Some header\n0.1.10 0.1.15\n",
+			current: "0.1.10",
+			want:    "0.1.15",
+		},
+		{
+			name:    "no version found returns current",
+			output:  "Up to date\n",
+			current: "0.1.10",
+			want:    "0.1.10",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractUvLatestVersion(tt.output, tt.current)
+			if got != tt.want {
+				t.Errorf("extractUvLatestVersion(%q, %q) = %q, want %q", tt.output, tt.current, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseWingetUpgradeOutput(t *testing.T) {
+	fixture := `Name                          Id                             Version        Available      Source
+-------------------------------------------------------------------------------------------------
+App Installer                 Microsoft.AppInstaller         1.22.11261.0   1.24.1101.0    winget
+GitHub CLI                    GitHub.cli                     2.40.0         2.45.0         winget
+`
+	cur, lat, found := parseWingetUpgradeOutput(fixture)
+	if !found || cur != "1.22.11261.0" || lat != "1.24.1101.0" {
+		t.Fatalf("parseWingetUpgradeOutput got (%q, %q, %v), want (1.22.11261.0, 1.24.1101.0, true)", cur, lat, found)
+	}
+
+	_, _, notFound := parseWingetUpgradeOutput("no match here")
+	if notFound {
+		t.Fatal("expected found=false for missing self row")
+	}
+}
+
+func TestParseWingetPackageUpgradeOutput(t *testing.T) {
+	fixture := `Name                          Id                             Version        Available      Source
+-------------------------------------------------------------------------------------------------
+App Installer                 Microsoft.AppInstaller         1.22.11261.0   1.24.1101.0    winget
+GitHub CLI                    GitHub.cli                     2.40.0         2.45.0         winget
+Docker Desktop                Docker.DockerDesktop           4.28.0         4.29.0         winget
+`
+	cur, lat, found := parseWingetPackageUpgradeOutput(fixture, "github.cli")
+	if !found || cur != "2.40.0" || lat != "2.45.0" {
+		t.Fatalf("parseWingetPackageUpgradeOutput got (%q, %q, %v), want (2.40.0, 2.45.0, true)", cur, lat, found)
+	}
+
+	_, _, notFound := parseWingetPackageUpgradeOutput(fixture, "Missing.Package")
+	if notFound {
+		t.Fatal("expected found=false for missing package")
+	}
+}
+
+func TestParseScoopStatusOutput(t *testing.T) {
+	fixture := `WARN Scoop is out of date.
+Name       Installed  Latest
+----       ---------  ------
+scoop      1.0.0      1.2.0
+git        2.43.0     2.44.0
+`
+	cur, lat, found := parseScoopStatusOutput(fixture)
+	if !found || cur != "1.0.0" || lat != "1.2.0" {
+		t.Fatalf("parseScoopStatusOutput got (%q, %q, %v), want (1.0.0, 1.2.0, true)", cur, lat, found)
+	}
+
+	_, _, notFound := parseScoopStatusOutput("WARN Scoop is out of date.\n")
+	if notFound {
+		t.Fatal("expected found=false for banner-only output")
+	}
+}
+
 func TestAptCheckPackage_StructuredExecution(t *testing.T) {
 	apt := &AptAdapter{}
 	setExecFakes(t, execFakes{
