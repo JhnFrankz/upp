@@ -546,3 +546,27 @@ func TestPlatformsFor(t *testing.T) {
 		})
 	}
 }
+
+func TestToolNamesForPlatform(t *testing.T) {
+	platforms := []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}
+	for _, p := range platforms {
+		t.Run(p, func(t *testing.T) {
+			names := ToolNamesForPlatform(p)
+			adapters := AdaptersForPlatform(p)
+			if len(names) != len(adapters) {
+				t.Fatalf("ToolNamesForPlatform(%q) returned %d tools, want %d", p, len(names), len(adapters))
+			}
+			for i, a := range adapters {
+				if names[i] != a.Name() {
+					t.Errorf("ToolNamesForPlatform(%q)[%d] = %q, want %q", p, i, names[i], a.Name())
+				}
+			}
+		})
+	}
+
+	t.Run("unknown platform", func(t *testing.T) {
+		if got := ToolNamesForPlatform("freebsd"); got != nil {
+			t.Errorf("ToolNamesForPlatform(freebsd) = %v, want nil", got)
+		}
+	})
+}

@@ -65,12 +65,41 @@ var (
 		bunAdapter, uvAdapter, ghAdapter, dockerAdapter, goAdapter,
 		openCodeAdapter,
 	}
+
+	linuxToolNames = []string{
+		"apt", "brew", "pacman", "nvm", "npm",
+		"pnpm", "bun", "uv", "gh", "docker",
+		"go", "opencode",
+	}
+	macosToolNames = []string{
+		"brew", "nvm", "npm", "pnpm", "bun",
+		"uv", "gh", "docker", "go", "opencode",
+	}
+	windowsToolNames = []string{
+		"winget", "scoop", "nvm", "npm", "pnpm",
+		"bun", "uv", "gh", "docker", "go",
+		"opencode",
+	}
 )
 
 // AllAdapters returns every official adapter, regardless of platform.
 // The caller is responsible for filtering by platform if needed.
 func AllAdapters() []adapters.Adapter {
 	return append([]adapters.Adapter(nil), allAdapters...)
+}
+
+// ToolNamesForPlatform returns the slice of tool IDs supported on the given OS without heap allocations.
+func ToolNamesForPlatform(os string) []string {
+	switch os {
+	case platform.OSLinux:
+		return linuxToolNames
+	case platform.OSMacOS:
+		return macosToolNames
+	case platform.OSWindows:
+		return windowsToolNames
+	default:
+		return nil
+	}
 }
 
 // AdaptersForPlatform returns only the adapters relevant to the given OS.
