@@ -255,18 +255,39 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 		return "", nil, err
 	}
 	tmpName := tmpFile.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
 
-	_, copyErr := io.Copy(tmpFile, resp.Body)
-	closeErr := tmpFile.Close()
-	if copyErr != nil {
-		_ = os.Remove(tmpName)
-		return "", nil, copyErr
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmpName)
-		return "", nil, closeErr
+	bufPtr := getCopyBuf()
+	defer copyBufPool.Put(bufPtr)
+	buf := *bufPtr
+
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := tmpFile.Write(buf[:n]); werr != nil {
+				_ = tmpFile.Close()
+				return "", nil, fmt.Errorf("selfupdate: write asset: %w", werr)
+			}
+		}
+		if rerr != nil {
+			if rerr == io.EOF {
+				break
+			}
+			_ = tmpFile.Close()
+			return "", nil, fmt.Errorf("selfupdate: read asset: %w", rerr)
+		}
 	}
 
+	if err := tmpFile.Close(); err != nil {
+		return "", nil, err
+	}
+
+	cleanup = false
 	return tmpName, checksums, nil
 }
 
