@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -47,6 +48,22 @@ var (
 	ErrNotTTY = errors.New("selfupdate: self-update requires an interactive terminal")
 )
 
+// copyBufPool provides reusable 32 KB buffers for streaming I/O in self-update.
+var copyBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 32*1024)
+		return &b
+	},
+}
+
+func getCopyBuf() *[]byte {
+	if b, ok := copyBufPool.Get().(*[]byte); ok {
+		return b
+	}
+	b := make([]byte, 32*1024)
+	return &b
+}
+
 // verifyChecksum verifies the archive file at archivePath against the checksums.txt
 // bytes by streaming the file through sha256.New() without loading it entirely into RAM.
 func verifyChecksum(archivePath string, checksums []byte, name string) error {
@@ -56,9 +73,22 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 	}
 	defer func() { _ = f.Close() }()
 
+	bufPtr := getCopyBuf()
+	defer copyBufPool.Put(bufPtr)
+
 	hasher := sha256.New()
-	if _, err := io.Copy(hasher, f); err != nil {
-		return err
+	buf := *bufPtr
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			hasher.Write(buf[:n])
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
 	}
 	want := hex.EncodeToString(hasher.Sum(nil))
 
@@ -69,15 +99,17 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 		if len(line) == 0 {
 			continue
 		}
-		fields := bytes.Fields(line)
-		if len(fields) != 2 {
+		idx := bytes.IndexAny(line, " \t")
+		if idx == -1 {
 			continue
 		}
-		entry := string(bytes.TrimPrefix(fields[1], []byte("*")))
-		if entry != name {
+		sumBytes := line[:idx]
+		rest := bytes.TrimLeft(line[idx:], " \t")
+		entryBytes := bytes.TrimPrefix(rest, []byte("*"))
+		if string(entryBytes) != name {
 			continue
 		}
-		sum := string(fields[0])
+		sum := string(sumBytes)
 		if len(sum) != sha256.Size*2 {
 			return fmt.Errorf("%w: malformed checksum entry for %s", ErrChecksumMismatch, name)
 		}
@@ -257,9 +289,25 @@ func writeBinary(out string, r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
 	}
-	if _, err := io.Copy(f, r); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
+	bufPtr := getCopyBuf()
+	defer copyBufPool.Put(bufPtr)
+	buf := *bufPtr
+
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				_ = f.Close()
+				return fmt.Errorf("selfupdate: cannot write extracted binary: %w", werr)
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			_ = f.Close()
+			return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
+		}
 	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)

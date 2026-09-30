@@ -765,7 +765,7 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 
 	displayResults := results
 	if quiet {
-		var filtered []doctor.CheckResult
+		filtered := make([]doctor.CheckResult, 0, len(results))
 		for _, res := range results {
 			if res.Status != doctor.SeverityOK {
 				filtered = append(filtered, res)
@@ -774,33 +774,45 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		displayResults = filtered
 	}
 
-	var categoryOrder []string
-	categoryMap := make(map[string][]doctor.CheckResult)
+	type categoryEntry struct {
+		name  string
+		items []doctor.CheckResult
+	}
+	categories := make([]categoryEntry, 0, 8)
 	for _, res := range displayResults {
 		cat := res.Category
 		if cat == "" {
 			cat = "General"
 		}
-		if _, exists := categoryMap[cat]; !exists {
-			categoryOrder = append(categoryOrder, cat)
+		found := false
+		for i := range categories {
+			if categories[i].name == cat {
+				categories[i].items = append(categories[i].items, res)
+				found = true
+				break
+			}
 		}
-		categoryMap[cat] = append(categoryMap[cat], res)
+		if !found {
+			categories = append(categories, categoryEntry{
+				name:  cat,
+				items: []doctor.CheckResult{res},
+			})
+		}
 	}
 
 	var sb strings.Builder
 	sb.Grow(len(displayResults)*96 + 256)
 
 	firstCategory := true
-	for _, cat := range categoryOrder {
+	for i := range categories {
 		if !firstCategory {
 			sb.WriteByte('\n')
 		}
 		firstCategory = false
-		sb.WriteString(cat)
+		sb.WriteString(categories[i].name)
 		sb.WriteByte('\n')
 
-		items := categoryMap[cat]
-		for _, item := range items {
+		for _, item := range categories[i].items {
 			icon := r.doctorIcon(item.Status)
 			sb.WriteString("  ")
 			sb.WriteString(icon)
