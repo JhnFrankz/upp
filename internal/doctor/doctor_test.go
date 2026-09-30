@@ -832,8 +832,10 @@ func TestGetPathDirs_CachingAndInvalidation(t *testing.T) {
 	testPath := "/bin" + string(filepath.ListSeparator) + "/usr/bin"
 	t.Setenv("PATH", testPath)
 	dirs1 := getPathDirs()
-	if len(dirs1) != 2 || dirs1[0] != "/bin" || dirs1[1] != "/usr/bin" {
-		t.Fatalf("unexpected getPathDirs() = %v", dirs1)
+	want0 := filepath.Clean("/bin")
+	want1 := filepath.Clean("/usr/bin")
+	if len(dirs1) != 2 || dirs1[0] != want0 || dirs1[1] != want1 {
+		t.Fatalf("unexpected getPathDirs() = %v, want [%s %s]", dirs1, want0, want1)
 	}
 
 	dirs2 := getPathDirs()
@@ -844,9 +846,11 @@ func TestGetPathDirs_CachingAndInvalidation(t *testing.T) {
 	newPath := "/opt/bin"
 	t.Setenv("PATH", newPath)
 	dirs3 := getPathDirs()
-	if len(dirs3) != 1 || dirs3[0] != "/opt/bin" {
-		t.Fatalf("expected invalidated cache with new path, got %v", dirs3)
+	want3 := filepath.Clean(newPath)
+	if len(dirs3) != 1 || dirs3[0] != want3 {
+		t.Fatalf("expected invalidated cache with new path, got %v, want [%s]", dirs3, want3)
 	}
+
 }
 
 func TestGetPathDirs_Concurrent(t *testing.T) {
