@@ -61,6 +61,9 @@ var (
 	pathEnvMu      sync.RWMutex
 	cachedPathEnv  string
 	cachedPathDirs []string
+
+	unixExts    = []string{""}
+	windowsExts = []string{".exe", ".cmd", ".bat", ""}
 )
 
 func getPathDirs() []string {
@@ -83,6 +86,9 @@ func getPathDirs() []string {
 	}
 	cachedPathEnv = pathEnv
 	cachedPathDirs = filepath.SplitList(pathEnv)
+	for i, d := range cachedPathDirs {
+		cachedPathDirs[i] = filepath.Clean(d)
+	}
 	return cachedPathDirs
 }
 
@@ -95,9 +101,9 @@ func defaultFindAllPaths(name string) []string {
 	var foundFi []os.FileInfo
 	seen := make(map[string]bool)
 
-	exts := []string{""}
+	exts := unixExts
 	if runtime.GOOS == "windows" {
-		exts = []string{".exe", ".cmd", ".bat", ""}
+		exts = windowsExts
 	}
 
 	for _, dir := range dirs {
@@ -105,16 +111,21 @@ func defaultFindAllPaths(name string) []string {
 			continue
 		}
 		for _, ext := range exts {
-			target := filepath.Join(dir, name+ext)
+			var target string
+			if ext == "" {
+				target = filepath.Join(dir, name)
+			} else {
+				target = filepath.Join(dir, name+ext)
+			}
 			fi, err := os.Stat(target)
 			if err == nil && !fi.IsDir() {
 				if runtime.GOOS != "windows" && (fi.Mode().Perm()&0o111) == 0 {
 					continue
 				}
-				clean := filepath.Clean(target)
+				clean := target
 				evalPath := clean
 				if ep, err := filepath.EvalSymlinks(target); err == nil {
-					evalPath = filepath.Clean(ep)
+					evalPath = ep
 				}
 				if seen[clean] || seen[evalPath] {
 					break
@@ -519,25 +530,26 @@ func checkProcessLock(deps DoctorDeps) []CheckResult {
 	}
 }
 
-func checkPackageManagers(deps DoctorDeps) []CheckResult {
-	type pmCheck struct {
-		name    string
-		binName string
-	}
-	candidates := []pmCheck{
-		{"brew", "brew"},
-		{"apt", "apt"},
-		{"pacman", "pacman"},
-		{"dnf", "dnf"},
-		{"zypper", "zypper"},
-		{"winget", "winget"},
-		{"scoop", "scoop"},
-		{"choco", "choco"},
-		{"nix", "nix"},
-	}
+type pmCheck struct {
+	name    string
+	binName string
+}
 
-	var found []string
-	for _, pm := range candidates {
+var pmCandidates = []pmCheck{
+	{"brew", "brew"},
+	{"apt", "apt"},
+	{"pacman", "pacman"},
+	{"dnf", "dnf"},
+	{"zypper", "zypper"},
+	{"winget", "winget"},
+	{"scoop", "scoop"},
+	{"choco", "choco"},
+	{"nix", "nix"},
+}
+
+func checkPackageManagers(deps DoctorDeps) []CheckResult {
+	found := make([]string, 0, 4)
+	for _, pm := range pmCandidates {
 		_, err := deps.LookPath(pm.binName)
 		if err == nil {
 			found = append(found, pm.name)

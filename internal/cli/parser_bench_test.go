@@ -29,6 +29,15 @@ func BenchmarkFilterTools_WithFilter(b *testing.B) {
 	}
 }
 
+func BenchmarkFilterTools_SingleTool(b *testing.B) {
+	onlyList := []string{"go"}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = FilterTools(benchmarkTools, onlyList, io.Discard)
+	}
+}
+
 func BenchmarkParseFilter_Empty(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()

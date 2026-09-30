@@ -99,12 +99,43 @@ func FilterTools(tools, onlyList []string, stderr io.Writer) []string {
 		return tools
 	}
 
+	if len(onlyList) <= 3 {
+		return filterOnlySmall(tools, onlyList, stderr)
+	}
+
 	toolSet := make(map[string]bool, len(tools))
 	for _, t := range tools {
 		toolSet[strings.ToLower(t)] = true
 	}
 
 	return filterOnly(tools, onlyList, toolSet, stderr)
+}
+
+func filterOnlySmall(tools, onlyList []string, stderr io.Writer) []string {
+	// Warn about unknown tools
+	for _, want := range onlyList {
+		found := false
+		for _, t := range tools {
+			if strings.EqualFold(t, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			_, _ = fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", want)
+		}
+	}
+
+	result := make([]string, 0, len(onlyList))
+	for _, t := range tools {
+		for _, want := range onlyList {
+			if strings.EqualFold(t, want) {
+				result = append(result, t)
+				break
+			}
+		}
+	}
+	return result
 }
 
 func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Writer) []string {
@@ -120,7 +151,7 @@ func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Wri
 		}
 	}
 
-	var result []string
+	result := make([]string, 0, min(len(tools), len(onlyList)))
 	for _, t := range tools {
 		if onlySet[strings.ToLower(t)] {
 			result = append(result, t)
