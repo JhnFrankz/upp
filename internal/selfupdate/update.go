@@ -56,6 +56,14 @@ var copyBufPool = sync.Pool{
 	},
 }
 
+func getCopyBuf() *[]byte {
+	if b, ok := copyBufPool.Get().(*[]byte); ok {
+		return b
+	}
+	b := make([]byte, 32*1024)
+	return &b
+}
+
 // verifyChecksum verifies the archive file at archivePath against the checksums.txt
 // bytes by streaming the file through sha256.New() without loading it entirely into RAM.
 func verifyChecksum(archivePath string, checksums []byte, name string) error {
@@ -65,7 +73,7 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 	}
 	defer func() { _ = f.Close() }()
 
-	bufPtr := copyBufPool.Get().(*[]byte)
+	bufPtr := getCopyBuf()
 	defer copyBufPool.Put(bufPtr)
 
 	hasher := sha256.New()
@@ -281,7 +289,7 @@ func writeBinary(out string, r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
 	}
-	bufPtr := copyBufPool.Get().(*[]byte)
+	bufPtr := getCopyBuf()
 	defer copyBufPool.Put(bufPtr)
 	buf := *bufPtr
 
