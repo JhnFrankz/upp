@@ -80,14 +80,12 @@ func RunCommandWithTimeout(ctx context.Context, cmd *exec.Cmd) (stdout, stderr s
 	cmd.Stderr = &stderrBuf
 	cmd.WaitDelay = execReapDelay
 
-	if cmd.Cancel == nil {
-		cmd.Cancel = func() error {
-			killProcessGroup(cmd)
-			if cmd.Process != nil {
-				return cmd.Process.Kill()
-			}
-			return nil
+	cmd.Cancel = func() error {
+		killProcessGroup(cmd)
+		if cmd.Process != nil {
+			return cmd.Process.Kill()
 		}
+		return nil
 	}
 
 	err = cmd.Run()

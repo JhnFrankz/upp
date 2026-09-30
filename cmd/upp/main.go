@@ -39,6 +39,7 @@ func main() {
 	defer stop()
 
 	if code := run(ctx, os.Stderr); code != 0 {
+		stop()
 		os.Exit(code)
 	}
 }
