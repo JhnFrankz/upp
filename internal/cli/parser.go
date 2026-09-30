@@ -137,8 +137,11 @@ func parseCommaList(s string) []string {
 	if !strings.Contains(s, ",") {
 		return []string{s}
 	}
-	var result []string
-	for _, item := range strings.Split(s, ",") {
+	n := strings.Count(s, ",") + 1
+	result := make([]string, 0, n)
+	for len(s) > 0 {
+		var item string
+		item, s, _ = strings.Cut(s, ",")
 		trimmed := strings.TrimSpace(item)
 		if trimmed != "" {
 			result = append(result, trimmed)
