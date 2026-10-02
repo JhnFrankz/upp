@@ -15,7 +15,11 @@ var copyBufPool = sync.Pool{
 
 // Get returns a pointer to a 32KB byte slice from the pool.
 func Get() *[]byte {
-	return copyBufPool.Get().(*[]byte)
+	if b, ok := copyBufPool.Get().(*[]byte); ok {
+		return b
+	}
+	b := make([]byte, BufferSize)
+	return &b
 }
 
 // Put returns a 32KB byte slice pointer to the pool.
