@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/JhnFrankz/upp/internal/bufferpool"
 )
 
 const (
@@ -262,8 +264,8 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 		}
 	}()
 
-	bufPtr := getCopyBuf()
-	defer copyBufPool.Put(bufPtr)
+	bufPtr := bufferpool.Get()
+	defer bufferpool.Put(bufPtr)
 	buf := *bufPtr
 
 	for {

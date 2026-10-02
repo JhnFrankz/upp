@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/bufferpool"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
@@ -221,6 +222,10 @@ func extractGoTarball(archivePath, destDir string) error {
 	tr := tar.NewReader(gz)
 	cleanDest := filepath.Clean(destDir)
 
+	bufPtr := bufferpool.Get()
+	defer bufferpool.Put(bufPtr)
+	buf := *bufPtr
+
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -257,7 +262,7 @@ func extractGoTarball(archivePath, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(outFile, tr); err != nil {
+			if _, err := io.CopyBuffer(outFile, tr, buf); err != nil {
 				_ = outFile.Close()
 				return err
 			}
