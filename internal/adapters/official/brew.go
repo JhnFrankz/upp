@@ -167,15 +167,17 @@ func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	}, nil
 }
 
+var brewInfo = adapters.ToolInfo{
+	ID:                   "brew",
+	Name:                 "Homebrew",
+	Platforms:            platformsLinuxMacOS,
+	Trust:                security.TrustOfficial,
+	UpdatePolicy:         adapters.PolicyAlwaysUpdate,
+	Kind:                 adapters.KindManager,
+	SelfUpdateCommand:    brewSelfUpdateCmd,
+	PackageUpdateCommand: brewPackageUpdateTemplate,
+}
+
 func (a *BrewAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:                   "brew",
-		Name:                 "Homebrew",
-		Platforms:            []string{"linux", "macos"},
-		Trust:                security.TrustOfficial,
-		UpdatePolicy:         adapters.PolicyAlwaysUpdate,
-		Kind:                 adapters.KindManager,
-		SelfUpdateCommand:    brewSelfUpdateCmd,
-		PackageUpdateCommand: brewPackageUpdateTemplate,
-	}
+	return brewInfo
 }

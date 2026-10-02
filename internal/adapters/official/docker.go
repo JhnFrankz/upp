@@ -86,20 +86,37 @@ func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	}, nil
 }
 
-func (a *DockerAdapter) Info() adapters.ToolInfo {
-	mgr := defaultLinuxManager()
-	pkg := "docker-ce"
-	if mgr == "pacman" {
-		pkg = "docker"
-	}
-	return adapters.ToolInfo{
+var (
+	dockerManagerApt    = map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}
+	dockerManagerPacman = map[string]string{"linux": "pacman", "macos": "brew", "windows": "winget"}
+	dockerPkgApt        = map[string]string{"linux": "docker-ce", "macos": "docker", "windows": "Docker.Docker"}
+	dockerPkgPacman     = map[string]string{"linux": "docker", "macos": "docker", "windows": "Docker.Docker"}
+
+	dockerInfoApt = adapters.ToolInfo{
 		ID:             "docker",
 		Name:           "Docker",
-		Platforms:      []string{"linux", "macos", "windows"},
+		Platforms:      platformsLinuxMacOSWindows,
 		Trust:          security.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"linux": pkg, "macos": "docker", "windows": "Docker.Docker"},
+		Manager:        dockerManagerApt,
+		ManagerPackage: dockerPkgApt,
 	}
+	dockerInfoPacman = adapters.ToolInfo{
+		ID:             "docker",
+		Name:           "Docker",
+		Platforms:      platformsLinuxMacOSWindows,
+		Trust:          security.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
+		Kind:           adapters.KindTool,
+		Manager:        dockerManagerPacman,
+		ManagerPackage: dockerPkgPacman,
+	}
+)
+
+func (a *DockerAdapter) Info() adapters.ToolInfo {
+	if defaultLinuxManager() == "pacman" {
+		return dockerInfoPacman
+	}
+	return dockerInfoApt
 }

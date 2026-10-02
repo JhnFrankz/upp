@@ -11,6 +11,8 @@ import (
 	"github.com/JhnFrankz/upp/internal/version"
 )
 
+var platformsAll = []string{"linux", "macos", "windows"}
+
 // CustomAdapter implements Adapter for user-defined tools from config.
 // Commands are executed via the platform shell.
 type CustomAdapter struct {
@@ -20,6 +22,7 @@ type CustomAdapter struct {
 	trusted  bool
 	manager  Adapter // resolving owner adapter (nil = standalone custom tool)
 	pkg      string  // package name under manager (defaults to id if empty)
+	info     ToolInfo
 }
 
 // NewCustomAdapter creates a CustomAdapter from config values.
@@ -47,6 +50,7 @@ func NewCustomAdapter(id, command, checkCmd string, trusted bool, manager ...Ada
 	if len(manager) > 0 {
 		ca.manager = manager[0]
 	}
+	ca.info = ca.buildInfo()
 	return ca, nil
 }
 
@@ -78,6 +82,7 @@ func (c *CustomAdapter) SetPackage(pkg string) {
 	} else {
 		c.pkg = trimmed
 	}
+	c.info = c.buildInfo()
 }
 
 // WithPackage sets the package name and returns the adapter for chaining.
@@ -183,7 +188,7 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 	}, nil
 }
 
-func (c *CustomAdapter) Info() ToolInfo {
+func (c *CustomAdapter) buildInfo() ToolInfo {
 	trust := security.TrustCustomUntrusted
 	if c.trusted {
 		trust = security.TrustCustomTrusted
@@ -192,7 +197,7 @@ func (c *CustomAdapter) Info() ToolInfo {
 	info := ToolInfo{
 		ID:           c.id,
 		Name:         c.id,
-		Platforms:    []string{"linux", "macos", "windows"},
+		Platforms:    platformsAll,
 		Trust:        trust,
 		UpdatePolicy: PolicyAlwaysUpdate,
 		Kind:         KindTool,
@@ -212,6 +217,13 @@ func (c *CustomAdapter) Info() ToolInfo {
 		info.ManagerPackage = map[string]string{"linux": pkg, "macos": pkg, "windows": pkg}
 	}
 	return info
+}
+
+func (c *CustomAdapter) Info() ToolInfo {
+	if c.info.ID == "" && c.id != "" {
+		return c.buildInfo()
+	}
+	return c.info
 }
 
 // ManagerAdapter returns the injected resolving owner adapter a custom tool

@@ -389,7 +389,7 @@ func TestCheck(t *testing.T) {
 				lookPath: map[string]bool{"pnpm": true},
 				cmdArgs: map[string]fakeResult{
 					"pnpm":             {stdout: "8.14.0"},
-					"pnpm outdated -g": {stdout: "├─ foo │ 1.0.0 │ 2.0.0 │"},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │\n│ eslint  │ 8.0.0   │ 9.0.0  │"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: true},
@@ -401,7 +401,7 @@ func TestCheck(t *testing.T) {
 				lookPath: map[string]bool{"pnpm": true},
 				cmdArgs: map[string]fakeResult{
 					"pnpm":             {stdout: "8.14.0"},
-					"pnpm outdated -g": {stdout: "Package │ Current │ Latest"},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: false},
@@ -425,11 +425,35 @@ func TestCheck(t *testing.T) {
 				lookPath: map[string]bool{"pnpm": true},
 				cmdArgs: map[string]fakeResult{
 					"pnpm":             {stdout: "8.14.0"},
-					"pnpm outdated -g": {stdout: "├─ foo │ 1.0.0 │ 2.0.0 │", err: errors.New("sentinel")},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │\n│ eslint  │ 8.0.0   │ 9.0.0  │", err: errors.New("sentinel")},
 				},
 			},
 			exitCode: &one,
 			want:     adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: true},
+		},
+		{
+			name:    "pnpm/outdated-package-with-package-name",
+			newAdpt: func() adapters.Adapter { return &PnpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pnpm": true},
+				cmdArgs: map[string]fakeResult{
+					"pnpm":             {stdout: "8.14.0"},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │\n│ my-Package │ 1.0.0 │ 2.0.0 │"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: true},
+		},
+		{
+			name:    "pnpm/outdated-ascii-table",
+			newAdpt: func() adapters.Adapter { return &PnpmAdapter{} },
+			fakes: execFakes{
+				lookPath: map[string]bool{"pnpm": true},
+				cmdArgs: map[string]fakeResult{
+					"pnpm":             {stdout: "8.14.0"},
+					"pnpm outdated -g": {stdout: "+---------+---------+---------+\n| Package | Current | Latest  |\n+---------+---------+---------+\n| eslint  | 8.0.0   | 9.0.0   |\n+---------+---------+---------+"},
+				},
+			},
+			want: adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: true},
 		},
 		{
 			name:    "pnpm/exit-1-empty-output",

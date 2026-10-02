@@ -20,20 +20,18 @@ func (a *UvAdapter) Detect() bool {
 	return lookPath("uv")
 }
 
+var uvInfo = adapters.ToolInfo{
+	ID:           "uv",
+	Name:         "uv",
+	Platforms:    platformsLinuxMacOSWindows,
+	Trust:        security.TrustOfficial,
+	UpdatePolicy: adapters.PolicyGated,
+	Kind:         adapters.KindTool,
+	Command:      "uv self update",
+}
+
 func (a *UvAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:           "uv",
-		Name:         "uv",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        security.TrustOfficial,
-		UpdatePolicy: adapters.PolicyGated,
-		Kind:         adapters.KindTool,
-		// Command is the exact string Update() runs, declared so the plan's
-		// RiskCommand and the confirmation gate see what actually executes.
-		// Update() also runs "uv tool upgrade --all", which upgrades the tools
-		// uv manages rather than uv itself; Command names the self-update.
-		Command: "uv self update",
-	}
+	return uvInfo
 }
 
 func (a *UvAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {

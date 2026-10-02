@@ -87,20 +87,37 @@ func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	}, nil
 }
 
-func (a *GhAdapter) Info() adapters.ToolInfo {
-	mgr := defaultLinuxManager()
-	pkg := "gh"
-	if mgr == "pacman" {
-		pkg = "github-cli"
-	}
-	return adapters.ToolInfo{
+var (
+	ghManagerApt    = map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}
+	ghManagerPacman = map[string]string{"linux": "pacman", "macos": "brew", "windows": "winget"}
+	ghPkgApt        = map[string]string{"linux": "gh", "macos": "gh", "windows": "gh"}
+	ghPkgPacman     = map[string]string{"linux": "github-cli", "macos": "gh", "windows": "gh"}
+
+	ghInfoApt = adapters.ToolInfo{
 		ID:             "gh",
 		Name:           "GitHub CLI",
-		Platforms:      []string{"linux", "macos", "windows"},
+		Platforms:      platformsLinuxMacOSWindows,
 		Trust:          security.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"linux": mgr, "macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"linux": pkg, "macos": "gh", "windows": "gh"},
+		Manager:        ghManagerApt,
+		ManagerPackage: ghPkgApt,
 	}
+	ghInfoPacman = adapters.ToolInfo{
+		ID:             "gh",
+		Name:           "GitHub CLI",
+		Platforms:      platformsLinuxMacOSWindows,
+		Trust:          security.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
+		Kind:           adapters.KindTool,
+		Manager:        ghManagerPacman,
+		ManagerPackage: ghPkgPacman,
+	}
+)
+
+func (a *GhAdapter) Info() adapters.ToolInfo {
+	if defaultLinuxManager() == "pacman" {
+		return ghInfoPacman
+	}
+	return ghInfoApt
 }

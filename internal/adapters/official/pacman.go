@@ -34,18 +34,23 @@ func (a *PacmanAdapter) Detect() bool {
 	return lookPath("pacman")
 }
 
-func (a *PacmanAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
+var (
+	pacmanPrivileges = []string{"sudo"}
+	pacmanInfo       = adapters.ToolInfo{
 		ID:                   "pacman",
 		Name:                 "Pacman Package Manager",
-		Platforms:            []string{"linux"},
+		Platforms:            platformsLinux,
 		Trust:                security.TrustOfficial,
 		UpdatePolicy:         adapters.PolicyGated,
 		Kind:                 adapters.KindManager,
-		Privileges:           []string{"sudo"},
+		Privileges:           pacmanPrivileges,
 		SelfUpdateCommand:    pacmanSelfUpdateCmd,
 		PackageUpdateCommand: pacmanPackageUpdateTemplate,
 	}
+)
+
+func (a *PacmanAdapter) Info() adapters.ToolInfo {
+	return pacmanInfo
 }
 
 // Check queries for updates to pacman itself.

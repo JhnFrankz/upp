@@ -83,16 +83,16 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	}, nil
 }
 
+var bunInfo = adapters.ToolInfo{
+	ID:           "bun",
+	Name:         "Bun",
+	Platforms:    platformsLinuxMacOSWindows,
+	Trust:        security.TrustOfficial,
+	UpdatePolicy: adapters.PolicyAlwaysUpdate,
+	Kind:         adapters.KindTool,
+	Command:      "bun upgrade",
+}
+
 func (a *BunAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:           "bun",
-		Name:         "Bun",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        security.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindTool,
-		// Command is the exact string Update() runs, declared so the plan's
-		// RiskCommand and the confirmation gate see what actually executes.
-		Command: "bun upgrade",
-	}
+	return bunInfo
 }

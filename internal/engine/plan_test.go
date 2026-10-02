@@ -629,6 +629,40 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 			t.Errorf("RiskCommand = %q, want Generic Tool update", plan.Updates[0].RiskCommand)
 		}
 	})
+
+	t.Run("non-normalized osName falls back safely without dropping osName", func(t *testing.T) {
+		fallbackAdapter := &mockPlanAdapter{
+			info: adapters.ToolInfo{
+				ID:           "bsd-tool",
+				Name:         "BSD Tool",
+				UpdatePolicy: adapters.PolicyAlwaysUpdate,
+				Command:      "pkg upgrade bsd-tool",
+			},
+		}
+
+		eng := New(cfg, "freebsd", WithAdapters([]adapters.Adapter{fallbackAdapter}))
+		outcomes := []CheckOutcome{
+			{
+				ToolID:          "bsd-tool",
+				ToolName:        "BSD Tool",
+				Status:          StatusAvailable,
+				CurrentVersion:  "1.0.0",
+				LatestVersion:   "1.1.0",
+				UpdateAvailable: true,
+			},
+		}
+
+		plan, err := eng.Plan(outcomes, Filter{})
+		if err != nil {
+			t.Fatalf("Plan error: %v", err)
+		}
+		if len(plan.Updates) != 1 {
+			t.Fatalf("len(plan.Updates) = %d, want 1", len(plan.Updates))
+		}
+		if plan.Updates[0].RiskCommand != "pkg upgrade bsd-tool" {
+			t.Errorf("RiskCommand = %q, want pkg upgrade bsd-tool", plan.Updates[0].RiskCommand)
+		}
+	})
 }
 
 func TestPlan_FilterOnly(t *testing.T) {

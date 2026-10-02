@@ -56,8 +56,8 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 		}
 	}
 
-	var groups []ToolGroup
-	visitedManagers := make(map[string]bool)
+	groups := make([]ToolGroup, 0, len(canonicalManagerIDs)+1)
+	visitedManagers := make(map[string]bool, len(canonicalManagerIDs)*2)
 
 	// (1) Manager groups in canonical order
 	for _, mgrID := range canonicalManagerIDs {
@@ -72,15 +72,20 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 		visitedManagers[mgrID] = true
 		visitedManagers[mgrAdapter.Info().ID] = true
 
-		owned := ownerTools[mgrID]
+		ownedCap := len(ownerTools[mgrID])
+		if mgrAdapter.Name() != mgrID {
+			ownedCap += len(ownerTools[mgrAdapter.Name()])
+		}
+		owned := make([]adapters.Adapter, 0, ownedCap)
+		owned = append(owned, ownerTools[mgrID]...)
 		if len(owned) == 0 {
-			owned = ownerTools[mgrAdapter.Name()]
+			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
 		}
 		if mgrAdapter.Name() != mgrID && len(ownerTools[mgrAdapter.Name()]) > 0 && len(ownerTools[mgrID]) > 0 {
 			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
 		}
 
-		header := managerDisplayName(mgrID, allAdapters...)
+		header := mgrAdapter.Info().Name
 		adaps := make([]adapters.Adapter, 0, 1+len(owned))
 		adaps = append(adaps, mgrAdapter)
 		adaps = append(adaps, owned...)
@@ -105,7 +110,10 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 				owned = append(owned, ownerTools[id]...)
 			}
 		}
-		header := managerDisplayName(a.Name(), allAdapters...)
+		header := a.Info().Name
+		if header == "" {
+			header = a.Name()
+		}
 		adaps := make([]adapters.Adapter, 0, 1+len(owned))
 		adaps = append(adaps, a)
 		adaps = append(adaps, owned...)

@@ -40,11 +40,25 @@ func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// is a structured failure.
 	stdout, err := commandOutputErr(ctx, "pnpm", "outdated", "-g")
 	if err != nil {
-		if !isExitCode(err, 1) || !strings.Contains(stdout, "│") {
+		if !isExitCode(err, 1) || (!strings.Contains(stdout, "│") && !strings.Contains(stdout, "|")) {
 			return adapters.UpdateInfo{}, err
 		}
 	}
-	updateAvailable := strings.Contains(stdout, "│") && !strings.Contains(stdout, "Package")
+	updateAvailable := false
+	remaining := stdout
+	for len(remaining) > 0 {
+		var line string
+		line, remaining, _ = strings.Cut(remaining, "\n")
+		line = strings.TrimSpace(line)
+		hasBorder := strings.Contains(line, "│") || strings.Contains(line, "|")
+		isHeader := strings.Contains(line, "Package") && strings.Contains(line, "Current")
+		if hasBorder && !isHeader {
+			if strings.Trim(line, "+-| ") != "" {
+				updateAvailable = true
+				break
+			}
+		}
+	}
 
 	return adapters.UpdateInfo{
 		CurrentVersion:  current,
@@ -112,16 +126,16 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	}, nil
 }
 
+var pnpmInfo = adapters.ToolInfo{
+	ID:           "pnpm",
+	Name:         "pnpm",
+	Platforms:    platformsLinuxMacOSWindows,
+	Trust:        security.TrustOfficial,
+	UpdatePolicy: adapters.PolicyGated,
+	Kind:         adapters.KindTool,
+	Command:      "pnpm update -g",
+}
+
 func (a *PnpmAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:           "pnpm",
-		Name:         "pnpm",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        security.TrustOfficial,
-		UpdatePolicy: adapters.PolicyGated,
-		Kind:         adapters.KindTool,
-		// Command is the exact string Update() runs, declared so the plan's
-		// RiskCommand and the confirmation gate see what actually executes.
-		Command: "pnpm update -g",
-	}
+	return pnpmInfo
 }
