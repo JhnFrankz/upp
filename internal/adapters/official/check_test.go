@@ -389,7 +389,7 @@ func TestCheck(t *testing.T) {
 				lookPath: map[string]bool{"pnpm": true},
 				cmdArgs: map[string]fakeResult{
 					"pnpm":             {stdout: "8.14.0"},
-					"pnpm outdated -g": {stdout: "├─ foo │ 1.0.0 │ 2.0.0 │"},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │\n│ eslint  │ 8.0.0   │ 9.0.0  │"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: true},
@@ -401,7 +401,7 @@ func TestCheck(t *testing.T) {
 				lookPath: map[string]bool{"pnpm": true},
 				cmdArgs: map[string]fakeResult{
 					"pnpm":             {stdout: "8.14.0"},
-					"pnpm outdated -g": {stdout: "Package │ Current │ Latest"},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "8.14.0", LatestVersion: "8.14.0", UpdateAvailable: false},
@@ -425,7 +425,7 @@ func TestCheck(t *testing.T) {
 				lookPath: map[string]bool{"pnpm": true},
 				cmdArgs: map[string]fakeResult{
 					"pnpm":             {stdout: "8.14.0"},
-					"pnpm outdated -g": {stdout: "├─ foo │ 1.0.0 │ 2.0.0 │", err: errors.New("sentinel")},
+					"pnpm outdated -g": {stdout: "│ Package │ Current │ Latest │\n│ eslint  │ 8.0.0   │ 9.0.0  │", err: errors.New("sentinel")},
 				},
 			},
 			exitCode: &one,

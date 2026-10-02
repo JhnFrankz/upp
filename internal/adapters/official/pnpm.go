@@ -44,7 +44,17 @@ func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{}, err
 		}
 	}
-	updateAvailable := strings.Contains(stdout, "│") && !strings.Contains(stdout, "Package")
+	updateAvailable := false
+	remaining := stdout
+	for len(remaining) > 0 {
+		var line string
+		line, remaining, _ = strings.Cut(remaining, "\n")
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "│") && !strings.Contains(line, "Package") {
+			updateAvailable = true
+			break
+		}
+	}
 
 	return adapters.UpdateInfo{
 		CurrentVersion:  current,
