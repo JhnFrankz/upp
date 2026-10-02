@@ -40,7 +40,7 @@ func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// is a structured failure.
 	stdout, err := commandOutputErr(ctx, "pnpm", "outdated", "-g")
 	if err != nil {
-		if !isExitCode(err, 1) || !strings.Contains(stdout, "│") {
+		if !isExitCode(err, 1) || (!strings.Contains(stdout, "│") && !strings.Contains(stdout, "|")) {
 			return adapters.UpdateInfo{}, err
 		}
 	}
@@ -50,9 +50,13 @@ func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		var line string
 		line, remaining, _ = strings.Cut(remaining, "\n")
 		line = strings.TrimSpace(line)
-		if strings.Contains(line, "│") && !strings.Contains(line, "Package") {
-			updateAvailable = true
-			break
+		hasBorder := strings.Contains(line, "│") || strings.Contains(line, "|")
+		isHeader := strings.Contains(line, "Package") && strings.Contains(line, "Current")
+		if hasBorder && !isHeader {
+			if strings.Trim(line, "+-| ") != "" {
+				updateAvailable = true
+				break
+			}
 		}
 	}
 

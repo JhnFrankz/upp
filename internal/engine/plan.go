@@ -89,7 +89,10 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		allAdapters, _ = e.Resolve(Filter{})
 	}
 	idx := buildAdapterIndex(allAdapters)
-	canonOS, _ := platform.NormalizeOS(e.osName)
+	canonOS := e.osName
+	if norm, err := platform.NormalizeOS(e.osName); err == nil {
+		canonOS = norm
+	}
 
 	for _, oc := range outcomes {
 		if len(onlySet) > 0 {

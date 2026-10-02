@@ -850,7 +850,24 @@ func TestGetPathDirs_CachingAndInvalidation(t *testing.T) {
 	if len(dirs3) != 1 || dirs3[0] != want3 {
 		t.Fatalf("expected invalidated cache with new path, got %v, want [%s]", dirs3, want3)
 	}
+}
 
+func TestGetPathDirs_Deduplication(t *testing.T) {
+	sep := string(filepath.ListSeparator)
+	// Includes duplicates and uncleaned paths (trailing slashes)
+	dupPath := "/usr/bin" + sep + "/bin" + sep + "/usr/bin/" + sep + "/bin" + sep + "/opt/bin"
+	t.Setenv("PATH", dupPath)
+
+	dirs := getPathDirs()
+	want := []string{filepath.Clean("/usr/bin"), filepath.Clean("/bin"), filepath.Clean("/opt/bin")}
+	if len(dirs) != len(want) {
+		t.Fatalf("got %d dirs (%v), want %d (%v)", len(dirs), dirs, len(want), want)
+	}
+	for i, w := range want {
+		if dirs[i] != w {
+			t.Errorf("dirs[%d] = %q, want %q", i, dirs[i], w)
+		}
+	}
 }
 
 func TestGetPathDirs_Concurrent(t *testing.T) {

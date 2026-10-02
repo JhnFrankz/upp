@@ -72,7 +72,11 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 		visitedManagers[mgrID] = true
 		visitedManagers[mgrAdapter.Info().ID] = true
 
-		owned := make([]adapters.Adapter, 0, len(ownerTools[mgrID]))
+		ownedCap := len(ownerTools[mgrID])
+		if mgrAdapter.Name() != mgrID {
+			ownedCap += len(ownerTools[mgrAdapter.Name()])
+		}
+		owned := make([]adapters.Adapter, 0, ownedCap)
 		owned = append(owned, ownerTools[mgrID]...)
 		if len(owned) == 0 {
 			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
@@ -106,7 +110,10 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 				owned = append(owned, ownerTools[id]...)
 			}
 		}
-		header := managerDisplayName(a.Name(), allAdapters...)
+		header := a.Info().Name
+		if header == "" {
+			header = a.Name()
+		}
 		adaps := make([]adapters.Adapter, 0, 1+len(owned))
 		adaps = append(adaps, a)
 		adaps = append(adaps, owned...)
