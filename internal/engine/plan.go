@@ -5,6 +5,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -88,6 +89,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		allAdapters, _ = e.Resolve(Filter{})
 	}
 	idx := buildAdapterIndex(allAdapters)
+	canonOS, _ := platform.NormalizeOS(e.osName)
 
 	for _, oc := range outcomes {
 		if len(onlySet) > 0 {
@@ -114,7 +116,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 				}
 			}
 
-			owner := ResolvingOwner(a, e.osName, allAdapters)
+			owner := ResolvingOwner(a, canonOS, allAdapters)
 			policy := adapters.PolicyGated
 			if a != nil {
 				policy = a.Info().UpdatePolicy
@@ -170,7 +172,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 				if managerID == "" {
 					managerID = owner.Name()
 				}
-				packageName = OwnedPackage(a, e.osName)
+				packageName = OwnedPackage(a, canonOS)
 				if len(privileges) == 0 && len(ownerInfo.Privileges) > 0 {
 					privileges = ownerInfo.Privileges
 				}

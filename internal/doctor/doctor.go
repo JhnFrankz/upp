@@ -85,9 +85,15 @@ func getPathDirs() []string {
 		return cachedPathDirs
 	}
 	cachedPathEnv = pathEnv
-	cachedPathDirs = filepath.SplitList(pathEnv)
-	for i, d := range cachedPathDirs {
-		cachedPathDirs[i] = filepath.Clean(d)
+	rawDirs := filepath.SplitList(pathEnv)
+	cachedPathDirs = make([]string, 0, len(rawDirs))
+	seenDirs := make(map[string]struct{}, len(rawDirs))
+	for _, d := range rawDirs {
+		cleaned := filepath.Clean(d)
+		if _, seen := seenDirs[cleaned]; !seen {
+			seenDirs[cleaned] = struct{}{}
+			cachedPathDirs = append(cachedPathDirs, cleaned)
+		}
 	}
 	return cachedPathDirs
 }
@@ -123,11 +129,14 @@ func defaultFindAllPaths(name string) []string {
 					continue
 				}
 				clean := target
+				if seen[clean] {
+					break
+				}
 				evalPath := clean
 				if ep, err := filepath.EvalSymlinks(target); err == nil {
 					evalPath = ep
 				}
-				if seen[clean] || seen[evalPath] {
+				if seen[evalPath] {
 					break
 				}
 
