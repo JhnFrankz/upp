@@ -420,7 +420,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 	board := output.NewCheckBoard(os.Stdout, r.Color(), names)
 	board.Start()
 	outcomes, _ := eng.Check(ctx, grouped, func(prog engine.CheckProgress) {
-		board.Complete(prog.Index, outcomeToToolResult(prog.Outcome))
+		board.Complete(prog.Index, outcomeToToolResult(&prog.Outcome))
 	})
 	board.Finish()
 
@@ -475,8 +475,8 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 	// No pending updates → skip the selector, show the normal summary
 	if len(pending) == 0 {
 		results := make([]output.ToolResult, len(outcomes))
-		for i, oc := range outcomes {
-			results[i] = outcomeToToolResult(oc)
+		for i := range outcomes {
+			results[i] = outcomeToToolResult(&outcomes[i])
 		}
 		r.UpdateSummary(output.Summary{Results: results, DryRun: uf.DryRun})
 		return nil
@@ -506,7 +506,8 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 	hasFailure := false
 	updateIndex := 0
 	updateTotal := len(selected)
-	for _, oc := range outcomes {
+	for i := range outcomes {
+		oc := &outcomes[i]
 		id := outcomeSelectionID(oc)
 		display := oc.ToolName
 		if display == "" {
@@ -701,7 +702,10 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 // check outcome. The engine sets ToolID to adapters.ToolInfo.ID, falling back
 // to Adapter.Name() — exactly toolSelectionID — so an outcome's ID resolves
 // against adapterByID's key.
-func outcomeSelectionID(oc engine.CheckOutcome) string {
+func outcomeSelectionID(oc *engine.CheckOutcome) string {
+	if oc == nil {
+		return ""
+	}
 	if oc.ToolID != "" {
 		return oc.ToolID
 	}

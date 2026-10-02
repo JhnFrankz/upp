@@ -10,7 +10,10 @@ import (
 )
 
 // outcomeToToolResult converts an engine.CheckOutcome to an output.ToolResult.
-func outcomeToToolResult(oc engine.CheckOutcome) output.ToolResult {
+func outcomeToToolResult(oc *engine.CheckOutcome) output.ToolResult {
+	if oc == nil {
+		return output.ToolResult{}
+	}
 	name := oc.ToolName
 	if name == "" {
 		name = oc.ToolID
