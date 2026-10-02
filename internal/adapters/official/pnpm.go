@@ -122,16 +122,16 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	}, nil
 }
 
+var pnpmInfo = adapters.ToolInfo{
+	ID:           "pnpm",
+	Name:         "pnpm",
+	Platforms:    platformsLinuxMacOSWindows,
+	Trust:        security.TrustOfficial,
+	UpdatePolicy: adapters.PolicyGated,
+	Kind:         adapters.KindTool,
+	Command:      "pnpm update -g",
+}
+
 func (a *PnpmAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:           "pnpm",
-		Name:         "pnpm",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        security.TrustOfficial,
-		UpdatePolicy: adapters.PolicyGated,
-		Kind:         adapters.KindTool,
-		// Command is the exact string Update() runs, declared so the plan's
-		// RiskCommand and the confirmation gate see what actually executes.
-		Command: "pnpm update -g",
-	}
+	return pnpmInfo
 }

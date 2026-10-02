@@ -193,17 +193,19 @@ func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	}, nil
 }
 
+var aptInfo = adapters.ToolInfo{
+	ID:                   "apt",
+	Name:                 "APT Package Manager",
+	Platforms:            platformsLinux,
+	Trust:                security.TrustOfficial,
+	UpdatePolicy:         adapters.PolicyGated,
+	Kind:                 adapters.KindManager,
+	SelfUpdateCommand:    aptSelfUpdateCmd,
+	PackageUpdateCommand: aptPackageUpdateTemplate,
+}
+
 func (a *AptAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:                   "apt",
-		Name:                 "APT Package Manager",
-		Platforms:            []string{"linux"},
-		Trust:                security.TrustOfficial,
-		UpdatePolicy:         adapters.PolicyGated,
-		Kind:                 adapters.KindManager,
-		SelfUpdateCommand:    aptSelfUpdateCmd,
-		PackageUpdateCommand: aptPackageUpdateTemplate,
-	}
+	return aptInfo
 }
 
 // CurrentVersion returns the currently installed apt version.

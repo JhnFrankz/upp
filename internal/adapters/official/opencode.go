@@ -126,16 +126,18 @@ func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Res
 	}, nil
 }
 
+var opencodeInfo = adapters.ToolInfo{
+	ID:           "opencode",
+	Name:         "OpenCode",
+	Platforms:    platformsLinuxMacOSWindows,
+	Trust:        security.TrustOfficial,
+	UpdatePolicy: adapters.PolicyAlwaysUpdate,
+	Kind:         adapters.KindTool,
+	Command:      "opencode update",
+}
+
 func (a *OpenCodeAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:           "opencode",
-		Name:         "OpenCode",
-		Platforms:    []string{"linux", "macos", "windows"},
-		Trust:        security.TrustOfficial,
-		UpdatePolicy: adapters.PolicyAlwaysUpdate,
-		Kind:         adapters.KindTool,
-		Command:      "opencode update",
-	}
+	return opencodeInfo
 }
 
 // Ensure OpenCodeAdapter implements adapters.Adapter at compile time.

@@ -529,22 +529,28 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	}, nil
 }
 
-func (a *GoAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
+var (
+	goManager        = map[string]string{"macos": "brew", "windows": "winget"}
+	goManagerPackage = map[string]string{"macos": "golang", "windows": "GoLang.Go"}
+	goInfo           = adapters.ToolInfo{
 		ID:             "go",
 		Name:           "Go",
-		Platforms:      []string{"linux", "macos", "windows"},
+		Platforms:      platformsLinuxMacOSWindows,
 		Trust:          security.TrustOfficial,
 		UpdatePolicy:   adapters.PolicyAlwaysUpdate,
 		Kind:           adapters.KindTool,
-		Manager:        map[string]string{"macos": "brew", "windows": "winget"},
-		ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"},
+		Manager:        goManager,
+		ManagerPackage: goManagerPackage,
 		// Command is the exact string Update() runs on Linux, declared so the
 		// plan's RiskCommand and the confirmation gate see what actually
 		// executes. On macOS and Windows go is owned (Manager above), so the
 		// plan takes the owning manager's command and never reads this field.
 		Command: goLinuxUpdateCmd,
 	}
+)
+
+func (a *GoAdapter) Info() adapters.ToolInfo {
+	return goInfo
 }
 
 // goTarballURL returns the go.dev Linux tarball URL for the given

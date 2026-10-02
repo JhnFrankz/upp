@@ -190,15 +190,17 @@ func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	}, nil
 }
 
+var wingetInfo = adapters.ToolInfo{
+	ID:                   "winget",
+	Name:                 "Windows Package Manager",
+	Platforms:            platformsWindows,
+	Trust:                security.TrustOfficial,
+	UpdatePolicy:         adapters.PolicyAlwaysUpdate,
+	Kind:                 adapters.KindManager,
+	SelfUpdateCommand:    wingetSelfUpdateCmd,
+	PackageUpdateCommand: wingetPackageUpdateTemplate,
+}
+
 func (a *WingetAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:                   "winget",
-		Name:                 "Windows Package Manager",
-		Platforms:            []string{"windows"},
-		Trust:                security.TrustOfficial,
-		UpdatePolicy:         adapters.PolicyAlwaysUpdate,
-		Kind:                 adapters.KindManager,
-		SelfUpdateCommand:    wingetSelfUpdateCmd,
-		PackageUpdateCommand: wingetPackageUpdateTemplate,
-	}
+	return wingetInfo
 }

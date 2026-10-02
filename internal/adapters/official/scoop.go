@@ -108,14 +108,16 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}, nil
 }
 
+var scoopInfo = adapters.ToolInfo{
+	ID:                "scoop",
+	Name:              "Scoop",
+	Platforms:         platformsWindows,
+	Trust:             security.TrustOfficial,
+	UpdatePolicy:      adapters.PolicyAlwaysUpdate,
+	Kind:              adapters.KindManager,
+	SelfUpdateCommand: scoopSelfUpdateCmd,
+}
+
 func (a *ScoopAdapter) Info() adapters.ToolInfo {
-	return adapters.ToolInfo{
-		ID:                "scoop",
-		Name:              "Scoop",
-		Platforms:         []string{"windows"},
-		Trust:             security.TrustOfficial,
-		UpdatePolicy:      adapters.PolicyAlwaysUpdate,
-		Kind:              adapters.KindManager,
-		SelfUpdateCommand: scoopSelfUpdateCmd,
-	}
+	return scoopInfo
 }

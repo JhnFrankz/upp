@@ -57,3 +57,14 @@ func BenchmarkAdaptersForPlatform(b *testing.B) {
 		_ = AdaptersForPlatform("linux")
 	}
 }
+
+func BenchmarkAdapter_Info(b *testing.B) {
+	adapters := AllAdapters()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, a := range adapters {
+			_ = a.Info()
+		}
+	}
+}
