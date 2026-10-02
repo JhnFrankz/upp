@@ -239,4 +239,34 @@ func TestExtractGoTarball(t *testing.T) {
 			t.Fatal("extractGoTarball() expected error on path traversal, got nil")
 		}
 	})
+
+	t.Run("handles non-gzip or corrupt file gracefully", func(t *testing.T) {
+		corruptFile := filepath.Join(t.TempDir(), "corrupt.tar.gz")
+		if err := os.WriteFile(corruptFile, []byte("not a gzip archive"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		err := extractGoTarball(corruptFile, t.TempDir())
+		if err == nil {
+			t.Fatal("expected error on corrupt archive, got nil")
+		}
+	})
+
+	t.Run("handles truncated archive stream gracefully", func(t *testing.T) {
+		archive := createTestTarball(t, map[string]string{
+			"go/bin/go": strings.Repeat("X", 8192),
+		})
+		data, err := os.ReadFile(archive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Truncate halfway
+		truncatedFile := filepath.Join(t.TempDir(), "truncated.tar.gz")
+		if err := os.WriteFile(truncatedFile, data[:len(data)/2], 0644); err != nil {
+			t.Fatal(err)
+		}
+		err = extractGoTarball(truncatedFile, t.TempDir())
+		if err == nil {
+			t.Fatal("expected error on truncated tar stream, got nil")
+		}
+	})
 }

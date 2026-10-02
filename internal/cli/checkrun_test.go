@@ -125,7 +125,7 @@ func TestOutcomeToToolResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := outcomeToToolResult(tt.input)
+			got := outcomeToToolResult(&tt.input)
 			if got.Name != tt.expected.Name {
 				t.Errorf("Name = %q, want %q", got.Name, tt.expected.Name)
 			}
@@ -142,5 +142,33 @@ func TestOutcomeToToolResult(t *testing.T) {
 				t.Errorf("Stderr = %q, want %q", got.Stderr, tt.expected.Stderr)
 			}
 		})
+	}
+
+	t.Run("nilCheckOutcome", func(t *testing.T) {
+		got := outcomeToToolResult(nil)
+		if got != (output.ToolResult{}) {
+			t.Errorf("expected empty ToolResult for nil input, got %+v", got)
+		}
+	})
+}
+
+func TestOutcomeSelectionID(t *testing.T) {
+	if got := outcomeSelectionID(nil); got != "" {
+		t.Errorf("expected empty string for nil, got %q", got)
+	}
+
+	ocWithID := &engine.CheckOutcome{
+		ToolID:   "custom-id",
+		ToolName: "custom-name",
+	}
+	if got := outcomeSelectionID(ocWithID); got != "custom-id" {
+		t.Errorf("expected %q, got %q", "custom-id", got)
+	}
+
+	ocWithNameOnly := &engine.CheckOutcome{
+		ToolName: "custom-name",
+	}
+	if got := outcomeSelectionID(ocWithNameOnly); got != "custom-name" {
+		t.Errorf("expected %q, got %q", "custom-name", got)
 	}
 }

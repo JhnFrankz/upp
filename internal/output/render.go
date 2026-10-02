@@ -397,60 +397,42 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	_, _ = io.WriteString(r.w, sb.String())
 }
 
-func hasStatus(results []ToolResult, status Status) bool {
+func (r *Renderer) writeStatusSection(sb *strings.Builder, results []ToolResult, status Status, label string, colorCode string) bool {
+	first := true
 	for i := range results {
 		if results[i].Status == status {
-			return true
+			if first {
+				sb.WriteString("  ")
+				if colorCode != "" && r.color {
+					sb.WriteString("\033[")
+					sb.WriteString(colorCode)
+					sb.WriteString("m")
+					sb.WriteString(label)
+					sb.WriteString("\033[0m ")
+				} else {
+					sb.WriteString(label)
+					sb.WriteByte(' ')
+				}
+				first = false
+			} else {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(results[i].Name)
 		}
+	}
+	if !first {
+		sb.WriteByte('\n')
+		return true
 	}
 	return false
 }
 
-func writeJoinedNamesForStatus(sb *strings.Builder, results []ToolResult, status Status) bool {
-	first := true
-	for i := range results {
-		if results[i].Status == status {
-			if !first {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(results[i].Name)
-			first = false
-		}
-	}
-	return !first
-}
-
 func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary) {
-	if hasStatus(summary.Results, StatusUpdated) {
-		sb.WriteString("  ")
-		sb.WriteString(r.green("Updated:"))
-		sb.WriteByte(' ')
-		writeJoinedNamesForStatus(sb, summary.Results, StatusUpdated)
-		sb.WriteByte('\n')
-	}
-	if hasStatus(summary.Results, StatusCurrent) {
-		sb.WriteString("  ")
-		sb.WriteString(r.green("Up to date:"))
-		sb.WriteByte(' ')
-		writeJoinedNamesForStatus(sb, summary.Results, StatusCurrent)
-		sb.WriteByte('\n')
-	}
-	if hasStatus(summary.Results, StatusSkipped) {
-		sb.WriteString("  Skipped: ")
-		writeJoinedNamesForStatus(sb, summary.Results, StatusSkipped)
-		sb.WriteByte('\n')
-	}
-	if hasStatus(summary.Results, StatusDeselected) {
-		sb.WriteString("  Deselected: ")
-		writeJoinedNamesForStatus(sb, summary.Results, StatusDeselected)
-		sb.WriteByte('\n')
-	}
-	if hasStatus(summary.Results, StatusFailed) {
-		sb.WriteString("  ")
-		sb.WriteString(r.red("Failed:"))
-		sb.WriteByte(' ')
-		writeJoinedNamesForStatus(sb, summary.Results, StatusFailed)
-		sb.WriteByte('\n')
+	r.writeStatusSection(sb, summary.Results, StatusUpdated, "Updated:", "32")
+	r.writeStatusSection(sb, summary.Results, StatusCurrent, "Up to date:", "32")
+	r.writeStatusSection(sb, summary.Results, StatusSkipped, "Skipped:", "")
+	r.writeStatusSection(sb, summary.Results, StatusDeselected, "Deselected:", "")
+	if r.writeStatusSection(sb, summary.Results, StatusFailed, "Failed:", "31") {
 		if r.verbose && !r.quiet {
 			for i := range summary.Results {
 				if summary.Results[i].Status == StatusFailed && summary.Results[i].Stderr != "" {
@@ -763,45 +745,50 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		return
 	}
 
-	displayResults := results
-	if quiet {
-		filtered := make([]doctor.CheckResult, 0, len(results))
-		for _, res := range results {
-			if res.Status != doctor.SeverityOK {
-				filtered = append(filtered, res)
-			}
-		}
-		displayResults = filtered
-	}
-
 	type categoryEntry struct {
-		name  string
-		items []doctor.CheckResult
+		name    string
+		indices []int
 	}
 	categories := make([]categoryEntry, 0, 8)
-	for _, res := range displayResults {
-		cat := res.Category
+	passedCount := 0
+	warnCount := 0
+	errCount := 0
+	numDisplay := 0
+	for idx := range results {
+		switch results[idx].Status {
+		case doctor.SeverityOK:
+			passedCount++
+		case doctor.SeverityWarn:
+			warnCount++
+		case doctor.SeverityError:
+			errCount++
+		}
+		if quiet && results[idx].Status == doctor.SeverityOK {
+			continue
+		}
+		numDisplay++
+		cat := results[idx].Category
 		if cat == "" {
 			cat = "General"
 		}
 		found := false
 		for i := range categories {
 			if categories[i].name == cat {
-				categories[i].items = append(categories[i].items, res)
+				categories[i].indices = append(categories[i].indices, idx)
 				found = true
 				break
 			}
 		}
 		if !found {
 			categories = append(categories, categoryEntry{
-				name:  cat,
-				items: []doctor.CheckResult{res},
+				name:    cat,
+				indices: []int{idx},
 			})
 		}
 	}
 
 	var sb strings.Builder
-	sb.Grow(len(displayResults)*96 + 256)
+	sb.Grow(numDisplay*96 + 256)
 
 	firstCategory := true
 	for i := range categories {
@@ -812,7 +799,8 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		sb.WriteString(categories[i].name)
 		sb.WriteByte('\n')
 
-		for _, item := range categories[i].items {
+		for _, idx := range categories[i].indices {
+			item := &results[idx]
 			icon := r.doctorIcon(item.Status)
 			sb.WriteString("  ")
 			sb.WriteString(icon)
@@ -845,20 +833,6 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 				sb.WriteString(item.FixHint)
 				sb.WriteByte('\n')
 			}
-		}
-	}
-
-	passedCount := 0
-	warnCount := 0
-	errCount := 0
-	for _, res := range results {
-		switch res.Status {
-		case doctor.SeverityOK:
-			passedCount++
-		case doctor.SeverityWarn:
-			warnCount++
-		case doctor.SeverityError:
-			errCount++
 		}
 	}
 

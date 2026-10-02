@@ -14,9 +14,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/JhnFrankz/upp/internal/bufferpool"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -48,22 +48,6 @@ var (
 	ErrNotTTY = errors.New("selfupdate: self-update requires an interactive terminal")
 )
 
-// copyBufPool provides reusable 32 KB buffers for streaming I/O in self-update.
-var copyBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 32*1024)
-		return &b
-	},
-}
-
-func getCopyBuf() *[]byte {
-	if b, ok := copyBufPool.Get().(*[]byte); ok {
-		return b
-	}
-	b := make([]byte, 32*1024)
-	return &b
-}
-
 // verifyChecksum verifies the archive file at archivePath against the checksums.txt
 // bytes by streaming the file through sha256.New() without loading it entirely into RAM.
 func verifyChecksum(archivePath string, checksums []byte, name string) error {
@@ -73,8 +57,8 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 	}
 	defer func() { _ = f.Close() }()
 
-	bufPtr := getCopyBuf()
-	defer copyBufPool.Put(bufPtr)
+	bufPtr := bufferpool.Get()
+	defer bufferpool.Put(bufPtr)
 
 	hasher := sha256.New()
 	buf := *bufPtr
@@ -289,8 +273,8 @@ func writeBinary(out string, r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
 	}
-	bufPtr := getCopyBuf()
-	defer copyBufPool.Put(bufPtr)
+	bufPtr := bufferpool.Get()
+	defer bufferpool.Put(bufPtr)
 	buf := *bufPtr
 
 	for {
