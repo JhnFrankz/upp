@@ -303,19 +303,56 @@ func (r *Renderer) Summary(summary Summary) {
 	r.UpdateSummary(summary)
 }
 
+type summaryIndices struct {
+	updated    []int
+	current    []int
+	skipped    []int
+	deselected []int
+	failed     []int
+
+	uBuf [16]int
+	cBuf [16]int
+	sBuf [16]int
+	dBuf [8]int
+	fBuf [16]int
+}
+
 // UpdateSummary renders the final summary of an update or check run.
 func (r *Renderer) UpdateSummary(summary Summary) {
-	updated, skipped, failed := countByStatus(summary.Results)
-	current := countByStatusType(summary.Results, StatusCurrent)
-	deselected := countByStatusType(summary.Results, StatusDeselected)
+	var idx summaryIndices
+	idx.updated = idx.uBuf[:0]
+	idx.current = idx.cBuf[:0]
+	idx.skipped = idx.sBuf[:0]
+	idx.deselected = idx.dBuf[:0]
+	idx.failed = idx.fBuf[:0]
 
-	// In dry-run mode, StatusAvailable counts as "would update"
 	available := 0
-	if summary.DryRun {
-		available = countByStatusType(summary.Results, StatusAvailable)
+	for i, res := range summary.Results {
+		switch res.Status {
+		case StatusUpdated:
+			idx.updated = append(idx.updated, i)
+		case StatusAvailable:
+			if summary.DryRun {
+				available++
+			}
+		case StatusCurrent:
+			idx.current = append(idx.current, i)
+		case StatusSkipped:
+			idx.skipped = append(idx.skipped, i)
+		case StatusDeselected:
+			idx.deselected = append(idx.deselected, i)
+		case StatusFailed:
+			idx.failed = append(idx.failed, i)
+		}
 	}
 
-	var parts []string
+	updated := len(idx.updated)
+	current := len(idx.current)
+	skipped := len(idx.skipped)
+	deselected := len(idx.deselected)
+	failed := len(idx.failed)
+
+	parts := make([]string, 0, 5)
 
 	if updated > 0 || available > 0 {
 		label := "updated"
@@ -323,19 +360,19 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 			label = "would update"
 		}
 		count := updated + available
-		parts = append(parts, r.green(fmt.Sprintf("%d %s", count, label)))
+		parts = append(parts, r.green(strconv.Itoa(count)+" "+label))
 	}
 	if current > 0 {
-		parts = append(parts, fmt.Sprintf("%d up to date", current))
+		parts = append(parts, strconv.Itoa(current)+" up to date")
 	}
 	if skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
+		parts = append(parts, strconv.Itoa(skipped)+" skipped")
 	}
 	if deselected > 0 {
-		parts = append(parts, fmt.Sprintf("%d deselected", deselected))
+		parts = append(parts, strconv.Itoa(deselected)+" deselected")
 	}
 	if failed > 0 {
-		parts = append(parts, r.red(fmt.Sprintf("%d failed", failed)))
+		parts = append(parts, r.red(strconv.Itoa(failed)+" failed"))
 	}
 
 	var sb strings.Builder
@@ -392,50 +429,45 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 
 	// List tools per category in non-quiet mode
 	if !r.quiet {
-		r.detailSummary(&sb, summary)
+		r.detailSummary(&sb, summary, &idx)
 	}
 	_, _ = io.WriteString(r.w, sb.String())
 }
 
-func (r *Renderer) writeStatusSection(sb *strings.Builder, results []ToolResult, status Status, label string, colorCode string) bool {
-	first := true
-	for i := range results {
-		if results[i].Status == status {
-			if first {
-				sb.WriteString("  ")
-				if colorCode != "" && r.color {
-					sb.WriteString("\033[")
-					sb.WriteString(colorCode)
-					sb.WriteString("m")
-					sb.WriteString(label)
-					sb.WriteString("\033[0m ")
-				} else {
-					sb.WriteString(label)
-					sb.WriteByte(' ')
-				}
-				first = false
-			} else {
-				sb.WriteString(", ")
-			}
-			sb.WriteString(results[i].Name)
+func (r *Renderer) writeIndexSection(sb *strings.Builder, results []ToolResult, indices []int, label string, colorCode string) bool {
+	if len(indices) == 0 {
+		return false
+	}
+	sb.WriteString("  ")
+	if colorCode != "" && r.color {
+		sb.WriteString("\033[")
+		sb.WriteString(colorCode)
+		sb.WriteString("m")
+		sb.WriteString(label)
+		sb.WriteString("\033[0m ")
+	} else {
+		sb.WriteString(label)
+		sb.WriteByte(' ')
+	}
+	for j, idx := range indices {
+		if j > 0 {
+			sb.WriteString(", ")
 		}
+		sb.WriteString(results[idx].Name)
 	}
-	if !first {
-		sb.WriteByte('\n')
-		return true
-	}
-	return false
+	sb.WriteByte('\n')
+	return true
 }
 
-func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary) {
-	r.writeStatusSection(sb, summary.Results, StatusUpdated, "Updated:", "32")
-	r.writeStatusSection(sb, summary.Results, StatusCurrent, "Up to date:", "32")
-	r.writeStatusSection(sb, summary.Results, StatusSkipped, "Skipped:", "")
-	r.writeStatusSection(sb, summary.Results, StatusDeselected, "Deselected:", "")
-	if r.writeStatusSection(sb, summary.Results, StatusFailed, "Failed:", "31") {
+func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary, idx *summaryIndices) {
+	r.writeIndexSection(sb, summary.Results, idx.updated, "Updated:", "32")
+	r.writeIndexSection(sb, summary.Results, idx.current, "Up to date:", "32")
+	r.writeIndexSection(sb, summary.Results, idx.skipped, "Skipped:", "")
+	r.writeIndexSection(sb, summary.Results, idx.deselected, "Deselected:", "")
+	if r.writeIndexSection(sb, summary.Results, idx.failed, "Failed:", "31") {
 		if r.verbose && !r.quiet {
-			for i := range summary.Results {
-				if summary.Results[i].Status == StatusFailed && summary.Results[i].Stderr != "" {
+			for _, i := range idx.failed {
+				if summary.Results[i].Stderr != "" {
 					rem := strings.TrimSpace(summary.Results[i].Stderr)
 					for len(rem) > 0 {
 						var line string
@@ -692,16 +724,6 @@ func countByStatus(results []ToolResult) (updated, skipped, failed int) {
 		}
 	}
 	return
-}
-
-func countByStatusType(results []ToolResult, status Status) int {
-	count := 0
-	for _, r := range results {
-		if r.Status == status {
-			count++
-		}
-	}
-	return count
 }
 
 func filterByStatus(results []ToolResult, status Status) []ToolResult {

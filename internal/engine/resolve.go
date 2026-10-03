@@ -88,6 +88,21 @@ func FilterAdapters(adapterList []adapters.Adapter, only []string) []adapters.Ad
 		return adapterList
 	}
 
+	if len(only) <= 3 {
+		filtered := make([]adapters.Adapter, 0, len(only))
+		for _, a := range adapterList {
+			name := a.Name()
+			id := a.Info().ID
+			for _, want := range only {
+				if strings.EqualFold(name, want) || strings.EqualFold(id, want) {
+					filtered = append(filtered, a)
+					break
+				}
+			}
+		}
+		return filtered
+	}
+
 	onlySet := make(map[string]struct{}, len(only))
 	for _, name := range only {
 		onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
@@ -122,18 +137,22 @@ func adapterByName(adapterList []adapters.Adapter, name string) adapters.Adapter
 	return nil
 }
 
-// ResolvingOwner returns the manager adapter that owns the given adapter on the
-// given OS, or nil when the adapter has no resolving owner (standalone).
-func ResolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
+// resolvingOwnerSlice resolves the owning manager using a direct slice without variadic allocation.
+func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapters.Adapter) adapters.Adapter {
 	if a == nil {
 		return nil
+	}
+	if custom, ok := a.(*adapters.CustomAdapter); ok {
+		if m := custom.ManagerAdapter(); m != nil {
+			return m
+		}
 	}
 	canonOS := osName
 	if norm, err := platform.NormalizeOS(osName); err == nil {
 		canonOS = norm
 	}
 
-	if len(allAdapters) > 0 && allAdapters[0] != nil {
+	if len(allAdapters) > 0 {
 		info := a.Info()
 		if info.Manager != nil {
 			ownerName := info.Manager[osName]
@@ -141,16 +160,10 @@ func ResolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters
 				ownerName = info.Manager[canonOS]
 			}
 			if ownerName != "" {
-				if owner := adapterByName(allAdapters[0], ownerName); owner != nil {
+				if owner := adapterByName(allAdapters, ownerName); owner != nil {
 					return owner
 				}
 			}
-		}
-	}
-
-	if custom, ok := a.(*adapters.CustomAdapter); ok {
-		if m := custom.ManagerAdapter(); m != nil {
-			return m
 		}
 	}
 
@@ -158,6 +171,16 @@ func ResolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters
 		return owner
 	}
 	return official.ResolveOwner(a.Name(), osName)
+}
+
+// ResolvingOwner returns the manager adapter that owns the given adapter on the
+// given OS, or nil when the adapter has no resolving owner (standalone).
+func ResolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
+	var list []adapters.Adapter
+	if len(allAdapters) > 0 {
+		list = allAdapters[0]
+	}
+	return resolvingOwnerSlice(a, osName, list)
 }
 
 // OwnedPackage returns the package name under the resolving manager for an

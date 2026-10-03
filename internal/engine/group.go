@@ -220,7 +220,11 @@ func ownerIDOf(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adap
 			return id
 		}
 	}
-	if owner := ResolvingOwner(a, osName, allAdapters...); owner != nil {
+	var list []adapters.Adapter
+	if len(allAdapters) > 0 {
+		list = allAdapters[0]
+	}
+	if owner := resolvingOwnerSlice(a, osName, list); owner != nil {
 		return owner.Name()
 	}
 	return ""

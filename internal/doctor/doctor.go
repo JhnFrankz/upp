@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -179,7 +180,10 @@ func defaultHTTPGet(ctx context.Context, url string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 	return resp.StatusCode, nil
 }
 
