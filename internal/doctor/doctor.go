@@ -226,6 +226,21 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 		deps.Adapters = official.AdaptersForCurrentPlatform()
 	}
 
+	if deps.LoadConfig != nil {
+		origLoad := deps.LoadConfig
+		var (
+			cachedCfg *config.Config
+			cachedErr error
+			loadOnce  sync.Once
+		)
+		deps.LoadConfig = func() (*config.Config, error) {
+			loadOnce.Do(func() {
+				cachedCfg, cachedErr = origLoad()
+			})
+			return cachedCfg, cachedErr
+		}
+	}
+
 	estimatedCap := 16
 	if len(deps.Adapters) > 0 {
 		estimatedCap += len(deps.Adapters)
@@ -256,7 +271,7 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 }
 
 func checkStorageAndConfig(deps DoctorDeps) []CheckResult {
-	var results []CheckResult
+	results := make([]CheckResult, 0, 8)
 
 	// 1. Config file
 	cfgPath, err := deps.ConfigPath()
@@ -621,23 +636,32 @@ func checkPackageManagers(deps DoctorDeps) []CheckResult {
 }
 
 func checkToolPaths(deps DoctorDeps) []CheckResult {
-	var results []CheckResult
-
-	toolsToCheck := make(map[string]bool)
-	configuredTools := make(map[string]bool)
-
+	initCap := len(deps.Adapters)
+	var (
+		cfg    *config.Config
+		cfgErr error
+	)
 	if deps.LoadConfig != nil {
-		if cfg, err := deps.LoadConfig(); err == nil && cfg != nil {
-			for name, tCfg := range cfg.Tools {
-				if tCfg.Enabled {
-					toolsToCheck[name] = true
-					configuredTools[name] = true
-				}
-			}
-			for name := range cfg.Custom {
+		cfg, cfgErr = deps.LoadConfig()
+		if cfgErr == nil && cfg != nil {
+			initCap += len(cfg.Tools) + len(cfg.Custom)
+		}
+	}
+
+	results := make([]CheckResult, 0, initCap)
+	toolsToCheck := make(map[string]bool, initCap)
+	configuredTools := make(map[string]bool, initCap)
+
+	if cfgErr == nil && cfg != nil {
+		for name, tCfg := range cfg.Tools {
+			if tCfg.Enabled {
 				toolsToCheck[name] = true
 				configuredTools[name] = true
 			}
+		}
+		for name := range cfg.Custom {
+			toolsToCheck[name] = true
+			configuredTools[name] = true
 		}
 	}
 
