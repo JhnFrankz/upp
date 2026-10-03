@@ -17,7 +17,11 @@ func ResolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters
 	if a == nil {
 		return adapters.PolicyGated
 	}
-	if owner := ResolvingOwner(a, osName, allAdapters...); owner != nil {
+	var list []adapters.Adapter
+	if len(allAdapters) > 0 {
+		list = allAdapters[0]
+	}
+	if owner := resolvingOwnerSlice(a, osName, list); owner != nil {
 		return owner.Info().UpdatePolicy
 	}
 	return a.Info().UpdatePolicy
@@ -119,7 +123,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 				}
 			}
 
-			owner := ResolvingOwner(a, canonOS, allAdapters)
+			owner := resolvingOwnerSlice(a, canonOS, allAdapters)
 			policy := adapters.PolicyGated
 			if a != nil {
 				policy = a.Info().UpdatePolicy
