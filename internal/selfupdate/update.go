@@ -239,7 +239,10 @@ func checkEntry(hdr *tar.Header) error {
 	if name == "" || strings.HasPrefix(name, "/") || filepath.IsAbs(name) {
 		return fmt.Errorf("selfupdate: release archive contains absolute path %q; refusing", name)
 	}
-	for _, comp := range strings.Split(name, "/") {
+	rem := name
+	for len(rem) > 0 {
+		var comp string
+		comp, rem, _ = strings.Cut(rem, "/")
 		if comp == ".." {
 			return fmt.Errorf("selfupdate: release archive contains path traversal entry %q; refusing", name)
 		}
@@ -255,10 +258,21 @@ func checkZipEntry(f *zip.File) error {
 	if name == "" || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") || filepath.IsAbs(name) || strings.Contains(name, ":") {
 		return fmt.Errorf("selfupdate: release archive contains absolute path %q; refusing", name)
 	}
-	normalized := strings.ReplaceAll(name, "\\", "/")
-	for _, comp := range strings.Split(normalized, "/") {
-		if comp == ".." {
-			return fmt.Errorf("selfupdate: release archive contains path traversal entry %q; refusing", name)
+	if strings.Contains(name, "..") {
+		rem := name
+		for len(rem) > 0 {
+			var comp string
+			idx := strings.IndexAny(rem, "/\\")
+			if idx >= 0 {
+				comp = rem[:idx]
+				rem = rem[idx+1:]
+			} else {
+				comp = rem
+				rem = ""
+			}
+			if comp == ".." {
+				return fmt.Errorf("selfupdate: release archive contains path traversal entry %q; refusing", name)
+			}
 		}
 	}
 	if f.Mode()&os.ModeSymlink != 0 {
@@ -277,21 +291,9 @@ func writeBinary(out string, r io.Reader) error {
 	defer bufferpool.Put(bufPtr)
 	buf := *bufPtr
 
-	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				_ = f.Close()
-				return fmt.Errorf("selfupdate: cannot write extracted binary: %w", werr)
-			}
-		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			_ = f.Close()
-			return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
-		}
+	if _, copyErr := io.CopyBuffer(f, r, buf); copyErr != nil {
+		_ = f.Close()
+		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", copyErr)
 	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
