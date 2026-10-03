@@ -42,13 +42,26 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 		}
 	}
 
+	if len(presentManagers) == 0 {
+		return []ToolGroup{{
+			Header:   "",
+			Manager:  nil,
+			Adapters: append([]adapters.Adapter(nil), tools...),
+		}}
+	}
+
+	var allList []adapters.Adapter
+	if len(allAdapters) > 0 {
+		allList = allAdapters[0]
+	}
+
 	ownerTools := make(map[string][]adapters.Adapter)
 	var standalone []adapters.Adapter
 	for _, a := range tools {
 		if a.Info().Kind == adapters.KindManager {
 			continue
 		}
-		ownerID := ownerIDOf(a, osName, allAdapters...)
+		ownerID := ownerIDOfSlice(a, osName, allList)
 		if ownerID != "" && presentManagers[ownerID] != nil {
 			ownerTools[ownerID] = append(ownerTools[ownerID], a)
 		} else {
@@ -141,7 +154,7 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 // standalone tools).
 func GroupOrder(tools []adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) []adapters.Adapter {
 	groups := GroupByOwner(tools, osName, allAdapters...)
-	var ordered []adapters.Adapter
+	ordered := make([]adapters.Adapter, 0, len(tools))
 	for _, g := range groups {
 		ordered = append(ordered, g.Adapters...)
 	}
@@ -174,7 +187,11 @@ func OwnerGroupLabelWithManagers(a adapters.Adapter, osName string, presentManag
 	if a == nil || a.Info().Kind == adapters.KindManager {
 		return ""
 	}
-	ownerID := ownerIDOf(a, osName, allAdapters...)
+	var list []adapters.Adapter
+	if len(allAdapters) > 0 {
+		list = allAdapters[0]
+	}
+	ownerID := ownerIDOfSlice(a, osName, list)
 	if ownerID == "" || !presentManagers[ownerID] {
 		return ""
 	}
@@ -199,6 +216,14 @@ func managerDisplayName(ownerID string, allAdapters ...[]adapters.Adapter) strin
 // when a is standalone. An official tool reads its canonical Info().Manager
 // map; a custom tool exposes its injected manager via ManagerAdapter.
 func ownerIDOf(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) string {
+	var list []adapters.Adapter
+	if len(allAdapters) > 0 {
+		list = allAdapters[0]
+	}
+	return ownerIDOfSlice(a, osName, list)
+}
+
+func ownerIDOfSlice(a adapters.Adapter, osName string, allAdapters []adapters.Adapter) string {
 	if a == nil {
 		return ""
 	}
@@ -220,11 +245,7 @@ func ownerIDOf(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adap
 			return id
 		}
 	}
-	var list []adapters.Adapter
-	if len(allAdapters) > 0 {
-		list = allAdapters[0]
-	}
-	if owner := resolvingOwnerSlice(a, osName, list); owner != nil {
+	if owner := resolvingOwnerSlice(a, osName, allAdapters); owner != nil {
 		return owner.Name()
 	}
 	return ""
