@@ -82,7 +82,7 @@ func Acquire(path string) (*Lock, error) {
 		_ = f.Close()
 		return nil, fmt.Errorf("failed to seek lock file: %w", err)
 	}
-	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+	if _, err := f.WriteString(strconv.Itoa(os.Getpid()) + "\n"); err != nil {
 		_ = unlock(f)
 		_ = f.Close()
 		return nil, fmt.Errorf("failed to write PID to lock file: %w", err)
@@ -118,18 +118,22 @@ func (l *Lock) Release() error {
 		if l.file == nil {
 			return
 		}
-		err := os.Remove(l.path)
 		unlockErr := unlock(l.file)
 		closeErr := l.file.Close()
 		l.file = nil
-		if err != nil {
-			_ = os.Remove(l.path)
-		}
+		removeErr := os.Remove(l.path)
 		if unlockErr != nil {
 			l.err = unlockErr
 			return
 		}
-		l.err = closeErr
+		if closeErr != nil {
+			l.err = closeErr
+			return
+		}
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			l.err = removeErr
+			return
+		}
 	})
 	return l.err
 }

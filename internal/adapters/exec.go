@@ -90,7 +90,6 @@ func RunCommandWithTimeout(ctx context.Context, cmd *exec.Cmd) (stdout, stderr s
 
 	err = cmd.Run()
 	if err != nil && ctx.Err() != nil {
-		killProcessGroup(cmd)
 		return stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%w: %v", ctx.Err(), err)
 	}
 	if err != nil {
