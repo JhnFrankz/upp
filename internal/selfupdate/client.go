@@ -252,7 +252,11 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 		return "", nil, fmt.Errorf("selfupdate: download failed: HTTP %d", resp.StatusCode)
 	}
 
-	tmpFile, err := os.CreateTemp("", "upp-download-*.tar.gz")
+	pattern := "upp-download-*.tar.gz"
+	if strings.HasSuffix(name, ".zip") {
+		pattern = "upp-download-*.zip"
+	}
+	tmpFile, err := os.CreateTemp("", pattern)
 	if err != nil {
 		return "", nil, err
 	}
@@ -268,21 +272,9 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 	defer bufferpool.Put(bufPtr)
 	buf := *bufPtr
 
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := tmpFile.Write(buf[:n]); werr != nil {
-				_ = tmpFile.Close()
-				return "", nil, fmt.Errorf("selfupdate: write asset: %w", werr)
-			}
-		}
-		if rerr != nil {
-			if rerr == io.EOF {
-				break
-			}
-			_ = tmpFile.Close()
-			return "", nil, fmt.Errorf("selfupdate: read asset: %w", rerr)
-		}
+	if _, copyErr := io.CopyBuffer(tmpFile, resp.Body, buf); copyErr != nil {
+		_ = tmpFile.Close()
+		return "", nil, fmt.Errorf("selfupdate: write asset: %w", copyErr)
 	}
 
 	if err := tmpFile.Close(); err != nil {

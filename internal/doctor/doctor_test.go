@@ -888,3 +888,26 @@ func TestGetPathDirs_Concurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestDiagnose_LoadConfigMemoized(t *testing.T) {
+	deps := baseTestDeps(t)
+	loadCount := 0
+	deps.LoadConfig = func() (*config.Config, error) {
+		loadCount++
+		return &config.Config{
+			Version: 1,
+			Tools: map[string]config.ToolConfig{
+				"git": {Enabled: true},
+			},
+		}, nil
+	}
+
+	results := Diagnose(context.Background(), deps)
+	if len(results) == 0 {
+		t.Fatalf("expected diagnostic results, got empty")
+	}
+
+	if loadCount != 1 {
+		t.Fatalf("expected deps.LoadConfig to be called exactly once, got %d", loadCount)
+	}
+}

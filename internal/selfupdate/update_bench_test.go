@@ -1,6 +1,8 @@
 package selfupdate
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -39,6 +41,35 @@ func BenchmarkVerifyChecksum(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		if err := verifyChecksum(archivePath, checksumsBytes, targetName); err != nil {
 			b.Fatalf("verifyChecksum failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkCheckEntry_Valid(b *testing.B) {
+	hdr := &tar.Header{
+		Name:     "upp-linux-amd64/upp",
+		Typeflag: tar.TypeReg,
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := checkEntry(hdr); err != nil {
+			b.Fatalf("checkEntry failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkCheckZipEntry_Valid(b *testing.B) {
+	zf := &zip.File{
+		FileHeader: zip.FileHeader{
+			Name: "upp-windows-amd64/upp.exe",
+		},
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := checkZipEntry(zf); err != nil {
+			b.Fatalf("checkZipEntry failed: %v", err)
 		}
 	}
 }
