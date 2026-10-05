@@ -201,6 +201,14 @@ func (a unconsentedCheckAdapter) Check(ctx context.Context) (adapters.UpdateInfo
 func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.Renderer) ([]adapters.Adapter, error) {
 	authorized := make([]adapters.Adapter, 0, len(adapterList))
 	for _, a := range adapterList {
+		// Official adapters never declare arbitrary custom check commands.
+		// Only custom adapters can carry a shell check command requiring user consent.
+		if _, isCustom := a.(*adapters.CustomAdapter); !isCustom {
+			if custom, ok := a.(interface{ IsCustom() bool }); !ok || !custom.IsCustom() {
+				authorized = append(authorized, a)
+				continue
+			}
+		}
 		info := a.Info()
 		if !security.CheckNeedsConsent(info.CheckCommand) {
 			authorized = append(authorized, a)

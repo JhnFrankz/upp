@@ -28,6 +28,7 @@ func (a *checkGateAdapter) Update(ctx context.Context, dryRun bool) (adapters.Re
 	return adapters.Result{Success: true}, nil
 }
 func (a *checkGateAdapter) Info() adapters.ToolInfo { return a.info }
+func (a *checkGateAdapter) IsCustom() bool          { return true }
 
 func checkGateAdapters(checks ...string) []*checkGateAdapter {
 	list := make([]*checkGateAdapter, 0, len(checks))

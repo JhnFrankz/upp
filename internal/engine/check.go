@@ -152,24 +152,21 @@ func (e *Engine) Check(ctx context.Context, adapterList []adapters.Adapter, onPr
 				select {
 				case <-ctx.Done():
 					return
-				default:
-				}
-
-				job, ok := <-jobs
-				if !ok {
-					return
-				}
-
-				oc := safeCheck(ctx, job.adapter)
-				outcomes[job.index] = oc
-				if onProgress != nil {
-					progressMu.Lock()
-					onProgress(CheckProgress{
-						Index:   job.index,
-						Total:   total,
-						Outcome: oc,
-					})
-					progressMu.Unlock()
+				case job, ok := <-jobs:
+					if !ok {
+						return
+					}
+					oc := safeCheck(ctx, job.adapter)
+					outcomes[job.index] = oc
+					if onProgress != nil {
+						progressMu.Lock()
+						onProgress(CheckProgress{
+							Index:   job.index,
+							Total:   total,
+							Outcome: oc,
+						})
+						progressMu.Unlock()
+					}
 				}
 			}
 		}()
