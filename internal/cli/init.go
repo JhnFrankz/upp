@@ -74,7 +74,7 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 	platformAdapters := official.AdaptersForPlatform(p.OS)
 
 	// Detect which tools are installed
-	var detected []string
+	detected := make([]string, 0, len(platformAdapters))
 	for _, a := range platformAdapters {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -104,15 +104,16 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		}
 	}
 
-	// Build config with detected tools
-	cfg := config.DefaultConfigWithDefaults()
-
-	// Enable only detected tools
-	for id := range cfg.Tools {
-		cfg.Tools[id] = config.ToolConfig{Enabled: false}
-	}
+	// Build config with detected tools in a single pass
+	cfg := config.DefaultConfig()
+	names := official.ToolNamesForPlatform(p.OS)
+	cfg.Tools = make(map[string]config.ToolConfig, len(names))
+	detectedSet := make(map[string]bool, len(detected))
 	for _, id := range detected {
-		cfg.Tools[id] = config.ToolConfig{Enabled: true}
+		detectedSet[id] = true
+	}
+	for _, name := range names {
+		cfg.Tools[name] = config.ToolConfig{Enabled: detectedSet[name]}
 	}
 
 	if err := config.Save(cfg); err != nil {

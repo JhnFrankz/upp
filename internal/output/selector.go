@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/term"
@@ -91,8 +92,11 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 	linesRendered := 0
 	render := func() {
 		var sb strings.Builder
+		sb.Grow(len(s.opts)*80 + 64)
 		if useColor && linesRendered > 0 {
-			fmt.Fprintf(&sb, "\x1b[%dA\r", linesRendered)
+			sb.WriteString("\x1b[")
+			sb.WriteString(strconv.Itoa(linesRendered))
+			sb.WriteString("A\r")
 		}
 
 		currentLines := 0
@@ -114,18 +118,22 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 			if selected[i] {
 				marker = "[x]"
 			}
-			prefix := "  "
-			if i == cursor {
-				prefix = r.cyan("▶") + " "
-			}
-			line := fmt.Sprintf("%s %s %s", prefix, marker, r.cyan(opt.Label))
-			if opt.Version != "" {
-				line += " " + r.dim(opt.Version)
-			}
 			if useColor {
 				sb.WriteString("\r\x1b[K")
 			}
-			sb.WriteString(line)
+			if i == cursor {
+				sb.WriteString(r.cyan("▶"))
+				sb.WriteString("  ")
+			} else {
+				sb.WriteString("   ")
+			}
+			sb.WriteString(marker)
+			sb.WriteByte(' ')
+			sb.WriteString(r.cyan(opt.Label))
+			if opt.Version != "" {
+				sb.WriteByte(' ')
+				sb.WriteString(r.dim(opt.Version))
+			}
 			sb.WriteByte('\n')
 			currentLines++
 		}

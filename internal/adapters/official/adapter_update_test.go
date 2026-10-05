@@ -37,6 +37,12 @@ func TestCommandOutput(t *testing.T) {
 			call:  func() string { return commandOutput(context.Background(), "echo", "hello") },
 			want:  "",
 		},
+		{
+			name:  "empty-stdout",
+			fakes: execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: ""}}},
+			call:  func() string { return commandOutput(context.Background(), "echo", "hello") },
+			want:  "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -139,6 +145,28 @@ func TestCommandOutputErr(t *testing.T) {
 		}
 		if out != "hello" {
 			t.Errorf("commandOutputErr() = %q, want %q", out, "hello")
+		}
+	})
+
+	t.Run("empty-stdout-success", func(t *testing.T) {
+		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: ""}}})
+		out, err := commandOutputErr(context.Background(), "echo", "hello")
+		if err != nil {
+			t.Fatalf("commandOutputErr unexpected error: %v", err)
+		}
+		if out != "" {
+			t.Errorf("commandOutputErr() = %q, want %q", out, "")
+		}
+	})
+
+	t.Run("empty-stdout-failure", func(t *testing.T) {
+		setExecFakes(t, execFakes{cmdArgs: map[string]fakeResult{"echo": {stdout: "", stderr: "boom details\n", err: fakeErr}}})
+		out, err := commandOutputErr(context.Background(), "echo", "hello")
+		if err == nil {
+			t.Fatal("commandOutputErr error = nil, want structured error")
+		}
+		if out != "" {
+			t.Errorf("commandOutputErr() out = %q, want empty", out)
 		}
 	})
 
