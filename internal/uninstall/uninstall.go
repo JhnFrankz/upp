@@ -40,7 +40,14 @@ func RemoveTarget(t Target, removeFunc func(string) error, removeAllFunc func(st
 // Execute performs best-effort uninstallation across all provided targets.
 // It continues even if a target fails, returning a list of all encountered errors.
 func Execute(targets []Target, removeFunc func(string) error, removeAllFunc func(string) error) []RemovalError {
-	var errors []RemovalError
+	if removeFunc == nil {
+		removeFunc = os.Remove
+	}
+	if removeAllFunc == nil {
+		removeAllFunc = os.RemoveAll
+	}
+
+	errors := make([]RemovalError, 0, len(targets))
 
 	for _, t := range targets {
 		if !t.Exists {
