@@ -186,7 +186,7 @@ func isVersionLike(s string) bool {
 // Used for simple version commands where stderr is irrelevant.
 func commandOutput(ctx context.Context, name string, args ...string) string {
 	stdout, _, err := runCmdArgsFn(ctx, name, args...)
-	if err != nil {
+	if err != nil || stdout == "" {
 		return ""
 	}
 	return strings.TrimSpace(stdout)
@@ -195,7 +195,7 @@ func commandOutput(ctx context.Context, name string, args ...string) string {
 // shellOutput runs a shell command and returns its trimmed stdout.
 func shellOutput(ctx context.Context, command string) string {
 	stdout, _, err := runCmdFn(ctx, command)
-	if err != nil {
+	if err != nil || stdout == "" {
 		return ""
 	}
 	return strings.TrimSpace(stdout)
@@ -205,10 +205,14 @@ func shellOutput(ctx context.Context, command string) string {
 // errors with the given tool name rather than the binary name.
 func commandOutputErrFor(ctx context.Context, tool, name string, args ...string) (string, error) {
 	stdout, stderr, err := runCmdArgsFn(ctx, name, args...)
+	var retErr error
 	if err != nil {
-		return strings.TrimSpace(stdout), commandFailureErr(tool, stderr, err)
+		retErr = commandFailureErr(tool, stderr, err)
 	}
-	return strings.TrimSpace(stdout), nil
+	if stdout == "" {
+		return "", retErr
+	}
+	return strings.TrimSpace(stdout), retErr
 }
 
 // commandOutputErr runs a command and returns its trimmed stdout, or a
@@ -228,10 +232,14 @@ func commandOutputErr(ctx context.Context, name string, args ...string) (string,
 // not the command's first token (a wrapper or shell builtin).
 func shellOutputErr(ctx context.Context, command, tool string) (string, error) {
 	stdout, stderr, err := runCmdFn(ctx, command)
+	var retErr error
 	if err != nil {
-		return strings.TrimSpace(stdout), commandFailureErr(tool, stderr, err)
+		retErr = commandFailureErr(tool, stderr, err)
 	}
-	return strings.TrimSpace(stdout), nil
+	if stdout == "" {
+		return "", retErr
+	}
+	return strings.TrimSpace(stdout), retErr
 }
 
 // commandFailureErr builds the structured Check() failure message
