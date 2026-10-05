@@ -767,11 +767,13 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		return
 	}
 
-	type categoryEntry struct {
-		name    string
-		indices []int
+	type categorySpan struct {
+		name  string
+		start int
+		end   int
 	}
-	categories := make([]categoryEntry, 0, 8)
+	categories := make([]categorySpan, 0, 8)
+	indicesBuf := make([]int, 0, len(results))
 	passedCount := 0
 	warnCount := 0
 	errCount := 0
@@ -796,15 +798,27 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		found := false
 		for i := range categories {
 			if categories[i].name == cat {
-				categories[i].indices = append(categories[i].indices, idx)
+				// Insert into indicesBuf at categories[i].end, and shift subsequent spans
+				insertPos := categories[i].end
+				indicesBuf = append(indicesBuf, 0)
+				copy(indicesBuf[insertPos+1:], indicesBuf[insertPos:])
+				indicesBuf[insertPos] = idx
+				categories[i].end++
+				for j := i + 1; j < len(categories); j++ {
+					categories[j].start++
+					categories[j].end++
+				}
 				found = true
 				break
 			}
 		}
 		if !found {
-			categories = append(categories, categoryEntry{
-				name:    cat,
-				indices: []int{idx},
+			start := len(indicesBuf)
+			indicesBuf = append(indicesBuf, idx)
+			categories = append(categories, categorySpan{
+				name:  cat,
+				start: start,
+				end:   start + 1,
 			})
 		}
 	}
@@ -821,7 +835,7 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 		sb.WriteString(categories[i].name)
 		sb.WriteByte('\n')
 
-		for _, idx := range categories[i].indices {
+		for _, idx := range indicesBuf[categories[i].start:categories[i].end] {
 			item := &results[idx]
 			icon := r.doctorIcon(item.Status)
 			sb.WriteString("  ")
