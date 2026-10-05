@@ -93,6 +93,9 @@ func (c *CustomAdapter) WithPackage(pkg string) *CustomAdapter {
 
 func (c *CustomAdapter) Name() string { return c.id }
 
+// IsCustom reports that this adapter is a user-defined custom adapter.
+func (c *CustomAdapter) IsCustom() bool { return true }
+
 // Detect returns true if the base command exists on PATH.
 func (c *CustomAdapter) Detect() bool {
 	base := extractBaseCommand(c.command)
@@ -115,8 +118,12 @@ func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 		return UpdateInfo{}, nil
 	}
 
-	if !c.Detect() {
-		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command))
+	base := extractBaseCommand(c.command)
+	if base == "" {
+		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, "")
+	}
+	if _, err := lookPathFn(base); err != nil {
+		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, base)
 	}
 
 	stdout, _, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
