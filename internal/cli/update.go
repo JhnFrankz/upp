@@ -51,47 +51,6 @@ type updateDeps struct {
 	selector func(pending []output.SelectOption) ([]string, bool)
 }
 
-// ownedCheckerAdapter delegates Check to a PackageChecker for an owned tool.
-type ownedCheckerAdapter struct {
-	adapters.Adapter
-	checker adapters.PackageChecker
-	pkg     string
-}
-
-func (o *ownedCheckerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
-	info, err := o.checker.CheckPackage(ctx, o.pkg)
-	if err != nil {
-		return adapters.UpdateInfo{}, err
-	}
-	if info != (adapters.UpdateInfo{}) {
-		return info, nil
-	}
-	return o.Adapter.Check(ctx)
-}
-
-// prepareCheckAdapters wraps owned tools whose managers provide a PackageChecker.
-func prepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) []adapters.Adapter {
-	result := make([]adapters.Adapter, len(adapterList))
-	for i, a := range adapterList {
-		owner := engine.ResolvingOwner(a, osName, allAdapters...)
-		if owner != nil && a.Info().Manager != nil && a.Info().Manager[osName] != "" {
-			if checker, ok := owner.(adapters.PackageChecker); ok {
-				pkg := engine.OwnedPackage(a, osName)
-				if pkg != "" {
-					result[i] = &ownedCheckerAdapter{
-						Adapter: a,
-						checker: checker,
-						pkg:     pkg,
-					}
-					continue
-				}
-			}
-		}
-		result[i] = a
-	}
-	return result
-}
-
 func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
 	return runUpdateContext(context.Background(), gf, uf, deps)
 }
@@ -264,7 +223,7 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 		eng = engine.New(nil, osName, opts...)
 	}
 
-	checkAdapters := prepareCheckAdapters(filteredAdapters, osName, allAdapters...)
+	checkAdapters := engine.PrepareCheckAdapters(filteredAdapters, osName, allAdapters...)
 	checkAdapters, err := authorizeChecks(gf, checkAdapters, r)
 	if err != nil {
 		return err

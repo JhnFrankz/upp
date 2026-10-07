@@ -1356,3 +1356,83 @@ func TestPlan_RiskCommandEqualsExecutedDeclaration(t *testing.T) {
 		})
 	}
 }
+
+func TestPlan_WithAdaptersHermeticity(t *testing.T) {
+	// Case 1: When WithAdapters is provided, Plan must NOT fall back to the
+	// global official catalog for tools missing from the injected slice.
+	dummy := &mockPlanAdapter{
+		info: adapters.ToolInfo{
+			ID:           "custom-tool",
+			Name:         "custom-tool",
+			UpdatePolicy: adapters.PolicyGated,
+			Command:      "custom-tool update",
+		},
+	}
+	engHermetic := New(&config.Config{}, platform.OSLinux, WithAdapters([]adapters.Adapter{dummy}))
+
+	outcomes := []CheckOutcome{
+		{
+			ToolID:          "gh",
+			ToolName:        "GitHub CLI",
+			Status:          StatusAvailable,
+			UpdateAvailable: true,
+			CurrentVersion:  "2.0.0",
+			LatestVersion:   "2.1.0",
+		},
+	}
+
+	planHermetic, err := engHermetic.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("engHermetic.Plan error: %v", err)
+	}
+	if len(planHermetic.Updates) != 1 {
+		t.Fatalf("expected 1 update, got %d", len(planHermetic.Updates))
+	}
+	up := planHermetic.Updates[0]
+	// If it fell back to official, ManagerID would be "apt", PackageName would be "gh",
+	// and RiskCommand would be the apt package update command.
+	if up.ManagerID != "" {
+		t.Errorf("expected empty ManagerID under WithAdapters, got %q (bypassed injected adapters)", up.ManagerID)
+	}
+	if up.PackageName != "" {
+		t.Errorf("expected empty PackageName under WithAdapters, got %q (bypassed injected adapters)", up.PackageName)
+	}
+	if up.RiskCommand != "GitHub CLI update" {
+		t.Errorf("expected standalone fallback command %q, got %q", "GitHub CLI update", up.RiskCommand)
+	}
+
+	// Case 2: When WithAdapters is NOT provided, Plan populates the default
+	// catalog from official tools as fallback.
+	engDefault := New(&config.Config{}, platform.OSLinux)
+	planDefault, err := engDefault.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("engDefault.Plan error: %v", err)
+	}
+	if len(planDefault.Updates) != 1 {
+		t.Fatalf("expected 1 update, got %d", len(planDefault.Updates))
+	}
+	upDefault := planDefault.Updates[0]
+	if upDefault.ManagerID != "apt" {
+		t.Errorf("expected ManagerID 'apt' from default official catalog, got %q", upDefault.ManagerID)
+	}
+	if upDefault.PackageName != "gh" {
+		t.Errorf("expected PackageName 'gh' from default official catalog, got %q", upDefault.PackageName)
+	}
+
+	// Case 3: When WithAdapters contains an adapter that declares an official manager,
+	// but that manager is NOT in the injected slice, Plan must NOT resolve the manager
+	// from the global official catalog.
+	ghOfficial := official.AdapterByName("gh")
+	engGhOnly := New(&config.Config{}, platform.OSLinux, WithAdapters([]adapters.Adapter{ghOfficial}))
+	planGhOnly, err := engGhOnly.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("engGhOnly.Plan error: %v", err)
+	}
+	if len(planGhOnly.Updates) != 1 {
+		t.Fatalf("expected 1 update, got %d", len(planGhOnly.Updates))
+	}
+	upGhOnly := planGhOnly.Updates[0]
+	if upGhOnly.ManagerID != "" {
+		t.Errorf("expected empty ManagerID when manager is not in WithAdapters, got %q (bypassed injected adapters)", upGhOnly.ManagerID)
+	}
+}
