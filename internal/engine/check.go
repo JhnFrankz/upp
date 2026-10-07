@@ -175,6 +175,25 @@ func (e *Engine) Check(ctx context.Context, adapterList []adapters.Adapter, onPr
 	wg.Wait()
 
 	if ctx.Err() != nil {
+		for i, a := range adapterList {
+			if outcomes[i].Status == StatusUnknown && outcomes[i].ToolID == "" {
+				info := a.Info()
+				toolID := info.ID
+				if toolID == "" {
+					toolID = a.Name()
+				}
+				toolName := info.Name
+				if toolName == "" {
+					toolName = a.Name()
+				}
+				outcomes[i] = CheckOutcome{
+					ToolID:   toolID,
+					ToolName: toolName,
+					Status:   StatusFailed,
+					Err:      ctx.Err(),
+				}
+			}
+		}
 		return outcomes, ctx.Err()
 	}
 

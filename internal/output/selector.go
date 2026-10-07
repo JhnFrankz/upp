@@ -122,17 +122,33 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 				sb.WriteString("\r\x1b[K")
 			}
 			if i == cursor {
-				sb.WriteString(r.cyan("▶"))
+				if useColor {
+					sb.WriteString("\x1b[36m▶\x1b[0m")
+				} else {
+					sb.WriteString("▶")
+				}
 				sb.WriteString("  ")
 			} else {
 				sb.WriteString("   ")
 			}
 			sb.WriteString(marker)
 			sb.WriteByte(' ')
-			sb.WriteString(r.cyan(opt.Label))
+			if useColor {
+				sb.WriteString("\x1b[36m")
+				sb.WriteString(opt.Label)
+				sb.WriteString("\x1b[0m")
+			} else {
+				sb.WriteString(opt.Label)
+			}
 			if opt.Version != "" {
 				sb.WriteByte(' ')
-				sb.WriteString(r.dim(opt.Version))
+				if useColor {
+					sb.WriteString("\x1b[2m")
+					sb.WriteString(opt.Version)
+					sb.WriteString("\x1b[0m")
+				} else {
+					sb.WriteString(opt.Version)
+				}
 			}
 			sb.WriteByte('\n')
 			currentLines++

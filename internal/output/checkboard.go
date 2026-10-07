@@ -1,7 +1,6 @@
 package output
 
 import (
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -83,7 +82,8 @@ func (b *CheckBoard) Complete(index int, res ToolResult) {
 
 	if !b.color {
 		// Fallback: one plain line per completion, no ANSI cursor control.
-		_, _ = fmt.Fprintf(b.w, "%s\n", line)
+		_, _ = io.WriteString(b.w, line)
+		_, _ = io.WriteString(b.w, "\n")
 		return
 	}
 	b.rewriteRow(index)
