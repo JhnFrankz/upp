@@ -2464,3 +2464,44 @@ func TestExecutePlannedUpdate_PreservesStderr(t *testing.T) {
 		t.Errorf("executePlannedUpdate Stderr = %q, want %q", got.Stderr, "fatal compilation error\nstack trace")
 	}
 }
+
+func TestExecutePlannedUpdate_CanonicalOSDelegation(t *testing.T) {
+	fakeMgr := &fakeUpdateAdapter{
+		name: "brew",
+		kind: adapters.KindManager,
+		updatePackage: func(pkg string) (adapters.Result, error) {
+			return adapters.Result{Success: true, Before: "1.0.0", After: "1.1.0"}, nil
+		},
+	}
+	fakeTool := &fakeUpdateAdapter{
+		name: "my-tool",
+		kind: adapters.KindTool,
+		manager: map[string]string{
+			"macos": "brew",
+		},
+		managerPackage: map[string]string{
+			"macos": "my-tool-pkg",
+		},
+	}
+	planned := engine.PlannedUpdate{
+		ToolID:   "my-tool",
+		ToolName: "my-tool",
+	}
+	var buf bytes.Buffer
+	r := output.NewRendererForced(&buf, false, false, true, false)
+
+	// Passing "darwin" (alias for "macos") must correctly delegate to the manager on macOS.
+	res := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fakeTool, 1, 1, r, "darwin", []adapters.Adapter{fakeMgr, fakeTool})
+	if res.Status != output.StatusUpdated {
+		t.Fatalf("expected StatusUpdated, got %v", res.Status)
+	}
+	if fakeMgr.updatePkgCount != 1 {
+		t.Fatalf("expected manager UpdatePackage to be called once, got %d", fakeMgr.updatePkgCount)
+	}
+	if fakeMgr.lastUpdatePkg != "my-tool-pkg" {
+		t.Fatalf("expected package %q, got %q", "my-tool-pkg", fakeMgr.lastUpdatePkg)
+	}
+	if fakeTool.updated {
+		t.Fatalf("standalone tool Update should not have been called")
+	}
+}
