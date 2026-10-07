@@ -99,6 +99,33 @@ func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
 	return nil
 }
 
+// resolvingOwnerIndex resolves the owning manager using the O(1) adapterIndex.
+func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS string, idx adapterIndex, hasExplicitAdapters bool) adapters.Adapter {
+	if a == nil {
+		return nil
+	}
+	if custom, ok := a.(*adapters.CustomAdapter); ok {
+		if m := custom.ManagerAdapter(); m != nil {
+			return m
+		}
+	}
+
+	if hasExplicitAdapters {
+		if info.Manager != nil {
+			ownerName := info.Manager[canonOS]
+			if ownerName != "" {
+				return idx.find(ownerName, ownerName)
+			}
+		}
+		return nil
+	}
+
+	if owner := official.ResolveOwner(a.Name(), canonOS); owner != nil {
+		return owner
+	}
+	return nil
+}
+
 // Plan formulates an executable UpdatePlan from check outcomes and filter options.
 func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error) {
 	n := len(outcomes)
@@ -172,10 +199,15 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		case StatusAvailable, StatusCurrent:
 			a := idx.find(oc.ToolID, oc.ToolName)
 
-			owner := resolvingOwnerSlice(a, canonOS, allAdapters)
+			var info adapters.ToolInfo
+			if a != nil {
+				info = a.Info()
+			}
+
+			owner := resolvingOwnerIndex(a, info, canonOS, idx, allAdapters != nil)
 			policy := adapters.PolicyGated
 			if a != nil {
-				policy = a.Info().UpdatePolicy
+				policy = info.UpdatePolicy
 				if owner != nil {
 					policy = owner.Info().UpdatePolicy
 				}
@@ -201,9 +233,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 			var kind adapters.Kind
 			var selfCommand string
 
-			var info adapters.ToolInfo
 			if a != nil {
-				info = a.Info()
 				if info.ID != "" {
 					toolID = info.ID
 				}
@@ -228,7 +258,9 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 				if managerID == "" {
 					managerID = owner.Name()
 				}
-				packageName = OwnedPackage(a, canonOS)
+				if info.ManagerPackage != nil {
+					packageName = info.ManagerPackage[canonOS]
+				}
 				if len(privileges) == 0 && len(ownerInfo.Privileges) > 0 {
 					privileges = ownerInfo.Privileges
 				}
