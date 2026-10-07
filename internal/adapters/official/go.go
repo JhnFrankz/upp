@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/bufferpool"
+	"github.com/JhnFrankz/upp/internal/archive"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
@@ -222,10 +223,6 @@ func extractGoTarball(archivePath, destDir string) error {
 	tr := tar.NewReader(gz)
 	cleanDest := filepath.Clean(destDir)
 
-	bufPtr := bufferpool.Get()
-	defer bufferpool.Put(bufPtr)
-	buf := *bufPtr
-
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -235,14 +232,12 @@ func extractGoTarball(archivePath, destDir string) error {
 			return fmt.Errorf("failed to read tar entry: %w", err)
 		}
 
-		cleanName := filepath.Clean(hdr.Name)
-		if strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
+		targetPath, err := archive.SafeTargetPath(cleanDest, hdr.Name)
+		if err != nil {
+			if errors.Is(err, archive.ErrPathEscapes) {
+				return fmt.Errorf("archive entry escapes destination: %s", hdr.Name)
+			}
 			return fmt.Errorf("illegal archive entry path: %s", hdr.Name)
-		}
-
-		targetPath := filepath.Join(cleanDest, cleanName)
-		if !strings.HasPrefix(targetPath, cleanDest+string(filepath.Separator)) && targetPath != cleanDest {
-			return fmt.Errorf("archive entry escapes destination: %s", hdr.Name)
 		}
 
 		switch hdr.Typeflag {
@@ -258,19 +253,11 @@ func extractGoTarball(archivePath, destDir string) error {
 			if mode == 0 {
 				mode = 0644
 			}
-			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-			if err != nil {
-				return err
-			}
-			if _, err := io.CopyBuffer(outFile, tr, buf); err != nil {
-				_ = outFile.Close()
-				return err
-			}
-			if err := outFile.Close(); err != nil {
+			if err := archive.ExtractToFile(targetPath, tr, mode); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
-			if strings.HasPrefix(hdr.Linkname, "/") || strings.Contains(hdr.Linkname, "..") {
+			if err := archive.ValidateSymlinkTarget(hdr.Linkname); err != nil {
 				return fmt.Errorf("unsupported or unsafe symlink target: %s", hdr.Linkname)
 			}
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {

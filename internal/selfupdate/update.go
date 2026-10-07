@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JhnFrankz/upp/internal/archive"
 	"github.com/JhnFrankz/upp/internal/bufferpool"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
@@ -235,67 +236,22 @@ func extractZip(archivePath, assetName, destDir string) (string, error) {
 // entries. Everything else passes; only the known binary path is ever
 // written, so non-binary regular entries are harmless.
 func checkEntry(hdr *tar.Header) error {
-	name := hdr.Name
-	if name == "" || strings.HasPrefix(name, "/") || filepath.IsAbs(name) {
-		return fmt.Errorf("selfupdate: release archive contains absolute path %q; refusing", name)
-	}
-	rem := name
-	for len(rem) > 0 {
-		var comp string
-		comp, rem, _ = strings.Cut(rem, "/")
-		if comp == ".." {
-			return fmt.Errorf("selfupdate: release archive contains path traversal entry %q; refusing", name)
-		}
-	}
-	if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
-		return fmt.Errorf("selfupdate: release archive contains link entry %q; refusing", name)
+	if err := archive.CheckTarEntry(hdr, false); err != nil {
+		return fmt.Errorf("selfupdate: release archive contains %w; refusing", err)
 	}
 	return nil
 }
 
 func checkZipEntry(f *zip.File) error {
-	name := f.Name
-	if name == "" || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") || filepath.IsAbs(name) || strings.Contains(name, ":") {
-		return fmt.Errorf("selfupdate: release archive contains absolute path %q; refusing", name)
-	}
-	if strings.Contains(name, "..") {
-		rem := name
-		for len(rem) > 0 {
-			var comp string
-			idx := strings.IndexAny(rem, "/\\")
-			if idx >= 0 {
-				comp = rem[:idx]
-				rem = rem[idx+1:]
-			} else {
-				comp = rem
-				rem = ""
-			}
-			if comp == ".." {
-				return fmt.Errorf("selfupdate: release archive contains path traversal entry %q; refusing", name)
-			}
-		}
-	}
-	if f.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("selfupdate: release archive contains link entry %q; refusing", name)
+	if err := archive.CheckZipEntry(f, false); err != nil {
+		return fmt.Errorf("selfupdate: release archive contains %w; refusing", err)
 	}
 	return nil
 }
 
 // writeBinary streams an archive entry into out with mode 0755.
 func writeBinary(out string, r io.Reader) error {
-	f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
-	}
-	bufPtr := bufferpool.Get()
-	defer bufferpool.Put(bufPtr)
-	buf := *bufPtr
-
-	if _, copyErr := io.CopyBuffer(f, r, buf); copyErr != nil {
-		_ = f.Close()
-		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", copyErr)
-	}
-	if err := f.Close(); err != nil {
+	if err := archive.ExtractToFile(out, r, 0o755); err != nil {
 		return fmt.Errorf("selfupdate: cannot write extracted binary: %w", err)
 	}
 	return nil
