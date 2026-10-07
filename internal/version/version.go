@@ -205,7 +205,8 @@ func trimPunctuation(s string) string {
 }
 
 func isPunctuation(b byte) bool {
-	return b == '(' || b == ')' || b == ',' || b == ':' || b == ';'
+	return b == '(' || b == ')' || b == ',' || b == ':' || b == ';' ||
+		b == '[' || b == ']' || b == '"' || b == '\''
 }
 
 // IsVersionLike returns true if the string looks like a version number.

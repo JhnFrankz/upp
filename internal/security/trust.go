@@ -132,14 +132,14 @@ func ClassifyCommand(cmd string) RiskLevel {
 		}
 	}
 
-	// 3. Pattern matching — command chaining increases risk.
-	if hasCommandChaining(cmd) {
-		return RiskMedium
-	}
-
-	// 4. Pattern matching — pipe to shell is always high risk.
+	// 3. Pattern matching — pipe to shell is always high risk.
 	if hasPipeToShell(cmd, lower) {
 		return RiskHigh
+	}
+
+	// 4. Pattern matching — command chaining increases risk.
+	if hasCommandChaining(cmd) {
+		return RiskMedium
 	}
 
 	return RiskLow

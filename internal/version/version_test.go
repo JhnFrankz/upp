@@ -111,6 +111,9 @@ func TestExtractVersionFromString(t *testing.T) {
 		{"pre-release", "1.2.3-rc1", "1.2.3-rc1"},
 		{"build metadata", "1.2.3+build.123", "1.2.3+build.123"},
 		{"four-part", "1.2.3.4", "1.2.3.4"},
+		{"bracketed version", "[v1.2.3]", "v1.2.3"},
+		{"double quoted version", "\"2.0.1\"", "2.0.1"},
+		{"single quoted version", "'3.1.4'", "3.1.4"},
 	}
 
 	for _, tt := range tests {

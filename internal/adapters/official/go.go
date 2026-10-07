@@ -18,6 +18,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/archive"
+	"github.com/JhnFrankz/upp/internal/bufferpool"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
@@ -186,7 +187,10 @@ func downloadAndVerifyGo(ctx context.Context, rel GoRelease, destPath string) er
 	hasher := sha256.New()
 	mw := io.MultiWriter(f, hasher)
 
-	_, copyErr := io.Copy(mw, resp.Body)
+	bufPtr := bufferpool.Get()
+	defer bufferpool.Put(bufPtr)
+
+	_, copyErr := io.CopyBuffer(mw, resp.Body, *bufPtr)
 	closeErr := f.Close()
 
 	if copyErr != nil {
@@ -246,9 +250,6 @@ func extractGoTarball(archivePath, destDir string) error {
 				return err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return err
-			}
 			mode := hdr.FileInfo().Mode().Perm()
 			if mode == 0 {
 				mode = 0644
