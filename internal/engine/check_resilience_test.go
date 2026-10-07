@@ -116,6 +116,21 @@ func TestEngine_Check_GoroutineLeakOnCancellation(t *testing.T) {
 		t.Fatalf("expected error matching context.Canceled, got %v", res.err)
 	}
 
+	if len(res.outcomes) != totalAdapters {
+		t.Fatalf("expected %d outcomes, got %d", totalAdapters, len(res.outcomes))
+	}
+	for i, oc := range res.outcomes {
+		if oc.ToolID == "" {
+			t.Errorf("outcome[%d] has empty ToolID", i)
+		}
+		if oc.ToolName == "" {
+			t.Errorf("outcome[%d] has empty ToolName", i)
+		}
+		if oc.Status != StatusCurrent && oc.Status != StatusFailed {
+			t.Errorf("outcome[%d] status = %v, want StatusCurrent or StatusFailed", i, oc.Status)
+		}
+	}
+
 	// Poll/wait up to 500ms for goroutines to drain: verify runtime.NumGoroutine() <= initialGoroutines + 1
 	deadline := time.Now().Add(500 * time.Millisecond)
 	var finalGoroutines int
