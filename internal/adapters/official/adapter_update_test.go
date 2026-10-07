@@ -296,8 +296,8 @@ func TestPlatformSpecificAdapters(t *testing.T) {
 		},
 		{
 			platform: "windows",
-			expected: []string{"winget", "scoop", "nvm", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
-			excluded: []string{"apt", "brew"},
+			expected: []string{"winget", "scoop", "npm", "pnpm", "bun", "gh", "docker", "go", "opencode"},
+			excluded: []string{"apt", "brew", "nvm"},
 		},
 	}
 

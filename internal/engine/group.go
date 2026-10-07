@@ -91,10 +91,7 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 		}
 		owned := make([]adapters.Adapter, 0, ownedCap)
 		owned = append(owned, ownerTools[mgrID]...)
-		if len(owned) == 0 {
-			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
-		}
-		if mgrAdapter.Name() != mgrID && len(ownerTools[mgrAdapter.Name()]) > 0 && len(ownerTools[mgrID]) > 0 {
+		if mgrAdapter.Name() != mgrID {
 			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
 		}
 

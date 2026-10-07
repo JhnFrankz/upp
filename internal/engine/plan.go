@@ -32,18 +32,27 @@ type adapterIndex map[string]adapters.Adapter
 func buildAdapterIndex(adapterList []adapters.Adapter) adapterIndex {
 	idx := make(adapterIndex, len(adapterList)*4)
 	for _, a := range adapterList {
-		info := a.Info()
-		if info.ID != "" {
-			idx[info.ID] = a
-			idx[strings.ToLower(info.ID)] = a
-		}
-		name := a.Name()
-		if name != "" {
-			idx[name] = a
-			idx[strings.ToLower(name)] = a
-		}
+		indexAdapter(idx, a, true)
 	}
 	return idx
+}
+
+func indexAdapter(idx adapterIndex, a adapters.Adapter, overwrite bool) {
+	if a == nil {
+		return
+	}
+	info := a.Info()
+	keys := []string{info.ID, strings.ToLower(info.ID), a.Name(), strings.ToLower(a.Name())}
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		if overwrite {
+			idx[k] = a
+		} else if _, exists := idx[k]; !exists {
+			idx[k] = a
+		}
+	}
 }
 
 func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
@@ -93,6 +102,11 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		allAdapters, _ = e.Resolve(Filter{})
 	}
 	idx := buildAdapterIndex(allAdapters)
+	if e.adapters == nil {
+		for _, a := range official.AllAdapters() {
+			indexAdapter(idx, a, false)
+		}
+	}
 	canonOS := e.osName
 	if norm, err := platform.NormalizeOS(e.osName); err == nil {
 		canonOS = norm
@@ -116,12 +130,6 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 			plan.Skipped = append(plan.Skipped, oc)
 		case StatusAvailable, StatusCurrent:
 			a := idx.find(oc.ToolID, oc.ToolName)
-			if a == nil {
-				a = official.AdapterByName(oc.ToolID)
-				if a == nil && oc.ToolName != "" {
-					a = official.AdapterByName(oc.ToolName)
-				}
-			}
 
 			owner := resolvingOwnerSlice(a, canonOS, allAdapters)
 			policy := adapters.PolicyGated

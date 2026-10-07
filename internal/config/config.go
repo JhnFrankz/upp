@@ -215,42 +215,10 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 		w = warn[0]
 	}
 
-	// Detect current platform for compatibility checks
-	currentOS, _ := detectPlatformFn()
-
 	// Validate tools reference official catalog where possible
 	for id, tool := range cfg.Tools {
 		if tool.Enabled && !official.IsOfficial(id) && cfg.Custom[id].Command == "" {
 			return fmt.Errorf("tool %q is enabled but not official and has no custom command", id)
-		}
-
-		// Warn if tool is enabled but not available on current platform
-		if tool.Enabled && currentOS.OS != "" {
-			toolPlatforms := tool.Platforms
-			if len(toolPlatforms) == 0 {
-				// No platform restriction — check official catalog
-				toolPlatforms = official.PlatformsFor(id)
-			}
-			if len(toolPlatforms) > 0 {
-				supported := false
-				for _, p := range toolPlatforms {
-					if p == currentOS.OS {
-						supported = true
-						break
-					}
-					norm, err := platform.NormalizeOS(p)
-					if err == nil && norm == currentOS.OS {
-						supported = true
-						break
-					}
-				}
-				if !supported {
-					// Non-fatal: disable the tool and continue
-					enabled := false
-					tool.Enabled = enabled
-					cfg.Tools[id] = tool
-				}
-			}
 		}
 	}
 

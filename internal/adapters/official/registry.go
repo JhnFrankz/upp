@@ -61,7 +61,7 @@ var (
 		uvAdapter, ghAdapter, dockerAdapter, goAdapter, openCodeAdapter,
 	}
 	windowsAdapters = []adapters.Adapter{
-		wingetAdapter, scoopAdapter, nvmAdapter, npmAdapter, pnpmAdapter,
+		wingetAdapter, scoopAdapter, npmAdapter, pnpmAdapter,
 		bunAdapter, uvAdapter, ghAdapter, dockerAdapter, goAdapter,
 		openCodeAdapter,
 	}
@@ -76,7 +76,7 @@ var (
 		"uv", "gh", "docker", "go", "opencode",
 	}
 	windowsToolNames = []string{
-		"winget", "scoop", "nvm", "npm", "pnpm",
+		"winget", "scoop", "npm", "pnpm",
 		"bun", "uv", "gh", "docker", "go",
 		"opencode",
 	}
@@ -196,11 +196,11 @@ func PlatformsFor(id string) []string {
 	switch id {
 	case "apt", "pacman":
 		return platformsLinux
-	case "brew":
+	case "brew", "nvm":
 		return platformsLinuxMacOS
 	case "winget", "scoop":
 		return platformsWindows
-	case "bun", "docker", "gh", "go", "npm", "nvm", "opencode", "pnpm", "uv":
+	case "bun", "docker", "gh", "go", "npm", "opencode", "pnpm", "uv":
 		return platformsLinuxMacOSWindows
 	default:
 		return nil

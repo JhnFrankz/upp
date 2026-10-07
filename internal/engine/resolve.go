@@ -152,19 +152,22 @@ func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapte
 		canonOS = norm
 	}
 
-	if len(allAdapters) > 0 {
-		info := a.Info()
-		if info.Manager != nil {
-			ownerName := info.Manager[osName]
-			if ownerName == "" {
-				ownerName = info.Manager[canonOS]
-			}
-			if ownerName != "" {
-				if owner := adapterByName(allAdapters, ownerName); owner != nil {
-					return owner
+	if allAdapters != nil {
+		if len(allAdapters) > 0 {
+			info := a.Info()
+			if info.Manager != nil {
+				ownerName := info.Manager[osName]
+				if ownerName == "" {
+					ownerName = info.Manager[canonOS]
+				}
+				if ownerName != "" {
+					if owner := adapterByName(allAdapters, ownerName); owner != nil {
+						return owner
+					}
 				}
 			}
 		}
+		return nil
 	}
 
 	if owner := official.ResolveOwner(a.Name(), canonOS); owner != nil {

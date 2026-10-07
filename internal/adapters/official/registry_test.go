@@ -122,26 +122,26 @@ func TestAdaptersForPlatformWindows(t *testing.T) {
 		ids[a.Name()] = true
 	}
 
-	// Windows should include: winget, scoop, nvm, npm, pnpm, bun, gh, docker, go, opencode, uv
+	// Windows should include: winget, scoop, npm, pnpm, bun, gh, docker, go, opencode, uv
 	if !ids["winget"] {
 		t.Error("AdaptersForPlatform(windows) missing winget")
 	}
 	if !ids["scoop"] {
 		t.Error("AdaptersForPlatform(windows) missing scoop")
 	}
-	if !ids["nvm"] {
-		t.Error("AdaptersForPlatform(windows) missing nvm")
-	}
 	if !ids["uv"] {
 		t.Error("AdaptersForPlatform(windows) missing uv")
 	}
 
-	// Windows should NOT include: apt, brew
+	// Windows should NOT include: apt, brew, nvm
 	if ids["apt"] {
 		t.Error("AdaptersForPlatform(windows) should not contain apt")
 	}
 	if ids["brew"] {
 		t.Error("AdaptersForPlatform(windows) should not contain brew")
+	}
+	if ids["nvm"] {
+		t.Error("AdaptersForPlatform(windows) should not contain nvm")
 	}
 }
 
@@ -512,7 +512,7 @@ func TestPlatformsFor(t *testing.T) {
 		{"pacman", []string{platform.OSLinux}},
 		{"winget", []string{platform.OSWindows}},
 		{"scoop", []string{platform.OSWindows}},
-		{"nvm", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
+		{"nvm", []string{platform.OSLinux, platform.OSMacOS}},
 		{"npm", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
 		{"pnpm", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},
 		{"bun", []string{platform.OSLinux, platform.OSMacOS, platform.OSWindows}},

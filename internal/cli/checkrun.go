@@ -72,13 +72,9 @@ func adapterByID(adapterList []adapters.Adapter) map[string]adapters.Adapter {
 	return m
 }
 
-// buildAdapterList creates adapters for enabled tools from the config.
-//
-// NOTE: this is the CLI-layer entry point used by the adapter-list integration
-// tests (TestBuildAdapterList_*). The update and list commands currently build
-// their adapter list inline (update.go, list.go) with the same engine calls, so
-// no production path reaches this function yet — see the open question in
-// odd/tasks/delete-dead-cli-shim.md.
+// buildAdapterList resolves and returns the list of adapters for enabled tools
+// from the configuration. It serves as a CLI-layer helper for adapter resolution
+// used by integration tests and direct callers.
 func buildAdapterList(cfg *config.Config, osName string) []adapters.Adapter {
 	eng := engine.New(cfg, osName)
 	res, _ := eng.Resolve(engine.Filter{})

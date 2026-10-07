@@ -25,7 +25,7 @@ The system MUST maintain a catalog of official tools per platform. Each tool ent
 
 **Linux catalog**: apt, brew, pacman, nvm, npm, pnpm, bun, uv, gh(→apt), docker(→apt), go, opencode
 **macOS catalog**: brew, nvm, npm, pnpm, bun, uv, gh(→brew), docker(→brew), go(→brew), opencode
-**Windows catalog**: winget, scoop, nvm, npm, pnpm, bun, uv, gh(→winget), docker(→winget), go(→winget), opencode
+**Windows catalog**: winget, scoop, npm, pnpm, bun, uv, gh(→winget), docker(→winget), go(→winget), opencode
 
 A tool with no resolving owner on a platform (nvm, npm, pnpm, bun, uv, opencode, go-on-Linux) MUST NOT carry a manager for that platform and remains standalone.
 
@@ -36,6 +36,7 @@ A tool with no resolving owner on a platform (nvm, npm, pnpm, bun, uv, opencode,
 | macOS tool exclusion | Platform is macOS | Catalog queried for `apt` | Tool not in catalog |
 | macOS pacman exclusion | Platform is macOS | Catalog queried for `pacman` | Tool not in catalog |
 | Windows pacman exclusion | Platform is Windows | Catalog queried for `pacman` | Tool not in catalog |
+| Windows nvm exclusion | Platform is Windows | Catalog queried for `nvm` | Tool not in catalog |
 | Windows tool lookup | Platform is Windows | Catalog queried for `winget` | Returns valid adapter |
 | gh owner on macOS | Platform is macOS | Catalog queried for `gh` | Entry has `owner=brew` |
 | docker owner on Linux | Platform is Linux | Catalog queried for `docker` | Entry has `owner=apt` |

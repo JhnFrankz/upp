@@ -120,6 +120,50 @@ func TestValidate_DarwinPlatformAliasOnMacOS(t *testing.T) {
 	}
 }
 
+func TestValidate_ReadOnlyDoesNotMutateTools(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Tools["linux-tool"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"linux"},
+	}
+	cfg.Custom["linux-tool"] = CustomTool{
+		Command: "linux-tool-update",
+	}
+
+	cfg.Tools["windows-tool"] = ToolConfig{
+		Enabled:   true,
+		Platforms: []string{"windows"},
+	}
+	cfg.Custom["windows-tool"] = CustomTool{
+		Command: "windows-tool-update",
+	}
+
+	// Also verify official tools whose platforms are resolved via official catalog
+	cfg.Tools["apt"] = ToolConfig{Enabled: true}
+	cfg.Tools["winget"] = ToolConfig{Enabled: true}
+	cfg.Tools["nvm"] = ToolConfig{Enabled: true}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() unexpected error: %v", err)
+	}
+
+	if !cfg.Tools["linux-tool"].Enabled {
+		t.Errorf("Validate() must not mutate tool.Enabled to false for linux-tool")
+	}
+	if !cfg.Tools["windows-tool"].Enabled {
+		t.Errorf("Validate() must not mutate tool.Enabled to false for windows-tool")
+	}
+	if !cfg.Tools["apt"].Enabled {
+		t.Errorf("Validate() must not mutate tool.Enabled to false for official tool apt")
+	}
+	if !cfg.Tools["winget"].Enabled {
+		t.Errorf("Validate() must not mutate tool.Enabled to false for official tool winget")
+	}
+	if !cfg.Tools["nvm"].Enabled {
+		t.Errorf("Validate() must not mutate tool.Enabled to false for official tool nvm")
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	testConfigDir(t, tmpDir)
