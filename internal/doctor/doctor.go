@@ -181,7 +181,7 @@ func defaultHTTPGet(ctx context.Context, url string) (int, error) {
 		return 0, err
 	}
 	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
 		_ = resp.Body.Close()
 	}()
 	return resp.StatusCode, nil
