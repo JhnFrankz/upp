@@ -262,7 +262,11 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 	}
 	tmpName := tmpFile.Name()
 	cleanup := true
+	closed := false
 	defer func() {
+		if !closed {
+			_ = tmpFile.Close()
+		}
 		if cleanup {
 			_ = os.Remove(tmpName)
 		}
@@ -273,10 +277,12 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 	buf := *bufPtr
 
 	if _, copyErr := io.CopyBuffer(tmpFile, resp.Body, buf); copyErr != nil {
+		closed = true
 		_ = tmpFile.Close()
 		return "", nil, fmt.Errorf("selfupdate: write asset: %w", copyErr)
 	}
 
+	closed = true
 	if err := tmpFile.Close(); err != nil {
 		return "", nil, err
 	}
