@@ -30,7 +30,7 @@ func ResolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters
 type adapterIndex map[string]adapters.Adapter
 
 func buildAdapterIndex(adapterList []adapters.Adapter) adapterIndex {
-	idx := make(adapterIndex, len(adapterList)*4)
+	idx := make(adapterIndex, len(adapterList)*3)
 	for _, a := range adapterList {
 		indexAdapter(idx, a, true)
 	}
@@ -42,15 +42,41 @@ func indexAdapter(idx adapterIndex, a adapters.Adapter, overwrite bool) {
 		return
 	}
 	info := a.Info()
-	keys := []string{info.ID, strings.ToLower(info.ID), a.Name(), strings.ToLower(a.Name())}
-	for _, k := range keys {
-		if k == "" {
-			continue
-		}
+	id := info.ID
+	name := a.Name()
+
+	if id != "" {
 		if overwrite {
-			idx[k] = a
-		} else if _, exists := idx[k]; !exists {
-			idx[k] = a
+			idx[id] = a
+		} else if _, exists := idx[id]; !exists {
+			idx[id] = a
+		}
+		idLower := strings.ToLower(id)
+		if idLower != id {
+			if overwrite {
+				idx[idLower] = a
+			} else if _, exists := idx[idLower]; !exists {
+				idx[idLower] = a
+			}
+		}
+	}
+
+	if name != "" && name != id {
+		idLower := strings.ToLower(id)
+		if name != idLower {
+			if overwrite {
+				idx[name] = a
+			} else if _, exists := idx[name]; !exists {
+				idx[name] = a
+			}
+			nameLower := strings.ToLower(name)
+			if nameLower != name && nameLower != id && nameLower != idLower {
+				if overwrite {
+					idx[nameLower] = a
+				} else if _, exists := idx[nameLower]; !exists {
+					idx[nameLower] = a
+				}
+			}
 		}
 	}
 }
@@ -87,9 +113,10 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		return plan, nil
 	}
 
+	onlyCount := len(filter.Only)
 	var onlySet map[string]struct{}
-	if len(filter.Only) > 0 {
-		onlySet = make(map[string]struct{}, len(filter.Only))
+	if onlyCount > 3 {
+		onlySet = make(map[string]struct{}, onlyCount)
 		for _, name := range filter.Only {
 			onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 		}
@@ -113,13 +140,27 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 	}
 
 	for _, oc := range outcomes {
-		if len(onlySet) > 0 {
-			nameLower := strings.ToLower(oc.ToolName)
-			idLower := strings.ToLower(oc.ToolID)
-			_, byName := onlySet[nameLower]
-			_, byID := onlySet[idLower]
-			if !byName && !byID {
-				continue
+		if onlyCount > 0 {
+			if onlyCount <= 3 {
+				matched := false
+				for _, want := range filter.Only {
+					w := strings.TrimSpace(want)
+					if strings.EqualFold(oc.ToolName, w) || strings.EqualFold(oc.ToolID, w) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			} else {
+				nameLower := strings.ToLower(oc.ToolName)
+				idLower := strings.ToLower(oc.ToolID)
+				_, byName := onlySet[nameLower]
+				_, byID := onlySet[idLower]
+				if !byName && !byID {
+					continue
+				}
 			}
 		}
 

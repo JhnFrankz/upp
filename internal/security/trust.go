@@ -158,6 +158,9 @@ func CheckNeedsConsent(checkCmd string) bool {
 
 // hasCommandChaining detects command chaining operators.
 func hasCommandChaining(cmd string) bool {
+	if !strings.ContainsAny(cmd, "&|;$`") {
+		return false
+	}
 	return strings.Contains(cmd, "&&") ||
 		strings.Contains(cmd, "||") ||
 		strings.Contains(cmd, ";") ||
