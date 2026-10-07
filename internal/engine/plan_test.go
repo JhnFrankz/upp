@@ -1412,11 +1412,14 @@ func TestPlan_WithAdaptersHermeticity(t *testing.T) {
 		t.Fatalf("expected 1 update, got %d", len(planDefault.Updates))
 	}
 	upDefault := planDefault.Updates[0]
-	if upDefault.ManagerID != "apt" {
-		t.Errorf("expected ManagerID 'apt' from default official catalog, got %q", upDefault.ManagerID)
+	ghInfo := official.AdapterByName("gh").Info()
+	expectedMgr := ghInfo.Manager["linux"]
+	expectedPkg := ghInfo.ManagerPackage["linux"]
+	if upDefault.ManagerID != expectedMgr {
+		t.Errorf("expected ManagerID %q from default official catalog, got %q", expectedMgr, upDefault.ManagerID)
 	}
-	if upDefault.PackageName != "gh" {
-		t.Errorf("expected PackageName 'gh' from default official catalog, got %q", upDefault.PackageName)
+	if upDefault.PackageName != expectedPkg {
+		t.Errorf("expected PackageName %q from default official catalog, got %q", expectedPkg, upDefault.PackageName)
 	}
 
 	// Case 3: When WithAdapters contains an adapter that declares an official manager,
