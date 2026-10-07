@@ -12,7 +12,7 @@ import (
 	"github.com/JhnFrankz/upp/internal/version"
 )
 
-// NVMAdapter manages Node Version Manager on all platforms.
+// NVMAdapter manages Node Version Manager on Linux and macOS.
 type NVMAdapter struct{}
 
 func (a *NVMAdapter) Name() string { return "nvm" }
@@ -153,7 +153,7 @@ func (a *NVMAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 var nvmInfo = adapters.ToolInfo{
 	ID:           "nvm",
 	Name:         "Node Version Manager",
-	Platforms:    platformsLinuxMacOSWindows,
+	Platforms:    platformsLinuxMacOS,
 	Trust:        security.TrustOfficial,
 	UpdatePolicy: adapters.PolicyGated,
 	Kind:         adapters.KindTool,
