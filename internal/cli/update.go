@@ -608,14 +608,23 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 		}
 	}
 
+	canonOS := osName
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		canonOS = norm
+	}
+
 	// Owned tools with a PackageUpdater manager delegate to
 	// updater.UpdatePackage(pkg); standalone tools run their own Update.
-	owner := engine.ResolvingOwner(a, osName, allAdapters...)
+	owner := engine.ResolvingOwner(a, canonOS, allAdapters...)
 	var result adapters.Result
 	var updateErr error
-	if owner != nil && info.Manager != nil && info.Manager[osName] != "" {
+	hasManager := false
+	if info.Manager != nil {
+		hasManager = info.Manager[osName] != "" || info.Manager[canonOS] != ""
+	}
+	if owner != nil && hasManager {
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
-			pkg := engine.OwnedPackage(a, osName)
+			pkg := engine.OwnedPackage(a, canonOS)
 			if pkg != "" {
 				result, updateErr = updater.UpdatePackage(ctx, pkg)
 			} else {

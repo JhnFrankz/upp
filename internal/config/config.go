@@ -173,21 +173,28 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("cannot create temporary config file: %w", err)
 	}
 	tmpName := tmpFile.Name()
+	closed := false
 	defer func() {
+		if !closed {
+			_ = tmpFile.Close()
+		}
 		_ = os.Remove(tmpName) // safe no-op if already renamed
 	}()
 
 	enc := toml.NewEncoder(tmpFile)
 	if err := enc.Encode(cfg); err != nil {
+		closed = true
 		_ = tmpFile.Close()
 		return fmt.Errorf("cannot encode config: %w", err)
 	}
 
 	if err := tmpFile.Sync(); err != nil {
+		closed = true
 		_ = tmpFile.Close()
 		return fmt.Errorf("cannot sync config file: %w", err)
 	}
 
+	closed = true
 	if err := tmpFile.Close(); err != nil {
 		return fmt.Errorf("cannot close temporary config file: %w", err)
 	}
