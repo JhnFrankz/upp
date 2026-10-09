@@ -21,8 +21,9 @@ type Group struct {
 // results into presentation Group items with status and version populated,
 // without performing any command execution or I/O.
 func PresentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome) []Group {
-	outcomeByID := make(map[string]engine.CheckOutcome, len(outcomes))
-	for _, oc := range outcomes {
+	outcomeByID := make(map[string]*engine.CheckOutcome, len(outcomes)*2)
+	for i := range outcomes {
+		oc := &outcomes[i]
 		if oc.ToolID != "" {
 			outcomeByID[oc.ToolID] = oc
 		}
