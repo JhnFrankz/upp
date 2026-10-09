@@ -86,7 +86,7 @@ func BenchmarkStageBinary(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create dest binary: %v", err)
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	b.ReportAllocs()
 	b.ResetTimer()

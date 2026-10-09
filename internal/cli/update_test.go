@@ -2561,10 +2561,16 @@ func TestRunUpdateInteractive_GroupResolutionFromManagerID(t *testing.T) {
 		name: "tool-under-mgr",
 		kind: adapters.KindTool,
 		manager: map[string]string{
-			"linux": "custom-mgr",
+			"linux":   "custom-mgr",
+			"macos":   "custom-mgr",
+			"darwin":  "custom-mgr",
+			"windows": "custom-mgr",
 		},
 		managerPackage: map[string]string{
-			"linux": "pkg-tool",
+			"linux":   "pkg-tool",
+			"macos":   "pkg-tool",
+			"darwin":  "pkg-tool",
+			"windows": "pkg-tool",
 		},
 		checkPackage: func(pkg string) (adapters.UpdateInfo, error) {
 			return adapters.UpdateInfo{
