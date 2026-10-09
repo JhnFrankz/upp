@@ -142,10 +142,17 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 
 	onlyCount := len(filter.Only)
 	var onlySet map[string]struct{}
-	if onlyCount > 3 {
-		onlySet = make(map[string]struct{}, onlyCount)
-		for _, name := range filter.Only {
-			onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	var trimmedOnly []string
+	if onlyCount > 0 {
+		trimmedOnly = make([]string, onlyCount)
+		for i, name := range filter.Only {
+			trimmedOnly[i] = strings.TrimSpace(name)
+		}
+		if onlyCount > 3 {
+			onlySet = make(map[string]struct{}, onlyCount)
+			for _, name := range trimmedOnly {
+				onlySet[strings.ToLower(name)] = struct{}{}
+			}
 		}
 	}
 
@@ -170,8 +177,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		if onlyCount > 0 {
 			if onlyCount <= 3 {
 				matched := false
-				for _, want := range filter.Only {
-					w := strings.TrimSpace(want)
+				for _, w := range trimmedOnly {
 					if strings.EqualFold(oc.ToolName, w) || strings.EqualFold(oc.ToolID, w) {
 						matched = true
 						break

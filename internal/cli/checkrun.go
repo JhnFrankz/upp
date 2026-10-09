@@ -41,7 +41,7 @@ func outcomeToToolResult(oc *engine.CheckOutcome) output.ToolResult {
 }
 
 func adapterIDs(adapterList []adapters.Adapter) []string {
-	var ids []string
+	ids := make([]string, 0, len(adapterList))
 	for _, a := range adapterList {
 		ids = append(ids, a.Name())
 	}
