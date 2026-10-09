@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/lock"
@@ -428,8 +429,15 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 			label = u.ToolID
 		}
 		var group string
-		if a, ok := adapterMap[u.ToolID]; ok {
-			group = engine.OwnerGroupLabelWithManagers(a, osName, presentManagers, allAdapters...)
+		if a, ok := adapterMap[u.ToolID]; ok && a.Info().Kind != adapters.KindManager {
+			if u.ManagerID != "" && presentManagers[u.ManagerID] {
+				if mgr, ok := adapterMap[u.ManagerID]; ok {
+					group = mgr.Info().Name
+				}
+			}
+			if group == "" {
+				group = engine.OwnerGroupLabelWithManagers(a, osName, presentManagers, allAdapters...)
+			}
 		}
 		pending = append(pending, output.SelectOption{
 			ID:      u.ToolID,
@@ -608,33 +616,42 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 		}
 	}
 
-	canonOS := osName
-	if norm, err := platform.NormalizeOS(osName); err == nil {
-		canonOS = norm
-	}
-
-	// Owned tools with a PackageUpdater manager delegate to
-	// updater.UpdatePackage(pkg); standalone tools run their own Update.
-	owner := engine.ResolvingOwner(a, canonOS, allAdapters...)
 	var result adapters.Result
 	var updateErr error
-	hasManager := false
-	if info.Manager != nil {
-		hasManager = info.Manager[osName] != "" || info.Manager[canonOS] != ""
-	}
-	if owner != nil && hasManager {
+	if p.ManagerID != "" && p.PackageName != "" {
+		owner := resolveOwnerByID(p.ManagerID, allAdapters...)
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
-			pkg := engine.OwnedPackage(a, canonOS)
-			if pkg != "" {
-				result, updateErr = updater.UpdatePackage(ctx, pkg)
+			result, updateErr = updater.UpdatePackage(ctx, p.PackageName)
+		} else {
+			result, updateErr = a.Update(ctx, false)
+		}
+	} else {
+		canonOS := osName
+		if norm, err := platform.NormalizeOS(osName); err == nil {
+			canonOS = norm
+		}
+
+		// Owned tools with a PackageUpdater manager delegate to
+		// updater.UpdatePackage(pkg); standalone tools run their own Update.
+		owner := engine.ResolvingOwner(a, canonOS, allAdapters...)
+		hasManager := false
+		if info.Manager != nil {
+			hasManager = info.Manager[osName] != "" || info.Manager[canonOS] != ""
+		}
+		if owner != nil && hasManager {
+			if updater, ok := owner.(adapters.PackageUpdater); ok {
+				pkg := engine.OwnedPackage(a, canonOS)
+				if pkg != "" {
+					result, updateErr = updater.UpdatePackage(ctx, pkg)
+				} else {
+					result, updateErr = a.Update(ctx, false)
+				}
 			} else {
 				result, updateErr = a.Update(ctx, false)
 			}
 		} else {
 			result, updateErr = a.Update(ctx, false)
 		}
-	} else {
-		result, updateErr = a.Update(ctx, false)
 	}
 
 	if updateErr != nil {
@@ -698,4 +715,17 @@ func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters
 // the given OS, or nil when the adapter has no resolving owner (standalone).
 func resolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
 	return engine.ResolvingOwner(a, osName, allAdapters...)
+}
+
+// resolveOwnerByID looks up an owner adapter by ID directly from allAdapters (if provided)
+// or the official registry in O(1).
+func resolveOwnerByID(managerID string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
+	if len(allAdapters) > 0 && allAdapters[0] != nil {
+		for _, a := range allAdapters[0] {
+			if a != nil && (a.Info().ID == managerID || a.Name() == managerID) {
+				return a
+			}
+		}
+	}
+	return official.AdapterByName(managerID)
 }

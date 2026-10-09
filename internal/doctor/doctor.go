@@ -113,16 +113,26 @@ func defaultFindAllPaths(name string) []string {
 		exts = windowsExts
 	}
 
+	sep := string(filepath.Separator)
 	for _, dir := range dirs {
 		if dir == "" {
 			continue
 		}
+		hasSlash := strings.HasSuffix(dir, sep)
 		for _, ext := range exts {
 			var target string
-			if ext == "" {
-				target = filepath.Join(dir, name)
+			if hasSlash {
+				if ext == "" {
+					target = dir + name
+				} else {
+					target = dir + name + ext
+				}
 			} else {
-				target = filepath.Join(dir, name+ext)
+				if ext == "" {
+					target = dir + sep + name
+				} else {
+					target = dir + sep + name + ext
+				}
 			}
 			fi, err := os.Stat(target)
 			if err == nil && !fi.IsDir() {
