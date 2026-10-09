@@ -748,7 +748,7 @@ func TestDoctor_NetworkParallel(t *testing.T) {
 	}
 
 	start := time.Now()
-	results := checkNetwork(context.Background(), deps)
+	results := checkNetwork(context.Background(), nil, deps)
 	duration := time.Since(start)
 
 	if duration >= 85*time.Millisecond {
@@ -783,7 +783,7 @@ func TestDoctor_Network_ContextCanceled(t *testing.T) {
 	}
 
 	start := time.Now()
-	results := checkNetwork(ctx, deps)
+	results := checkNetwork(ctx, nil, deps)
 	duration := time.Since(start)
 
 	if duration >= 50*time.Millisecond {

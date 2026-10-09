@@ -259,30 +259,28 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 	if ctx.Err() != nil {
 		return results
 	}
-	results = append(results, checkStorageAndConfig(deps)...)
+	results = checkStorageAndConfig(results, deps)
 	if ctx.Err() != nil {
 		return results
 	}
-	results = append(results, checkProcessLock(deps)...)
+	results = checkProcessLock(results, deps)
 	if ctx.Err() != nil {
 		return results
 	}
-	results = append(results, checkPackageManagers(deps)...)
+	results = checkPackageManagers(results, deps)
 	if ctx.Err() != nil {
 		return results
 	}
-	results = append(results, checkToolPaths(deps)...)
+	results = checkToolPaths(results, deps)
 	if ctx.Err() != nil {
 		return results
 	}
-	results = append(results, checkNetwork(ctx, deps)...)
+	results = checkNetwork(ctx, results, deps)
 
 	return results
 }
 
-func checkStorageAndConfig(deps DoctorDeps) []CheckResult {
-	results := make([]CheckResult, 0, 8)
-
+func checkStorageAndConfig(results []CheckResult, deps DoctorDeps) []CheckResult {
 	// 1. Config file
 	cfgPath, err := deps.ConfigPath()
 	if err != nil {
@@ -440,71 +438,61 @@ func checkStorageAndConfig(deps DoctorDeps) []CheckResult {
 	return results
 }
 
-func checkProcessLock(deps DoctorDeps) []CheckResult {
+func checkProcessLock(results []CheckResult, deps DoctorDeps) []CheckResult {
 	lockPath, err := deps.LockPath()
 	if err != nil {
-		return []CheckResult{
-			{
-				Category: "Process Lock",
-				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  fmt.Sprintf("Failed to resolve lock path: %v", err),
-			},
-		}
+		return append(results, CheckResult{
+			Category: "Process Lock",
+			Name:     "Process Lock",
+			Status:   SeverityWarn,
+			Message:  fmt.Sprintf("Failed to resolve lock path: %v", err),
+		})
 	}
 
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []CheckResult{
-				{
-					Category: "Process Lock",
-					Name:     "Process Lock",
-					Status:   SeverityOK,
-					Message:  "No active process lock",
-					Detail:   lockPath,
-				},
-			}
-		}
-		return []CheckResult{
-			{
+			return append(results, CheckResult{
 				Category: "Process Lock",
 				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  fmt.Sprintf("Cannot read lock file: %v", err),
+				Status:   SeverityOK,
+				Message:  "No active process lock",
 				Detail:   lockPath,
-				FixHint:  fmt.Sprintf("Remove inaccessible lock file: rm %s", lockPath),
-			},
+			})
 		}
+		return append(results, CheckResult{
+			Category: "Process Lock",
+			Name:     "Process Lock",
+			Status:   SeverityWarn,
+			Message:  fmt.Sprintf("Cannot read lock file: %v", err),
+			Detail:   lockPath,
+			FixHint:  fmt.Sprintf("Remove inaccessible lock file: rm %s", lockPath),
+		})
 	}
 
 	s := strings.TrimSpace(string(data))
 	pid, perr := strconv.Atoi(s)
 	if perr != nil || pid <= 0 {
-		return []CheckResult{
-			{
-				Category: "Process Lock",
-				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  "Corrupted lock file found",
-				Detail:   lockPath,
-				FixHint:  fmt.Sprintf("Remove corrupted lock file: rm %s", lockPath),
-			},
-		}
+		return append(results, CheckResult{
+			Category: "Process Lock",
+			Name:     "Process Lock",
+			Status:   SeverityWarn,
+			Message:  "Corrupted lock file found",
+			Detail:   lockPath,
+			FixHint:  fmt.Sprintf("Remove corrupted lock file: rm %s", lockPath),
+		})
 	}
 
 	f, oerr := os.OpenFile(lockPath, os.O_RDWR, 0o600)
 	if oerr != nil {
-		return []CheckResult{
-			{
-				Category: "Process Lock",
-				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  fmt.Sprintf("Cannot open lock file: %v", oerr),
-				Detail:   lockPath,
-				FixHint:  fmt.Sprintf("Remove inaccessible lock file: rm %s", lockPath),
-			},
-		}
+		return append(results, CheckResult{
+			Category: "Process Lock",
+			Name:     "Process Lock",
+			Status:   SeverityWarn,
+			Message:  fmt.Sprintf("Cannot open lock file: %v", oerr),
+			Detail:   lockPath,
+			FixHint:  fmt.Sprintf("Remove inaccessible lock file: rm %s", lockPath),
+		})
 	}
 
 	tryLock := deps.TryLock
@@ -515,57 +503,49 @@ func checkProcessLock(deps DoctorDeps) []CheckResult {
 	lockErr := tryLock(f)
 	if errors.Is(lockErr, lock.ErrLocked) {
 		_ = f.Close()
-		return []CheckResult{
-			{
-				Category: "Process Lock",
-				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  fmt.Sprintf("Lock held by active process (PID: %d)", pid),
-				Detail:   lockPath,
-				FixHint:  fmt.Sprintf("Wait for running upp process (PID %d) to finish or terminate it if stuck.", pid),
-			},
-		}
+		return append(results, CheckResult{
+			Category: "Process Lock",
+			Name:     "Process Lock",
+			Status:   SeverityWarn,
+			Message:  fmt.Sprintf("Lock held by active process (PID: %d)", pid),
+			Detail:   lockPath,
+			FixHint:  fmt.Sprintf("Wait for running upp process (PID %d) to finish or terminate it if stuck.", pid),
+		})
 	}
 	if lockErr != nil {
 		_ = f.Close()
-		return []CheckResult{
-			{
-				Category: "Process Lock",
-				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  fmt.Sprintf("Cannot test lock on file: %v", lockErr),
-				Detail:   lockPath,
-				FixHint:  fmt.Sprintf("Check permissions or remove lock file: rm %s", lockPath),
-			},
-		}
+		return append(results, CheckResult{
+			Category: "Process Lock",
+			Name:     "Process Lock",
+			Status:   SeverityWarn,
+			Message:  fmt.Sprintf("Cannot test lock on file: %v", lockErr),
+			Detail:   lockPath,
+			FixHint:  fmt.Sprintf("Check permissions or remove lock file: rm %s", lockPath),
+		})
 	}
 
 	_ = lock.Unlock(f)
 	_ = f.Close()
 
 	if !deps.ProcessAlive(pid) {
-		return []CheckResult{
-			{
-				Category: "Process Lock",
-				Name:     "Process Lock",
-				Status:   SeverityWarn,
-				Message:  fmt.Sprintf("Stale lock file detected (PID: %d is dead)", pid),
-				Detail:   lockPath,
-				FixHint:  fmt.Sprintf("Remove stale lock file: rm %s", lockPath),
-			},
-		}
-	}
-
-	return []CheckResult{
-		{
+		return append(results, CheckResult{
 			Category: "Process Lock",
 			Name:     "Process Lock",
 			Status:   SeverityWarn,
-			Message:  fmt.Sprintf("Stale lock file detected (PID: %d does not hold lock)", pid),
+			Message:  fmt.Sprintf("Stale lock file detected (PID: %d is dead)", pid),
 			Detail:   lockPath,
 			FixHint:  fmt.Sprintf("Remove stale lock file: rm %s", lockPath),
-		},
+		})
 	}
+
+	return append(results, CheckResult{
+		Category: "Process Lock",
+		Name:     "Process Lock",
+		Status:   SeverityWarn,
+		Message:  fmt.Sprintf("Stale lock file detected (PID: %d does not hold lock)", pid),
+		Detail:   lockPath,
+		FixHint:  fmt.Sprintf("Remove stale lock file: rm %s", lockPath),
+	})
 }
 
 type pmCheck struct {
@@ -585,7 +565,7 @@ var pmCandidates = []pmCheck{
 	{"nix", "nix"},
 }
 
-func checkPackageManagers(deps DoctorDeps) []CheckResult {
+func checkPackageManagers(results []CheckResult, deps DoctorDeps) []CheckResult {
 	found := make([]string, 0, 4)
 	for _, pm := range pmCandidates {
 		_, err := deps.LookPath(pm.binName)
@@ -599,15 +579,13 @@ func checkPackageManagers(deps DoctorDeps) []CheckResult {
 	}
 
 	if len(found) == 0 {
-		return []CheckResult{
-			{
-				Category: "Package Managers",
-				Name:     "Package Managers",
-				Status:   SeverityWarn,
-				Message:  "No package manager found in PATH",
-				FixHint:  "Install a supported package manager for your platform (e.g. brew, apt, pacman, winget, scoop).",
-			},
-		}
+		return append(results, CheckResult{
+			Category: "Package Managers",
+			Name:     "Package Managers",
+			Status:   SeverityWarn,
+			Message:  "No package manager found in PATH",
+			FixHint:  "Install a supported package manager for your platform (e.g. brew, apt, pacman, winget, scoop).",
+		})
 	}
 
 	if deps.Platform.OS == platform.OSLinux {
@@ -622,30 +600,26 @@ func checkPackageManagers(deps DoctorDeps) []CheckResult {
 			}
 		}
 		if hasBrew && hasSystem {
-			return []CheckResult{
-				{
-					Category: "Package Managers",
-					Name:     "Package Managers",
-					Status:   SeverityWarn,
-					Message:  fmt.Sprintf("Multiple package managers detected (%s) on Linux", strings.Join(found, ", ")),
-					Detail:   "Both Homebrew (brew) and a system package manager are installed. Tools may be duplicated or managed inconsistently.",
-					FixHint:  "Ensure tools are managed consistently to avoid duplicate installations or PATH conflicts.",
-				},
-			}
+			return append(results, CheckResult{
+				Category: "Package Managers",
+				Name:     "Package Managers",
+				Status:   SeverityWarn,
+				Message:  fmt.Sprintf("Multiple package managers detected (%s) on Linux", strings.Join(found, ", ")),
+				Detail:   "Both Homebrew (brew) and a system package manager are installed. Tools may be duplicated or managed inconsistently.",
+				FixHint:  "Ensure tools are managed consistently to avoid duplicate installations or PATH conflicts.",
+			})
 		}
 	}
 
-	return []CheckResult{
-		{
-			Category: "Package Managers",
-			Name:     "Package Managers",
-			Status:   SeverityOK,
-			Message:  fmt.Sprintf("Detected package manager(s): %s", strings.Join(found, ", ")),
-		},
-	}
+	return append(results, CheckResult{
+		Category: "Package Managers",
+		Name:     "Package Managers",
+		Status:   SeverityOK,
+		Message:  fmt.Sprintf("Detected package manager(s): %s", strings.Join(found, ", ")),
+	})
 }
 
-func checkToolPaths(deps DoctorDeps) []CheckResult {
+func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 	initCap := len(deps.Adapters)
 	var (
 		cfg    *config.Config
@@ -658,7 +632,6 @@ func checkToolPaths(deps DoctorDeps) []CheckResult {
 		}
 	}
 
-	results := make([]CheckResult, 0, initCap)
 	toolsToCheck := make(map[string]bool, initCap)
 	configuredTools := make(map[string]bool, initCap)
 
@@ -731,7 +704,7 @@ func checkToolPaths(deps DoctorDeps) []CheckResult {
 	return results
 }
 
-func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
+func checkNetwork(ctx context.Context, results []CheckResult, deps DoctorDeps) []CheckResult {
 	targets := []struct {
 		name string
 		url  string
@@ -740,7 +713,7 @@ func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
 		{"go.dev", "https://go.dev"},
 	}
 
-	results := make([]CheckResult, len(targets))
+	netResults := make([]CheckResult, len(targets))
 	var wg sync.WaitGroup
 
 	for i, t := range targets {
@@ -749,7 +722,7 @@ func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
 			defer wg.Done()
 
 			if ctx.Err() != nil {
-				results[idx] = CheckResult{
+				netResults[idx] = CheckResult{
 					Category: "Network",
 					Name:     target.name,
 					Status:   SeverityWarn,
@@ -767,7 +740,7 @@ func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
 				} else {
 					msg = fmt.Sprintf("Failed to reach %s (HTTP %d)", target.url, status)
 				}
-				results[idx] = CheckResult{
+				netResults[idx] = CheckResult{
 					Category: "Network",
 					Name:     target.name,
 					Status:   SeverityWarn,
@@ -776,7 +749,7 @@ func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
 					FixHint:  "Check your internet connection, DNS, or proxy settings.",
 				}
 			} else {
-				results[idx] = CheckResult{
+				netResults[idx] = CheckResult{
 					Category: "Network",
 					Name:     target.name,
 					Status:   SeverityOK,
@@ -788,5 +761,5 @@ func checkNetwork(ctx context.Context, deps DoctorDeps) []CheckResult {
 	}
 
 	wg.Wait()
-	return results
+	return append(results, netResults...)
 }
