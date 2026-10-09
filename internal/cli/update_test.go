@@ -2505,3 +2505,138 @@ func TestExecutePlannedUpdate_CanonicalOSDelegation(t *testing.T) {
 		t.Fatalf("standalone tool Update should not have been called")
 	}
 }
+
+func TestExecutePlannedUpdate_FastPathWithManagerID(t *testing.T) {
+	fakeMgr := &fakeUpdateAdapter{
+		name: "brew",
+		kind: adapters.KindManager,
+		updatePackage: func(pkg string) (adapters.Result, error) {
+			return adapters.Result{Success: true, Before: "1.0.0", After: "1.1.0"}, nil
+		},
+	}
+	fakeTool := &fakeUpdateAdapter{
+		name: "fast-tool",
+		kind: adapters.KindTool,
+		// No manager map declared on tool adapter: owner is resolved solely via PlannedUpdate.ManagerID fast-path!
+	}
+	planned := engine.PlannedUpdate{
+		ToolID:      "fast-tool",
+		ToolName:    "fast-tool",
+		ManagerID:   "brew",
+		PackageName: "fast-tool-pkg",
+	}
+	var buf bytes.Buffer
+	r := output.NewRendererForced(&buf, false, false, true, false)
+
+	res := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fakeTool, 1, 1, r, "linux", []adapters.Adapter{fakeMgr, fakeTool})
+	if res.Status != output.StatusUpdated {
+		t.Fatalf("expected StatusUpdated, got %v", res.Status)
+	}
+	if fakeMgr.updatePkgCount != 1 {
+		t.Fatalf("expected manager UpdatePackage to be called once, got %d", fakeMgr.updatePkgCount)
+	}
+	if fakeMgr.lastUpdatePkg != "fast-tool-pkg" {
+		t.Fatalf("expected package %q, got %q", "fast-tool-pkg", fakeMgr.lastUpdatePkg)
+	}
+	if fakeTool.updated {
+		t.Fatalf("standalone tool Update should not have been called")
+	}
+}
+
+func TestRunUpdateInteractive_GroupResolutionFromManagerID(t *testing.T) {
+	probeHome(t)
+	mgr := &fakeUpdateAdapter{
+		name:       "custom-mgr",
+		infoName:   "Custom Package Manager",
+		kind:       adapters.KindManager,
+		policy:     adapters.PolicyAlwaysUpdate,
+		privileges: []string{"sudo"},
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+	}
+	tool := &fakeUpdateAdapter{
+		name: "tool-under-mgr",
+		kind: adapters.KindTool,
+		manager: map[string]string{
+			"linux":   "custom-mgr",
+			"macos":   "custom-mgr",
+			"darwin":  "custom-mgr",
+			"windows": "custom-mgr",
+		},
+		managerPackage: map[string]string{
+			"linux":   "pkg-tool",
+			"macos":   "pkg-tool",
+			"darwin":  "pkg-tool",
+			"windows": "pkg-tool",
+		},
+		checkPackage: func(pkg string) (adapters.UpdateInfo, error) {
+			return adapters.UpdateInfo{
+				CurrentVersion:  "1.0.0",
+				LatestVersion:   "2.0.0",
+				UpdateAvailable: true,
+			}, nil
+		},
+		updatePackage: func(pkg string) (adapters.Result, error) {
+			return adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"}, nil
+		},
+	}
+
+	sel, got := fakeSelector([]string{"tool-under-mgr", "custom-mgr"}, false)
+	allAdapters := []adapters.Adapter{mgr, tool}
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return allAdapters
+		},
+		stdinIsTTY: func() bool { return true },
+		selector:   sel,
+	}
+
+	_ = withCapturedStdout(func() {
+		_ = runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps)
+	})
+
+	if len(*got) == 0 {
+		t.Fatalf("expected selector options to be recorded, got none")
+	}
+	var toolOpt, mgrOpt *output.SelectOption
+	for i := range *got {
+		if (*got)[i].ID == "tool-under-mgr" {
+			toolOpt = &(*got)[i]
+		}
+		if (*got)[i].ID == "custom-mgr" {
+			mgrOpt = &(*got)[i]
+		}
+	}
+	if toolOpt == nil {
+		t.Fatalf("tool-under-mgr not found in selector options: %+v", *got)
+	}
+	if toolOpt.Group != "Custom Package Manager" {
+		t.Errorf("expected group 'Custom Package Manager', got %q", toolOpt.Group)
+	}
+	if mgrOpt == nil {
+		t.Fatalf("custom-mgr not found in selector options: %+v", *got)
+	}
+	if mgrOpt.Group != "" {
+		t.Errorf("manager self-row must not have a group, got %q", mgrOpt.Group)
+	}
+}
+
+func TestResolveOwnerByID_NilAdapter(t *testing.T) {
+	fakeMgr := &fakeUpdateAdapter{
+		name: "brew",
+		kind: adapters.KindManager,
+	}
+	// Slice containing nil elements should not panic
+	list := []adapters.Adapter{nil, fakeMgr, nil}
+	got := resolveOwnerByID("brew", list)
+	if got != fakeMgr {
+		t.Errorf("expected %v, got %v", fakeMgr, got)
+	}
+	gotNotFound := resolveOwnerByID("nonexistent", list)
+	if gotNotFound != nil {
+		t.Errorf("expected nil, got %v", gotNotFound)
+	}
+}

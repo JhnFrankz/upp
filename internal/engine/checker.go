@@ -38,12 +38,20 @@ func PrepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdap
 
 	result := make([]adapters.Adapter, len(adapterList))
 	for i, a := range adapterList {
+		if a == nil {
+			result[i] = a
+			continue
+		}
 		if _, ok := a.(*ownedCheckerAdapter); ok {
 			result[i] = a
 			continue
 		}
-		owner := resolvingOwnerSlice(a, osName, list)
 		info := a.Info()
+		if _, isCustom := a.(*adapters.CustomAdapter); !isCustom && len(info.Manager) == 0 {
+			result[i] = a
+			continue
+		}
+		owner := resolvingOwnerSlice(a, osName, list)
 		if owner != nil && info.Manager != nil && (info.Manager[osName] != "" || info.Manager[canonOS] != "") {
 			if checker, ok := owner.(adapters.PackageChecker); ok {
 				pkg := OwnedPackage(a, osName)

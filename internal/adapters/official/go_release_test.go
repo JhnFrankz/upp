@@ -90,6 +90,78 @@ func TestFetchGoRelease(t *testing.T) {
 	})
 }
 
+func TestFetchGoDevVersion(t *testing.T) {
+	origURL := goDevVersionURL
+	t.Cleanup(func() { goDevVersionURL = origURL })
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("User-Agent") != "upp" {
+			t.Errorf("User-Agent = %q, want %q", r.Header.Get("User-Agent"), "upp")
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = fmt.Fprintln(w, "go1.22.4")
+		_, _ = fmt.Fprintln(w, strings.Repeat("extra data\n", 100))
+	}))
+	defer ts.Close()
+
+	goDevVersionURL = ts.URL
+
+	t.Run("successfully parses first line version", func(t *testing.T) {
+		v, err := fetchGoDevVersion(context.Background())
+		if err != nil {
+			t.Fatalf("fetchGoDevVersion() unexpected error: %v", err)
+		}
+		if v != "go1.22.4" {
+			t.Errorf("got %q, want %q", v, "go1.22.4")
+		}
+	})
+
+	t.Run("handles HTTP error status", func(t *testing.T) {
+		errServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "server error", http.StatusInternalServerError)
+		}))
+		defer errServer.Close()
+		goDevVersionURL = errServer.URL
+
+		_, err := fetchGoDevVersion(context.Background())
+		if err == nil {
+			t.Fatal("fetchGoDevVersion() expected error on HTTP 500, got nil")
+		}
+	})
+}
+
+func TestFetchGo_KeepAliveConnectionReuse(t *testing.T) {
+	origReleaseURL := goReleaseURL
+	origDevURL := goDevVersionURL
+	t.Cleanup(func() {
+		goReleaseURL = origReleaseURL
+		goDevVersionURL = origDevURL
+	})
+
+	var devAddrs []string
+	tsDev := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		devAddrs = append(devAddrs, r.RemoteAddr)
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = fmt.Fprintln(w, "go1.22.1")
+		// Pad with 20KB so transport's internal early-close threshold (default max 256 bytes or 1 buffer) is exceeded
+		_, _ = fmt.Fprint(w, strings.Repeat("extra body data padding\n", 1000))
+	}))
+	defer tsDev.Close()
+	goDevVersionURL = tsDev.URL
+
+	// 2 successive requests to the same server
+	if _, err := fetchGoDevVersion(context.Background()); err != nil {
+		t.Fatalf("first fetchGoDevVersion() failed: %v", err)
+	}
+	if _, err := fetchGoDevVersion(context.Background()); err != nil {
+		t.Fatalf("second fetchGoDevVersion() failed: %v", err)
+	}
+
+	if len(devAddrs) == 2 && devAddrs[0] != devAddrs[1] {
+		t.Errorf("fetchGoDevVersion did not reuse connection: addr1=%s, addr2=%s", devAddrs[0], devAddrs[1])
+	}
+}
+
 func TestDownloadAndVerifyGo(t *testing.T) {
 	content := "tarball payload data"
 	hasher := sha256.New()

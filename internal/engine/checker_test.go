@@ -402,3 +402,23 @@ func TestPrepareCheckAdapters_NoDoubleWrap(t *testing.T) {
 		t.Errorf("expected second pass to return same *ownedCheckerAdapter without re-wrapping")
 	}
 }
+
+func TestPrepareCheckAdapters_StandaloneFastPath(t *testing.T) {
+	standalone := &mockAdapterForChecker{
+		info: adapters.ToolInfo{
+			ID:   "bun",
+			Name: "bun",
+			// Manager is nil/empty for standalone tools
+		},
+	}
+	res := PrepareCheckAdapters([]adapters.Adapter{standalone}, platform.OSLinux)
+	if len(res) != 1 {
+		t.Fatalf("expected 1 adapter, got %d", len(res))
+	}
+	if res[0] != standalone {
+		t.Errorf("expected original standalone adapter to be returned unchanged, got %T", res[0])
+	}
+	if _, ok := res[0].(*ownedCheckerAdapter); ok {
+		t.Errorf("standalone adapter must not be wrapped as *ownedCheckerAdapter")
+	}
+}
