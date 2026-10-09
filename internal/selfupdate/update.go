@@ -75,31 +75,51 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 			return err
 		}
 	}
-	want := hex.EncodeToString(hasher.Sum(nil))
+	var wantBuf [sha256.Size * 2]byte
+	var digest [sha256.Size]byte
+	hex.Encode(wantBuf[:], hasher.Sum(digest[:0]))
+	nameBytes := []byte(name)
 
 	for len(checksums) > 0 {
 		var line []byte
-		line, checksums, _ = bytes.Cut(checksums, []byte("\n"))
+		idxNL := bytes.IndexByte(checksums, '\n')
+		if idxNL >= 0 {
+			line = checksums[:idxNL]
+			checksums = checksums[idxNL+1:]
+		} else {
+			line = checksums
+			checksums = nil
+		}
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
-		idx := bytes.IndexAny(line, " \t")
+		idx := -1
+		for i := 0; i < len(line); i++ {
+			if line[i] == ' ' || line[i] == '\t' {
+				idx = i
+				break
+			}
+		}
 		if idx == -1 {
 			continue
 		}
 		sumBytes := line[:idx]
-		rest := bytes.TrimLeft(line[idx:], " \t")
-		entryBytes := bytes.TrimPrefix(rest, []byte("*"))
-		if string(entryBytes) != name {
+		for idx < len(line) && (line[idx] == ' ' || line[idx] == '\t') {
+			idx++
+		}
+		entryBytes := line[idx:]
+		if len(entryBytes) > 0 && entryBytes[0] == '*' {
+			entryBytes = entryBytes[1:]
+		}
+		if !bytes.Equal(entryBytes, nameBytes) {
 			continue
 		}
-		sum := string(sumBytes)
-		if len(sum) != sha256.Size*2 {
+		if len(sumBytes) != sha256.Size*2 {
 			return fmt.Errorf("%w: malformed checksum entry for %s", ErrChecksumMismatch, name)
 		}
-		if !strings.EqualFold(sum, want) {
-			return fmt.Errorf("%w: %s: checksum %s, want %s", ErrChecksumMismatch, name, sum, want)
+		if !bytes.EqualFold(sumBytes, wantBuf[:]) {
+			return fmt.Errorf("%w: %s: checksum %s, want %s", ErrChecksumMismatch, name, string(sumBytes), string(wantBuf[:]))
 		}
 		return nil
 	}
@@ -393,7 +413,10 @@ func stageBinary(tmp *os.File, newPath string) error {
 		return fmt.Errorf("selfupdate: cannot open staged binary %s: %w", newPath, err)
 	}
 	defer func() { _ = f.Close() }()
-	if _, err := io.Copy(tmp, f); err != nil {
+	bufPtr := bufferpool.Get()
+	defer bufferpool.Put(bufPtr)
+
+	if _, err := io.CopyBuffer(tmp, f, *bufPtr); err != nil {
 		return fmt.Errorf("selfupdate: cannot stage binary: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {

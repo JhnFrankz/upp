@@ -92,10 +92,12 @@ var MediumRiskKeywords = []string{
 var (
 	highRiskKeywordsLower   []string
 	mediumRiskKeywordsLower []string
+	pipeTargets             []string
 )
 
 func init() {
 	syncRiskKeywordsLower()
+	syncPipeTargets()
 }
 
 func syncRiskKeywordsLower() {
@@ -109,6 +111,13 @@ func syncRiskKeywordsLower() {
 	}
 }
 
+func syncPipeTargets() {
+	pipeTargets = make([]string, 0, len(pipeInterpreters)*2)
+	for _, interp := range pipeInterpreters {
+		pipeTargets = append(pipeTargets, "| "+interp, "|"+interp)
+	}
+}
+
 // ClassifyCommand uses a hybrid approach to determine the risk level of a command.
 // It checks keyword matching first, then pattern matching for chaining/piping.
 func ClassifyCommand(cmd string) RiskLevel {
@@ -116,24 +125,22 @@ func ClassifyCommand(cmd string) RiskLevel {
 		return RiskHigh
 	}
 
-	lower := strings.ToLower(cmd)
-
 	// 1. Keyword matching — high risk first (short-circuits).
 	for _, kw := range highRiskKeywordsLower {
-		if strings.Contains(lower, kw) {
+		if containsFold(cmd, kw) {
 			return RiskHigh
 		}
 	}
 
 	// 2. Keyword matching — medium risk.
 	for _, kw := range mediumRiskKeywordsLower {
-		if strings.Contains(lower, kw) {
+		if containsFold(cmd, kw) {
 			return RiskMedium
 		}
 	}
 
 	// 3. Pattern matching — pipe to shell is always high risk.
-	if hasPipeToShell(cmd, lower) {
+	if hasPipeToShell(cmd) {
 		return RiskHigh
 	}
 
@@ -176,18 +183,12 @@ var pipeInterpreters = []string{
 
 // hasPipeToShell detects piping output to a shell or script interpreter,
 // both spaced ("| sh", "| python") and compact ("|sh", "|python") variants.
-func hasPipeToShell(cmd string, lower ...string) bool {
+func hasPipeToShell(cmd string) bool {
 	if !strings.ContainsRune(cmd, '|') {
 		return false
 	}
-	var l string
-	if len(lower) > 0 {
-		l = lower[0]
-	} else {
-		l = strings.ToLower(cmd)
-	}
-	for _, interp := range pipeInterpreters {
-		if strings.Contains(l, "| "+interp) || strings.Contains(l, "|"+interp) {
+	for _, target := range pipeTargets {
+		if containsFold(cmd, target) {
 			return true
 		}
 	}

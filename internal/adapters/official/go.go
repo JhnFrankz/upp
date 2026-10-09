@@ -50,6 +50,9 @@ type goDevRelease struct {
 // goReleaseURL is the endpoint for Go release metadata.
 var goReleaseURL = "https://go.dev/dl/?mode=json"
 
+// goDevVersionURL is the endpoint for Go latest version text.
+var goDevVersionURL = "https://go.dev/VERSION?m=text"
+
 // goReleaseFn is the seam for fetching Go release metadata.
 // Swapped in tests via setExecFakes.
 var goReleaseFn = fetchGoRelease
@@ -90,7 +93,7 @@ func fetchGoDevVersion(ctx context.Context) (string, error) {
 	client := &http.Client{
 		Timeout: adapters.CheckTimeout,
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://go.dev/VERSION?m=text", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, goDevVersionURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -99,7 +102,10 @@ func fetchGoDevVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status %d from go.dev", resp.StatusCode)
@@ -127,7 +133,10 @@ func fetchGoRelease(ctx context.Context, goos, goarch string) (GoRelease, error)
 	if err != nil {
 		return GoRelease{}, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return GoRelease{}, fmt.Errorf("unexpected status %d from go.dev", resp.StatusCode)

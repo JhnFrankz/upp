@@ -73,3 +73,29 @@ func BenchmarkCheckZipEntry_Valid(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkStageBinary(b *testing.B) {
+	tmpDir := b.TempDir()
+	srcPath := filepath.Join(tmpDir, "src-binary")
+	dummyData := bytes.Repeat([]byte("binary chunk 1234\n"), 1024*64) // ~1.2 MB
+	if err := os.WriteFile(srcPath, dummyData, 0o755); err != nil {
+		b.Fatalf("failed to write dummy binary: %v", err)
+	}
+
+	destFile, err := os.Create(filepath.Join(tmpDir, "dest-binary"))
+	if err != nil {
+		b.Fatalf("failed to create dest binary: %v", err)
+	}
+	defer destFile.Close()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := destFile.Seek(0, 0); err != nil {
+			b.Fatalf("seek failed: %v", err)
+		}
+		if err := stageBinary(destFile, srcPath); err != nil {
+			b.Fatalf("stageBinary failed: %v", err)
+		}
+	}
+}
