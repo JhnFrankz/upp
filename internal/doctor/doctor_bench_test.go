@@ -79,7 +79,7 @@ func BenchmarkCheckProcessLock(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = checkProcessLock(deps)
+		_ = checkProcessLock(nil, deps)
 	}
 }
 

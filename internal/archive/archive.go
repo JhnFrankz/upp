@@ -71,6 +71,22 @@ func ValidatePath(name string) error {
 	return nil
 }
 
+func isSubpath(dest, target string) bool {
+	if target == dest {
+		return true
+	}
+	if strings.HasPrefix(target, dest) {
+		sep := string(filepath.Separator)
+		if strings.HasSuffix(dest, sep) {
+			return true
+		}
+		if len(target) > len(dest) && target[len(dest)] == filepath.Separator {
+			return true
+		}
+	}
+	return false
+}
+
 // SafeTargetPath verifies that name is a safe relative archive path and returns its
 // joined clean path within destDir. If the resolved path escapes destDir,
 // ErrPathEscapes is returned.
@@ -82,8 +98,7 @@ func SafeTargetPath(destDir, name string) (string, error) {
 	cleanName := filepath.Clean(name)
 	targetPath := filepath.Join(cleanDest, cleanName)
 
-	rel, err := filepath.Rel(cleanDest, targetPath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !isSubpath(cleanDest, targetPath) {
 		return "", fmt.Errorf("%w: %q", ErrPathEscapes, name)
 	}
 	return targetPath, nil
