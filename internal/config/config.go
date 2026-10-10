@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/BurntSushi/toml"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
@@ -102,13 +103,44 @@ func CacheDir() (string, error) {
 	return filepath.Join(cacheRoot, "upp"), nil
 }
 
+var (
+	configPathMu     sync.RWMutex
+	cachedHome       string
+	cachedAppData    string
+	cachedConfigPath string
+)
+
 // ConfigPath returns the full path to config.toml.
 func ConfigPath() (string, error) {
+	home := os.Getenv("HOME")
+	if home == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			home = h
+		}
+	}
+	appData := os.Getenv("APPDATA")
+
+	configPathMu.RLock()
+	if cachedConfigPath != "" && cachedHome == home && cachedAppData == appData {
+		p := cachedConfigPath
+		configPathMu.RUnlock()
+		return p, nil
+	}
+	configPathMu.RUnlock()
+
 	dir, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "config.toml"), nil
+	fullPath := filepath.Join(dir, "config.toml")
+
+	configPathMu.Lock()
+	cachedHome = home
+	cachedAppData = appData
+	cachedConfigPath = fullPath
+	configPathMu.Unlock()
+
+	return fullPath, nil
 }
 
 // Exists reports whether the config file already exists on disk.

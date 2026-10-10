@@ -44,3 +44,11 @@ func BenchmarkApplyDefaults(b *testing.B) {
 		ApplyDefaults(cfg)
 	}
 }
+
+func BenchmarkConfigPath(b *testing.B) {
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = ConfigPath()
+	}
+}
