@@ -24,7 +24,6 @@ func (a *NpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	}
 
 	current := commandOutput(ctx, "npm", "--version")
-	current = strings.TrimSpace(current)
 	if current == "" {
 		current = "unknown"
 	}
@@ -57,7 +56,6 @@ func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	}
 
 	before := commandOutput(ctx, "npm", "--version")
-	before = strings.TrimSpace(before)
 
 	if dryRun {
 		return adapters.Result{
@@ -89,7 +87,6 @@ func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	}
 
 	after := commandOutput(ctx, "npm", "--version")
-	after = strings.TrimSpace(after)
 
 	return adapters.Result{
 		Success: true,

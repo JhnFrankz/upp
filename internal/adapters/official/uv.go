@@ -137,21 +137,20 @@ func isExternalManagerError(err error, output string) bool {
 	if !isCode2 {
 		return false
 	}
-	combined := output + " " + err.Error()
-	return strings.Contains(strings.ToLower(combined), "external package manager")
+	return containsFold(output, "external package manager") || containsFold(err.Error(), "external package manager")
 }
 
 func parseUvSelfUpdateOutput(output string) bool {
-	lower := strings.ToLower(output)
-	if strings.TrimSpace(lower) == "" {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
 		return false
 	}
-	if strings.Contains(lower, "up to date") {
+	if containsFold(trimmed, "up to date") {
 		return false
 	}
-	return strings.Contains(lower, "would update") ||
-		strings.Contains(lower, "new version") ||
-		strings.Contains(lower, "updating")
+	return containsFold(trimmed, "would update") ||
+		containsFold(trimmed, "new version") ||
+		containsFold(trimmed, "updating")
 }
 
 func parseUvToolListOutdatedOutput(output string) bool {
@@ -159,8 +158,7 @@ func parseUvToolListOutdatedOutput(output string) bool {
 	if trimmed == "" {
 		return false
 	}
-	lower := strings.ToLower(trimmed)
-	if strings.Contains(lower, "no tools installed") || strings.Contains(lower, "no outdated tools") {
+	if containsFold(trimmed, "no tools installed") || containsFold(trimmed, "no outdated tools") {
 		return false
 	}
 	return true
