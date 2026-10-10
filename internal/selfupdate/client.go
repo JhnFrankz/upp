@@ -157,7 +157,10 @@ func (c *Client) fetchLatest(ctx context.Context) (Release, error) {
 	if err != nil {
 		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: HTTP %d", resp.StatusCode)
 	}
@@ -315,7 +318,10 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("selfupdate: download failed: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("selfupdate: download %s failed: HTTP %d", url, resp.StatusCode)
 	}

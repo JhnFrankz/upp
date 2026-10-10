@@ -24,7 +24,6 @@ func (a *BunAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	}
 
 	current := commandOutput(ctx, "bun", "--version")
-	current = strings.TrimSpace(current)
 	if current == "" {
 		current = "unknown"
 	}
@@ -42,7 +41,6 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	}
 
 	before := commandOutput(ctx, "bun", "--version")
-	before = strings.TrimSpace(before)
 
 	if dryRun {
 		return adapters.Result{
@@ -74,7 +72,6 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	}
 
 	after := commandOutput(ctx, "bun", "--version")
-	after = strings.TrimSpace(after)
 
 	return adapters.Result{
 		Success: true,

@@ -153,3 +153,21 @@ func BenchmarkParseVersionFromHeader(b *testing.B) {
 		_ = parseVersionFromHeader(fixture)
 	}
 }
+
+func BenchmarkParseUvSelfUpdateOutput(b *testing.B) {
+	fixture := "uv 0.4.0 (installed)\nwould update to 0.5.0\n"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = parseUvSelfUpdateOutput(fixture)
+	}
+}
+
+func BenchmarkParseUvToolListOutdatedOutput(b *testing.B) {
+	fixture := "ruff 0.1.0 (latest: 0.2.0)\n"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = parseUvToolListOutdatedOutput(fixture)
+	}
+}
