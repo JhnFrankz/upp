@@ -210,25 +210,15 @@ func extractZip(archivePath, assetName, destDir string) (string, error) {
 	// Every entry is checked — a dangerous entry anywhere in the
 	// archive aborts the extraction, even one that appears after
 	// the binary (fail closed).
+	var target *zip.File
 	for _, f := range zr.File {
 		if err := checkZipEntry(f); err != nil {
 			return "", err
 		}
-	}
-
-	var target *zip.File
-	for _, f := range zr.File {
 		if f.Name == binaryPathExe {
 			target = f
-			break
-		}
-	}
-	if target == nil {
-		for _, f := range zr.File {
-			if f.Name == binaryPathFallback {
-				target = f
-				break
-			}
+		} else if target == nil && f.Name == binaryPathFallback {
+			target = f
 		}
 	}
 	if target == nil {
