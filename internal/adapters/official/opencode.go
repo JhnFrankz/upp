@@ -3,6 +3,7 @@ package official
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"strings"
@@ -10,6 +11,14 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
 )
+
+// defaultOpenCodeHTTPClient is the shared HTTP client used for checking OpenCode release redirects.
+var defaultOpenCodeHTTPClient = &http.Client{
+	Timeout: adapters.CheckTimeout,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
 // opencodeLatestTagFn is the seam for fetching the latest OpenCode release tag.
 // Swapped in tests via setExecFakes.
@@ -19,22 +28,19 @@ func fetchOpenCodeLatestTag(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	client := &http.Client{
-		Timeout: adapters.CheckTimeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://github.com/anomalyco/opencode/releases/latest", nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", "upp")
-	resp, err := client.Do(req)
+	resp, err := defaultOpenCodeHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusFound ||
 		resp.StatusCode == http.StatusMovedPermanently ||
