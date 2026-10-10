@@ -352,29 +352,6 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	deselected := len(idx.deselected)
 	failed := len(idx.failed)
 
-	parts := make([]string, 0, 5)
-
-	if updated > 0 || available > 0 {
-		label := "updated"
-		if summary.DryRun {
-			label = "would update"
-		}
-		count := updated + available
-		parts = append(parts, r.green(strconv.Itoa(count)+" "+label))
-	}
-	if current > 0 {
-		parts = append(parts, strconv.Itoa(current)+" up to date")
-	}
-	if skipped > 0 {
-		parts = append(parts, strconv.Itoa(skipped)+" skipped")
-	}
-	if deselected > 0 {
-		parts = append(parts, strconv.Itoa(deselected)+" deselected")
-	}
-	if failed > 0 {
-		parts = append(parts, r.red(strconv.Itoa(failed)+" failed"))
-	}
-
 	var sb strings.Builder
 	sb.Grow(len(summary.Results)*48 + 128)
 	sb.WriteByte('\n')
@@ -388,44 +365,80 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		return
 	}
 
-	summaryLine := strings.Join(parts, ", ")
-
 	// A run is only "clean" when it really updated something, nothing is
 	// pending, nothing failed, and nothing was skipped or deselected. A
 	// --dry-run with pending updates reports "N would update" and never claims
 	// "All clean!" (D3); a deselected pending tool is outstanding work too.
 	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0 && deselected == 0
 
+	var icon string
+	var suffix string
 	if failed > 0 {
-		sb.WriteString(r.statusIcon(StatusFailed))
-		sb.WriteByte(' ')
-		sb.WriteString(summaryLine)
-		sb.WriteString(". Review errors above.\n")
+		icon = r.statusIcon(StatusFailed)
+		suffix = ". Review errors above.\n"
 	} else if allClean {
 		// Spec ux-patterns Summary Report "All succeed": the clean line
 		// counts failures explicitly even when zero ("N updated, 0 failed").
-		sb.WriteString(r.statusIcon(StatusUpdated))
-		sb.WriteByte(' ')
-		sb.WriteString(summaryLine)
-		sb.WriteString(", 0 failed. All clean!\n")
+		icon = r.statusIcon(StatusUpdated)
+		suffix = ", 0 failed. All clean!\n"
 	} else if updated > 0 || available > 0 {
-		sb.WriteString(r.statusIcon(StatusUpdated))
-		sb.WriteByte(' ')
-		sb.WriteString(summaryLine)
-		sb.WriteByte('\n')
+		icon = r.statusIcon(StatusUpdated)
+		suffix = "\n"
 	} else if deselected > 0 {
 		// All pending work was deselected: report it under the deselected icon,
 		// never as current.
-		sb.WriteString(r.statusIcon(StatusDeselected))
-		sb.WriteByte(' ')
-		sb.WriteString(summaryLine)
-		sb.WriteByte('\n')
+		icon = r.statusIcon(StatusDeselected)
+		suffix = "\n"
 	} else {
-		sb.WriteString(r.statusIcon(StatusCurrent))
-		sb.WriteByte(' ')
-		sb.WriteString(summaryLine)
-		sb.WriteByte('\n')
+		icon = r.statusIcon(StatusCurrent)
+		suffix = "\n"
 	}
+
+	sb.WriteString(icon)
+	sb.WriteByte(' ')
+
+	first := true
+	writeCountPart := func(count int, label, colorCode string) {
+		if !first {
+			sb.WriteString(", ")
+		}
+		first = false
+		if colorCode != "" && r.color {
+			sb.WriteString("\033[")
+			sb.WriteString(colorCode)
+			sb.WriteString("m")
+			sb.WriteString(strconv.Itoa(count))
+			sb.WriteByte(' ')
+			sb.WriteString(label)
+			sb.WriteString("\033[0m")
+		} else {
+			sb.WriteString(strconv.Itoa(count))
+			sb.WriteByte(' ')
+			sb.WriteString(label)
+		}
+	}
+
+	if updated > 0 || available > 0 {
+		label := "updated"
+		if summary.DryRun {
+			label = "would update"
+		}
+		writeCountPart(updated+available, label, "32")
+	}
+	if current > 0 {
+		writeCountPart(current, "up to date", "")
+	}
+	if skipped > 0 {
+		writeCountPart(skipped, "skipped", "")
+	}
+	if deselected > 0 {
+		writeCountPart(deselected, "deselected", "")
+	}
+	if failed > 0 {
+		writeCountPart(failed, "failed", "31")
+	}
+
+	sb.WriteString(suffix)
 
 	// List tools per category in non-quiet mode
 	if !r.quiet {

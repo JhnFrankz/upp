@@ -228,3 +228,48 @@ func BenchmarkExtractVersionFromString_NotFound(b *testing.B) {
 		_ = version.ExtractVersionFromString(noVersionHeader)
 	}
 }
+
+func TestCompareSemver(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		a, b   string
+		want   int
+		wantOk bool
+	}{
+		{"equal with v", "v1.2.3", "v1.2.3", 0, true},
+		{"equal without v", "1.2.3", "1.2.3", 0, true},
+		{"equal mixed v", "v1.2.3", "1.2.3", 0, true},
+		{"equal mixed upper V", "V1.2.3", "1.2.3", 0, true},
+		{"a less than b patch", "1.2.3", "v1.2.4", -1, true},
+		{"a greater than b major", "v2.0.0", "1.9.9", 1, true},
+		{"pre-release ignored", "1.2.3-rc1", "1.2.3-beta", 0, true},
+		{"invalid a", "invalid", "1.2.3", 0, false},
+		{"invalid b", "1.2.3", "invalid", 0, false},
+		{"dev string", "dev", "1.0.0", 0, false},
+		{"empty string", "", "1.0.0", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := version.CompareSemver(tt.a, tt.b)
+			if ok != tt.wantOk {
+				t.Fatalf("CompareSemver(%q, %q) ok = %v, want %v", tt.a, tt.b, ok, tt.wantOk)
+			}
+			if got != tt.want {
+				t.Errorf("CompareSemver(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func BenchmarkCompareSemver(b *testing.B) {
+	const v1 = "v1.2.3"
+	const v2 = "1.2.4"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = version.CompareSemver(v1, v2)
+	}
+}

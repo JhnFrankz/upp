@@ -47,6 +47,16 @@ type goDevRelease struct {
 	Files   []goDevFile `json:"files"`
 }
 
+// defaultGoCheckClient is the shared HTTP client used for checking Go versions and metadata.
+var defaultGoCheckClient = &http.Client{
+	Timeout: adapters.CheckTimeout,
+}
+
+// defaultGoDownloadClient is the shared HTTP client used for downloading Go release archives.
+var defaultGoDownloadClient = &http.Client{
+	Timeout: adapters.UpdateTimeout,
+}
+
 // goReleaseURL is the endpoint for Go release metadata.
 var goReleaseURL = "https://go.dev/dl/?mode=json"
 
@@ -90,15 +100,12 @@ func fetchGoDevVersion(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	client := &http.Client{
-		Timeout: adapters.CheckTimeout,
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, goDevVersionURL, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", "upp")
-	resp, err := client.Do(req)
+	resp, err := defaultGoCheckClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -121,15 +128,12 @@ func fetchGoRelease(ctx context.Context, goos, goarch string) (GoRelease, error)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	client := &http.Client{
-		Timeout: adapters.CheckTimeout,
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, goReleaseURL, nil)
 	if err != nil {
 		return GoRelease{}, err
 	}
 	req.Header.Set("User-Agent", "upp")
-	resp, err := client.Do(req)
+	resp, err := defaultGoCheckClient.Do(req)
 	if err != nil {
 		return GoRelease{}, err
 	}
@@ -170,15 +174,12 @@ func downloadAndVerifyGo(ctx context.Context, rel GoRelease, destPath string) er
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	client := &http.Client{
-		Timeout: adapters.UpdateTimeout,
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rel.URL, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "upp")
-	resp, err := client.Do(req)
+	resp, err := defaultGoDownloadClient.Do(req)
 	if err != nil {
 		return err
 	}

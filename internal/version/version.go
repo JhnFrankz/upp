@@ -235,3 +235,37 @@ func IsVersionLike(s string) bool {
 	}
 	return dotFound
 }
+
+// CompareSemver compares two semver strings (tolerating optional "v" prefix) numerically.
+// Returns -1 if a < b, 0 if a == b, 1 if a > b. Returns 0 and false if either cannot be parsed.
+func CompareSemver(a, b string) (int, bool) {
+	va, okA := parseSemverTag(a)
+	if !okA {
+		return 0, false
+	}
+	vb, okB := parseSemverTag(b)
+	if !okB {
+		return 0, false
+	}
+	for i := 0; i < 3; i++ {
+		if va[i] < vb[i] {
+			return -1, true
+		}
+		if va[i] > vb[i] {
+			return 1, true
+		}
+	}
+	return 0, true
+}
+
+func parseSemverTag(s string) ([3]int, bool) {
+	if strings.HasPrefix(s, "v") || strings.HasPrefix(s, "V") {
+		s = s[1:]
+	}
+	tagPart, _, _ := strings.Cut(s, "-")
+	tag, err := parseTag(tagPart)
+	if err != nil {
+		return [3]int{}, false
+	}
+	return tag, true
+}
