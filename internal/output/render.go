@@ -54,6 +54,7 @@ type Renderer struct {
 	quiet   bool
 	verbose bool
 	mu      sync.Mutex
+	scratch strings.Builder
 }
 
 var isTerminalFn = isTerminal
@@ -176,6 +177,18 @@ func (r *Renderer) statusLabel(s Status) string {
 
 // --- Color helpers ---
 
+func (r *Renderer) writeColor(sb *strings.Builder, code, text string) {
+	if !r.color {
+		sb.WriteString(text)
+		return
+	}
+	sb.WriteString("\033[")
+	sb.WriteString(code)
+	sb.WriteByte('m')
+	sb.WriteString(text)
+	sb.WriteString("\033[0m")
+}
+
 func (r *Renderer) colorize(code, text string) string {
 	if !r.color {
 		return text
@@ -193,6 +206,8 @@ func (r *Renderer) dim(text string) string    { return r.colorize("2", text) }
 
 // ToolLine renders a single tool result line.
 func (r *Renderer) ToolLine(result ToolResult) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet {
 		r.quietToolLine(result)
 		return
@@ -201,65 +216,79 @@ func (r *Renderer) ToolLine(result ToolResult) {
 }
 
 func (r *Renderer) verboseToolLine(result ToolResult) {
+	r.scratch.Reset()
 	icon := r.statusIcon(result.Status)
-	name := r.cyan(result.Name)
 
 	switch result.Status {
-	case StatusUpdated:
+	case StatusUpdated, StatusAvailable, StatusCurrent:
+		r.scratch.WriteString("  ")
+		r.scratch.WriteString(icon)
+		r.scratch.WriteByte(' ')
+		r.writeColor(&r.scratch, "36", result.Name)
 		if result.Version != "" {
-			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
-		} else {
-			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
+			r.scratch.WriteByte(' ')
+			r.writeColor(&r.scratch, "2", result.Version)
 		}
+		r.scratch.WriteByte('\n')
 	case StatusSkipped:
-		_, _ = fmt.Fprintf(r.w, "  %s %s (not installed)\n", icon, name)
+		r.scratch.WriteString("  ")
+		r.scratch.WriteString(icon)
+		r.scratch.WriteByte(' ')
+		r.writeColor(&r.scratch, "36", result.Name)
+		r.scratch.WriteString(" (not installed)\n")
 	case StatusFailed:
-		errMsg := ""
+		r.scratch.WriteString("  ")
+		r.scratch.WriteString(icon)
+		r.scratch.WriteByte(' ')
+		r.writeColor(&r.scratch, "31", result.Name)
 		if result.Error != nil {
-			errMsg = " (" + result.Error.Error() + ")"
+			r.scratch.WriteString(" (")
+			r.scratch.WriteString(result.Error.Error())
+			r.scratch.WriteByte(')')
 		}
-		_, _ = fmt.Fprintf(r.w, "  %s %s%s\n", icon, r.red(result.Name), errMsg)
+		r.scratch.WriteByte('\n')
 		if r.verbose && !r.quiet && result.Stderr != "" {
 			rem := strings.TrimSpace(result.Stderr)
 			for len(rem) > 0 {
 				var line string
 				line, rem, _ = strings.Cut(rem, "\n")
-				_, _ = fmt.Fprintf(r.w, "    %s %s\n", r.dim("│"), r.dim(line))
+				r.scratch.WriteString("    ")
+				r.writeColor(&r.scratch, "2", "│")
+				r.scratch.WriteByte(' ')
+				r.writeColor(&r.scratch, "2", line)
+				r.scratch.WriteByte('\n')
 			}
 		}
-	case StatusAvailable:
-		if result.Version != "" {
-			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
-		} else {
-			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
-		}
-	case StatusCurrent:
-		if result.Version != "" {
-			_, _ = fmt.Fprintf(r.w, "  %s %s %s\n", icon, name, r.dim(result.Version))
-		} else {
-			_, _ = fmt.Fprintf(r.w, "  %s %s\n", icon, name)
-		}
 	case StatusDeselected:
-		_, _ = fmt.Fprintf(r.w, "  %s %s (deselected)\n", icon, name)
+		r.scratch.WriteString("  ")
+		r.scratch.WriteString(icon)
+		r.scratch.WriteByte(' ')
+		r.writeColor(&r.scratch, "36", result.Name)
+		r.scratch.WriteString(" (deselected)\n")
+	default:
+		return
 	}
+	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
 func (r *Renderer) quietToolLine(result ToolResult) {
 	icon := r.statusIcon(result.Status)
-	name := result.Name
+	r.scratch.Reset()
+	r.scratch.WriteString(icon)
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(result.Name)
 
 	switch result.Status {
 	case StatusFailed:
-		errMsg := ""
 		if result.Error != nil {
-			errMsg = ": " + result.Error.Error()
+			r.scratch.WriteString(": ")
+			r.scratch.WriteString(result.Error.Error())
 		}
-		_, _ = fmt.Fprintf(r.w, "%s %s%s\n", icon, name, errMsg)
 	case StatusSkipped:
-		_, _ = fmt.Fprintf(r.w, "%s %s\n", icon, name)
 	default:
-		_, _ = fmt.Fprintf(r.w, "%s %s\n", icon, name)
 	}
+	r.scratch.WriteByte('\n')
+	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
 // --- Progress ---
@@ -273,8 +302,19 @@ func (r *Renderer) Progress(op string, current, total int, name string) {
 	if r.quiet || total <= 1 {
 		return
 	}
-	_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
-		r.dim("⟳"), op, current, total, r.cyan(name))
+	r.scratch.Reset()
+	r.scratch.WriteString("  ")
+	r.writeColor(&r.scratch, "2", "⟳")
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(op)
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(strconv.Itoa(current))
+	r.scratch.WriteByte('/')
+	r.scratch.WriteString(strconv.Itoa(total))
+	r.scratch.WriteString(": ")
+	r.writeColor(&r.scratch, "36", name)
+	r.scratch.WriteByte('\n')
+	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
 // ProgressInPlace shows a single-line progress indicator. In interactive
@@ -287,13 +327,25 @@ func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
 	if r.quiet || total <= 1 {
 		return
 	}
+	r.scratch.Reset()
 	if r.color {
-		_, _ = fmt.Fprintf(r.w, "\r  %s %s %d/%d: %s",
-			r.dim("⟳"), op, current, total, r.cyan(name))
+		r.scratch.WriteString("\r  ")
 	} else {
-		_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
-			r.dim("⟳"), op, current, total, r.cyan(name))
+		r.scratch.WriteString("  ")
 	}
+	r.writeColor(&r.scratch, "2", "⟳")
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(op)
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(strconv.Itoa(current))
+	r.scratch.WriteByte('/')
+	r.scratch.WriteString(strconv.Itoa(total))
+	r.scratch.WriteString(": ")
+	r.writeColor(&r.scratch, "36", name)
+	if !r.color {
+		r.scratch.WriteByte('\n')
+	}
+	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
 // --- Summary ---

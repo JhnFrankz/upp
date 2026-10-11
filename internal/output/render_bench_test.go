@@ -120,3 +120,59 @@ func BenchmarkRenderer_Summary(b *testing.B) {
 		r.Summary(summary)
 	}
 }
+
+func BenchmarkRenderer_ToolLine_Verbose(b *testing.B) {
+	results := []ToolResult{
+		{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
+		{Name: "cargo", Status: StatusCurrent, Version: "1.75.0"},
+		{Name: "npm", Status: StatusFailed, Error: errors.New("exit 1"), Stderr: "npm ERR! connection refused\n"},
+		{Name: "pip", Status: StatusSkipped},
+		{Name: "go", Status: StatusAvailable, Version: "1.22.0"},
+		{Name: "rustup", Status: StatusDeselected},
+	}
+	r := NewRendererForced(io.Discard, true, true, false, true)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r.ToolLine(results[i%len(results)])
+	}
+}
+
+func BenchmarkRenderer_ToolLine_Quiet(b *testing.B) {
+	results := []ToolResult{
+		{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
+		{Name: "cargo", Status: StatusCurrent, Version: "1.75.0"},
+		{Name: "npm", Status: StatusFailed, Error: errors.New("exit 1")},
+		{Name: "pip", Status: StatusSkipped},
+		{Name: "go", Status: StatusAvailable, Version: "1.22.0"},
+		{Name: "rustup", Status: StatusDeselected},
+	}
+	r := NewRendererForced(io.Discard, false, true, true, false)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r.ToolLine(results[i%len(results)])
+	}
+}
+
+func BenchmarkRenderer_Progress(b *testing.B) {
+	r := NewRendererForced(io.Discard, true, true, false, false)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r.Progress("Updating", 3, 10, "golang")
+	}
+}
+
+func BenchmarkRenderer_ProgressInPlace(b *testing.B) {
+	r := NewRendererForced(io.Discard, true, true, false, false)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r.ProgressInPlace("Updating", 3, 10, "golang")
+	}
+}
