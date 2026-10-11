@@ -157,3 +157,22 @@ func BenchmarkRenderer_ToolLine_Quiet(b *testing.B) {
 	}
 }
 
+func BenchmarkRenderer_Progress(b *testing.B) {
+	r := NewRendererForced(io.Discard, true, true, false, false)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r.Progress("Updating", 3, 10, "golang")
+	}
+}
+
+func BenchmarkRenderer_ProgressInPlace(b *testing.B) {
+	r := NewRendererForced(io.Discard, true, true, false, false)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r.ProgressInPlace("Updating", 3, 10, "golang")
+	}
+}

@@ -302,8 +302,19 @@ func (r *Renderer) Progress(op string, current, total int, name string) {
 	if r.quiet || total <= 1 {
 		return
 	}
-	_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
-		r.dim("⟳"), op, current, total, r.cyan(name))
+	r.scratch.Reset()
+	r.scratch.WriteString("  ")
+	r.writeColor(&r.scratch, "2", "⟳")
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(op)
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(strconv.Itoa(current))
+	r.scratch.WriteByte('/')
+	r.scratch.WriteString(strconv.Itoa(total))
+	r.scratch.WriteString(": ")
+	r.writeColor(&r.scratch, "36", name)
+	r.scratch.WriteByte('\n')
+	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
 // ProgressInPlace shows a single-line progress indicator. In interactive
@@ -316,13 +327,25 @@ func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
 	if r.quiet || total <= 1 {
 		return
 	}
+	r.scratch.Reset()
 	if r.color {
-		_, _ = fmt.Fprintf(r.w, "\r  %s %s %d/%d: %s",
-			r.dim("⟳"), op, current, total, r.cyan(name))
+		r.scratch.WriteString("\r  ")
 	} else {
-		_, _ = fmt.Fprintf(r.w, "  %s %s %d/%d: %s\n",
-			r.dim("⟳"), op, current, total, r.cyan(name))
+		r.scratch.WriteString("  ")
 	}
+	r.writeColor(&r.scratch, "2", "⟳")
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(op)
+	r.scratch.WriteByte(' ')
+	r.scratch.WriteString(strconv.Itoa(current))
+	r.scratch.WriteByte('/')
+	r.scratch.WriteString(strconv.Itoa(total))
+	r.scratch.WriteString(": ")
+	r.writeColor(&r.scratch, "36", name)
+	if !r.color {
+		r.scratch.WriteByte('\n')
+	}
+	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
 // --- Summary ---
