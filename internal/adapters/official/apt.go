@@ -58,6 +58,9 @@ func parseAptPolicyOutput(out string) (string, string) {
 				latest = val
 			}
 		}
+		if current != "" && latest != "" {
+			break
+		}
 	}
 	if current == "" || current == "(none)" {
 		current = "unknown"

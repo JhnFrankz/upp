@@ -134,7 +134,7 @@ func parsePacmanSiOutput(out string) string {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "Version") {
 			before, after, found := strings.Cut(trimmed, ":")
-			if found && strings.TrimSpace(before) == "Version" {
+			if found && strings.TrimRight(before, " \t") == "Version" {
 				val := strings.TrimSpace(after)
 				if val != "" {
 					return val
