@@ -757,16 +757,39 @@ func toolNames(results []ToolResult) []string {
 	return names
 }
 
+const (
+	doctorIconOKPlain    = "[✓]"
+	doctorIconWarnPlain  = "[!]"
+	doctorIconErrorPlain = "[✗]"
+	doctorIconUnknown    = "[?]"
+
+	doctorIconOKColor    = "\033[32m[✓]\033[0m"
+	doctorIconWarnColor  = "\033[33m[!]\033[0m"
+	doctorIconErrorColor = "\033[31m[✗]\033[0m"
+)
+
 func (r *Renderer) doctorIcon(s doctor.Severity) string {
+	if !r.color {
+		switch s {
+		case doctor.SeverityOK:
+			return doctorIconOKPlain
+		case doctor.SeverityWarn:
+			return doctorIconWarnPlain
+		case doctor.SeverityError:
+			return doctorIconErrorPlain
+		default:
+			return doctorIconUnknown
+		}
+	}
 	switch s {
 	case doctor.SeverityOK:
-		return r.green("[✓]")
+		return doctorIconOKColor
 	case doctor.SeverityWarn:
-		return r.yellow("[!]")
+		return doctorIconWarnColor
 	case doctor.SeverityError:
-		return r.red("[✗]")
+		return doctorIconErrorColor
 	default:
-		return "[?]"
+		return doctorIconUnknown
 	}
 }
 
