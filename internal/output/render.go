@@ -197,7 +197,6 @@ func (r *Renderer) colorize(code, text string) string {
 }
 
 func (r *Renderer) red(text string) string    { return r.colorize("31", text) }
-func (r *Renderer) green(text string) string  { return r.colorize("32", text) }
 func (r *Renderer) yellow(text string) string { return r.colorize("33", text) }
 func (r *Renderer) cyan(text string) string   { return r.colorize("36", text) }
 func (r *Renderer) dim(text string) string    { return r.colorize("2", text) }
