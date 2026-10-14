@@ -154,6 +154,15 @@ func TestDiscoverTargets_WindowsBackups(t *testing.T) {
 	unrelated2 := filepath.Join(binDir, "other.backup.20261012.exe")
 	_ = os.WriteFile(unrelated2, []byte("unrelated"), 0o644)
 
+	backup1Resolved, err := filepath.EvalSymlinks(backup1)
+	if err != nil {
+		t.Fatalf("eval backup1: %v", err)
+	}
+	backup2Resolved, err := filepath.EvalSymlinks(backup2)
+	if err != nil {
+		t.Fatalf("eval backup2: %v", err)
+	}
+
 	targets, err := uninstall.DiscoverTargets(exeBin, "", "")
 	if err != nil {
 		t.Fatalf("DiscoverTargets failed: %v", err)
@@ -162,10 +171,10 @@ func TestDiscoverTargets_WindowsBackups(t *testing.T) {
 	var foundBackup1, foundBackup2 int
 	for _, target := range targets {
 		if target.Type == uninstall.TargetBackup {
-			if target.Path == backup1 {
+			if target.Path == backup1Resolved {
 				foundBackup1++
 			}
-			if target.Path == backup2 {
+			if target.Path == backup2Resolved {
 				foundBackup2++
 			}
 		}
