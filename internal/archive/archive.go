@@ -199,7 +199,12 @@ func ExtractToFile(targetPath string, r io.Reader, mode os.FileMode) error {
 
 	if _, err := io.CopyBuffer(outFile, r, *bufPtr); err != nil {
 		_ = outFile.Close()
+		_ = os.Remove(targetPath)
 		return err
 	}
-	return outFile.Close()
+	if err := outFile.Close(); err != nil {
+		_ = os.Remove(targetPath)
+		return err
+	}
+	return nil
 }

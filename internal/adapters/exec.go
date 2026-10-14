@@ -22,6 +22,7 @@ const execReapDelay = 5 * time.Second
 var (
 	shellExecWithTimeoutFn = defaultShellExecWithTimeout
 	lookPathFn             = exec.LookPath
+	runtimeGOOSFn          = func() string { return runtime.GOOS }
 )
 
 // defaultShellExecWithTimeout runs a command via the platform shell and kills it —
@@ -38,7 +39,7 @@ func defaultShellExecWithTimeout(ctx context.Context, command string, timeout ti
 	defer cancel()
 
 	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
+	if runtimeGOOSFn() == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
 		cmd = exec.CommandContext(ctx, "sh", "-c", command)

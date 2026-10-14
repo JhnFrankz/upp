@@ -911,3 +911,49 @@ func TestDiagnose_LoadConfigMemoized(t *testing.T) {
 		t.Fatalf("expected deps.LoadConfig to be called exactly once, got %d", loadCount)
 	}
 }
+
+type mockEnvToolAdapter struct {
+	name     string
+	detected bool
+}
+
+func (m *mockEnvToolAdapter) Name() string { return m.name }
+func (m *mockEnvToolAdapter) Detect() bool { return m.detected }
+func (m *mockEnvToolAdapter) Check(context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (m *mockEnvToolAdapter) Update(context.Context, bool) (adapters.Result, error) {
+	return adapters.Result{}, nil
+}
+func (m *mockEnvToolAdapter) Info() adapters.ToolInfo {
+	return adapters.ToolInfo{ID: m.name, Name: m.name}
+}
+
+func TestDiagnose_ShellFunctionEnvironmentTool(t *testing.T) {
+	deps := baseTestDeps(t)
+	deps.FindAllPaths = func(string) []string { return nil }
+	deps.LookPath = func(string) (string, error) { return "", errors.New("not found in PATH") }
+	deps.LoadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			Version: 1,
+			Tools: map[string]config.ToolConfig{
+				"nvm": {Enabled: true},
+			},
+		}, nil
+	}
+	deps.Adapters = []adapters.Adapter{
+		&mockEnvToolAdapter{name: "nvm", detected: true},
+	}
+
+	results := Diagnose(context.Background(), deps)
+	res := findResult(results, "Tool Paths", "nvm")
+	if res == nil {
+		t.Fatal("expected result for nvm in Tool Paths")
+	}
+	if res.Status != SeverityOK {
+		t.Errorf("expected SeverityOK for environment detected tool, got %v (msg: %s)", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "detected via environment") {
+		t.Errorf("expected message to mention detected via environment, got %q", res.Message)
+	}
+}

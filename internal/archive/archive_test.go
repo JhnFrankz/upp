@@ -388,3 +388,36 @@ func TestExtractToFile(t *testing.T) {
 		}
 	})
 }
+
+type failReader struct {
+	data []byte
+	err  error
+}
+
+func (r *failReader) Read(p []byte) (n int, err error) {
+	if len(r.data) > 0 {
+		n = copy(p, r.data)
+		r.data = nil
+		return n, nil
+	}
+	return 0, r.err
+}
+
+func TestExtractToFile_ErrorCleanup(t *testing.T) {
+	tempDir := t.TempDir()
+	targetPath := filepath.Join(tempDir, "corrupted.bin")
+
+	r := &failReader{
+		data: []byte("partial data"),
+		err:  errors.New("simulated read failure"),
+	}
+
+	err := archive.ExtractToFile(targetPath, r, 0644)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if _, statErr := os.Stat(targetPath); !os.IsNotExist(statErr) {
+		t.Errorf("expected partial file to be removed, got stat error: %v", statErr)
+	}
+}

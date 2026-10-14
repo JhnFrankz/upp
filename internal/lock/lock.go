@@ -58,42 +58,56 @@ func Acquire(path string) (*Lock, error) {
 		return nil, fmt.Errorf("cannot create lock directory: %w", err)
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open lock file: %w", err)
-	}
-
-	if err := tryLock(f); err != nil {
-		_ = f.Close()
-		if errors.Is(err, errLocked) {
-			pid := readPID(path)
-			return nil, &ErrAlreadyRunning{PID: pid}
+	for attempts := 0; attempts < 3; attempts++ {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			return nil, fmt.Errorf("cannot open lock file: %w", err)
 		}
-		return nil, fmt.Errorf("failed to acquire lock: %w", err)
+
+		if err := tryLock(f); err != nil {
+			_ = f.Close()
+			if errors.Is(err, errLocked) {
+				pid := readPID(path)
+				return nil, &ErrAlreadyRunning{PID: pid}
+			}
+			return nil, fmt.Errorf("failed to acquire lock: %w", err)
+		}
+
+		// Inode verification: confirm that the file we locked is still the one at path.
+		// If another process unlinked it between open and lock, retry on a fresh open.
+		statF, errF := f.Stat()
+		statP, errP := os.Stat(path)
+		if errF == nil && errP == nil && !os.SameFile(statF, statP) {
+			_ = unlock(f)
+			_ = f.Close()
+			continue
+		}
+
+		if err := f.Truncate(0); err != nil {
+			_ = unlock(f)
+			_ = f.Close()
+			return nil, fmt.Errorf("failed to truncate lock file: %w", err)
+		}
+		if _, err := f.Seek(0, 0); err != nil {
+			_ = unlock(f)
+			_ = f.Close()
+			return nil, fmt.Errorf("failed to seek lock file: %w", err)
+		}
+		if _, err := f.WriteString(strconv.Itoa(os.Getpid()) + "\n"); err != nil {
+			_ = unlock(f)
+			_ = f.Close()
+			return nil, fmt.Errorf("failed to write PID to lock file: %w", err)
+		}
+		if err := f.Sync(); err != nil {
+			_ = unlock(f)
+			_ = f.Close()
+			return nil, fmt.Errorf("failed to sync lock file: %w", err)
+		}
+
+		return &Lock{path: path, file: f}, nil
 	}
 
-	if err := f.Truncate(0); err != nil {
-		_ = unlock(f)
-		_ = f.Close()
-		return nil, fmt.Errorf("failed to truncate lock file: %w", err)
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		_ = unlock(f)
-		_ = f.Close()
-		return nil, fmt.Errorf("failed to seek lock file: %w", err)
-	}
-	if _, err := f.WriteString(strconv.Itoa(os.Getpid()) + "\n"); err != nil {
-		_ = unlock(f)
-		_ = f.Close()
-		return nil, fmt.Errorf("failed to write PID to lock file: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		_ = unlock(f)
-		_ = f.Close()
-		return nil, fmt.Errorf("failed to sync lock file: %w", err)
-	}
-
-	return &Lock{path: path, file: f}, nil
+	return nil, fmt.Errorf("failed to acquire lock: file unlinked concurrently")
 }
 
 func readPID(path string) int {
@@ -118,10 +132,16 @@ func (l *Lock) Release() error {
 		if l.file == nil {
 			return
 		}
+		// Unlink the path while still holding the lock on platforms that permit it,
+		// preventing a race where another process locks the descriptor between unlock and remove.
+		removeErr := os.Remove(l.path)
 		unlockErr := unlock(l.file)
 		closeErr := l.file.Close()
 		l.file = nil
-		removeErr := os.Remove(l.path)
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			// On Windows, open files cannot be deleted until closed; retry after close.
+			removeErr = os.Remove(l.path)
+		}
 		if unlockErr != nil {
 			l.err = unlockErr
 			return
