@@ -70,4 +70,3 @@ func adapterByID(adapterList []adapters.Adapter) map[string]adapters.Adapter {
 	}
 	return m
 }
-

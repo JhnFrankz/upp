@@ -351,7 +351,6 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 	return nil
 }
 
-
 // runUpdateInteractive implements the TTY update flow:
 // a concurrent pre-check via eng.Check, a checkbox selector over the
 // plan-derived pending set (engine.Plan, so PolicyAlwaysUpdate tools appear
@@ -699,7 +698,6 @@ func outcomeSelectionID(oc *engine.CheckOutcome) string {
 	}
 	return oc.ToolName
 }
-
 
 // resolveOwnerByID looks up an owner adapter by ID directly from allAdapters (if provided)
 // or the official registry in O(1).

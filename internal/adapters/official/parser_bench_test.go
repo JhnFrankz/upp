@@ -145,7 +145,6 @@ func BenchmarkExtractGoVersion(b *testing.B) {
 	}
 }
 
-
 func BenchmarkParseUvSelfUpdateOutput(b *testing.B) {
 	fixture := "uv 0.4.0 (installed)\nwould update to 0.5.0\n"
 	b.ReportAllocs()

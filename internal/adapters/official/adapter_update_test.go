@@ -533,4 +533,3 @@ func TestExtractGoVersion_EdgeCases(t *testing.T) {
 		})
 	}
 }
-

@@ -209,7 +209,6 @@ func managerDisplayName(ownerID string, allAdapters ...[]adapters.Adapter) strin
 	return ownerID
 }
 
-
 func ownerIDOfSlice(a adapters.Adapter, osName string, allAdapters []adapters.Adapter) string {
 	if a == nil {
 		return ""

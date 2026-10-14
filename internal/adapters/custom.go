@@ -272,4 +272,3 @@ func shellExecWithTimeout(ctx context.Context, command string, timeout time.Dura
 func extractVersionFromOutput(output string) string {
 	return version.ExtractVersionFromOutput(output)
 }
-

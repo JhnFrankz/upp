@@ -119,7 +119,6 @@ var (
 	cachedLinuxManager string
 )
 
-
 // defaultLinuxManager resolves the default Linux package manager for official tools.
 // It returns "pacman" if apt is absent and pacman is present on PATH, otherwise "apt".
 func defaultLinuxManager() string {
@@ -157,7 +156,6 @@ func extractVersion(output string) string {
 func extractVersionFromString(s string) string {
 	return version.ExtractVersionFromString(s)
 }
-
 
 // isVersionLike returns true if the string looks like a version number.
 func isVersionLike(s string) bool {
@@ -248,7 +246,6 @@ func isExitCode(err error, code int) bool {
 	var exitErr *exec.ExitError
 	return errors.As(err, &exitErr) && exitErr.ExitCode() == code
 }
-
 
 // wingetSelfID is the manifest Id that identifies Windows Package Manager
 // itself in `winget upgrade` (no args) output. winget's self-update package

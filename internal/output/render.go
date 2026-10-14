@@ -774,7 +774,6 @@ func (r *Renderer) Warning(msg string) {
 	_, _ = fmt.Fprintf(r.w, "⚠️  %s\n", r.yellow(msg))
 }
 
-
 const (
 	doctorIconOKPlain    = "[✓]"
 	doctorIconWarnPlain  = "[!]"
