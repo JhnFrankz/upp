@@ -351,11 +351,6 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 	return nil
 }
 
-// timeoutErr maps a context deadline exceeded onto a structured error naming
-// the tool, operation, and timeout limit.
-func timeoutErr(name, op string, err error) error {
-	return engine.TimeoutErr(name, op, err)
-}
 
 // runUpdateInteractive implements the TTY update flow:
 // a concurrent pre-check via eng.Check, a checkbox selector over the
@@ -705,17 +700,6 @@ func outcomeSelectionID(oc *engine.CheckOutcome) string {
 	return oc.ToolName
 }
 
-// resolveEffectiveUpdatePolicy returns the UpdatePolicy that governs whether
-// an adapter's Update() runs.
-func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.UpdatePolicy {
-	return engine.ResolveEffectiveUpdatePolicy(a, osName, allAdapters...)
-}
-
-// resolvingOwner returns the manager adapter that owns the given adapter on
-// the given OS, or nil when the adapter has no resolving owner (standalone).
-func resolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
-	return engine.ResolvingOwner(a, osName, allAdapters...)
-}
 
 // resolveOwnerByID looks up an owner adapter by ID directly from allAdapters (if provided)
 // or the official registry in O(1).

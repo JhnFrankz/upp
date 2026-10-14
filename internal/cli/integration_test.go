@@ -12,9 +12,18 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
+	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
+
+// buildAdapterList resolves and returns the list of adapters for enabled tools
+// from the configuration in tests.
+func buildAdapterList(cfg *config.Config, osName string) []adapters.Adapter {
+	eng := engine.New(cfg, osName)
+	res, _ := eng.Resolve(engine.Filter{})
+	return res
+}
 
 // --- Helper: inject package-level deps ---
 

@@ -209,16 +209,6 @@ func managerDisplayName(ownerID string, allAdapters ...[]adapters.Adapter) strin
 	return ownerID
 }
 
-// ownerIDOf returns the ID of the manager currently owning a on osName, or ""
-// when a is standalone. An official tool reads its canonical Info().Manager
-// map; a custom tool exposes its injected manager via ManagerAdapter.
-func ownerIDOf(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) string {
-	var list []adapters.Adapter
-	if len(allAdapters) > 0 {
-		list = allAdapters[0]
-	}
-	return ownerIDOfSlice(a, osName, list)
-}
 
 func ownerIDOfSlice(a adapters.Adapter, osName string, allAdapters []adapters.Adapter) string {
 	if a == nil {

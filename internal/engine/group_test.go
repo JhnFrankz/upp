@@ -164,6 +164,14 @@ func TestOwnerGroupLabel_CustomToolWithInjectedManager(t *testing.T) {
 	}
 }
 
+func ownerIDOf(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) string {
+	var list []adapters.Adapter
+	if len(allAdapters) > 0 {
+		list = allAdapters[0]
+	}
+	return ownerIDOfSlice(a, osName, list)
+}
+
 // TestOwnerIDOf covers ownerIDOf directly.
 func TestOwnerIDOf(t *testing.T) {
 	t.Run("custom adapter with injected manager returns the manager ID", func(t *testing.T) {
