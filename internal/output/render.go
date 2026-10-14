@@ -774,39 +774,6 @@ func (r *Renderer) Warning(msg string) {
 	_, _ = fmt.Fprintf(r.w, "⚠️  %s\n", r.yellow(msg))
 }
 
-// --- Helpers ---
-
-func countByStatus(results []ToolResult) (updated, skipped, failed int) {
-	for _, r := range results {
-		switch r.Status {
-		case StatusUpdated:
-			updated++
-		case StatusSkipped:
-			skipped++
-		case StatusFailed:
-			failed++
-		}
-	}
-	return
-}
-
-func filterByStatus(results []ToolResult, status Status) []ToolResult {
-	var filtered []ToolResult
-	for _, r := range results {
-		if r.Status == status {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-func toolNames(results []ToolResult) []string {
-	var names []string
-	for _, r := range results {
-		names = append(names, r.Name)
-	}
-	return names
-}
 
 const (
 	doctorIconOKPlain    = "[✓]"
