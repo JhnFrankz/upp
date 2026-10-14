@@ -366,6 +366,18 @@ func TestRunUpdate_GatingMatrix(t *testing.T) {
 // path. The owner is resolved by OS platform key (the WU1 gotcha: platform
 // constants, not runtime.GOOS).
 
+func timeoutErr(name, op string, err error) error {
+	return engine.TimeoutErr(name, op, err)
+}
+
+func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.UpdatePolicy {
+	return engine.ResolveEffectiveUpdatePolicy(a, osName, allAdapters...)
+}
+
+func resolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
+	return engine.ResolvingOwner(a, osName, allAdapters...)
+}
+
 // TestResolvingOwner proves resolvingOwner returns the manager adapter that
 // owns a given adapter on a given OS, or nil when standalone (verify WARNING:
 // cli.resolvingOwner 50% coverage). It exercises both branches directly: the

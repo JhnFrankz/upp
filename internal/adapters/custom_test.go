@@ -461,30 +461,6 @@ func TestExtractBaseCommand(t *testing.T) {
 	}
 }
 
-func TestIsVersionLike(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"1.2.3", true},
-		{"v1.2.3", true}, // leading "v" stripped, then valid version
-		{"1.2", true},
-		{"abc", false},
-		{"", false},
-		{"1.2.3-rc1", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			// Test the full extraction path
-			got := isVersionLike(tt.input)
-			if got != tt.want {
-				t.Errorf("isVersionLike(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestShellExec(t *testing.T) {
 	setExecFakes(t, execFakes{
 		shell: map[string]fakeResult{

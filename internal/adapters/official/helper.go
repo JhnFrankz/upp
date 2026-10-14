@@ -119,12 +119,6 @@ var (
 	cachedLinuxManager string
 )
 
-func resetLinuxManagerCache() {
-	linuxManagerMu.Lock()
-	cachedLinuxManager = ""
-	linuxManagerMu.Unlock()
-}
-
 // defaultLinuxManager resolves the default Linux package manager for official tools.
 // It returns "pacman" if apt is absent and pacman is present on PATH, otherwise "apt".
 func defaultLinuxManager() string {
@@ -161,20 +155,6 @@ func extractVersion(output string) string {
 // extractVersionFromString extracts a version from a version string or command output.
 func extractVersionFromString(s string) string {
 	return version.ExtractVersionFromString(s)
-}
-
-// parseVersionFromHeader extracts a version from the first line (header) of command output.
-func parseVersionFromHeader(out string) string {
-	for len(out) > 0 {
-		var line string
-		line, out, _ = strings.Cut(out, "\n")
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		return extractVersionFromString(line)
-	}
-	return ""
 }
 
 // isVersionLike returns true if the string looks like a version number.
@@ -265,11 +245,6 @@ func commandFailureErr(tool, stderr string, err error) error {
 func isExitCode(err error, code int) bool {
 	var exitErr *exec.ExitError
 	return errors.As(err, &exitErr) && exitErr.ExitCode() == code
-}
-
-// formatUpdateCmd returns a human-readable description of the update command.
-func formatUpdateCmd(cmd string) string {
-	return fmt.Sprintf("exec: %s", cmd)
 }
 
 // wingetSelfID is the manifest Id that identifies Windows Package Manager

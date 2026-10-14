@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
 )
@@ -70,13 +69,4 @@ func adapterByID(adapterList []adapters.Adapter) map[string]adapters.Adapter {
 		m[toolSelectionID(a)] = a
 	}
 	return m
-}
-
-// buildAdapterList resolves and returns the list of adapters for enabled tools
-// from the configuration. It serves as a CLI-layer helper for adapter resolution
-// used by integration tests and direct callers.
-func buildAdapterList(cfg *config.Config, osName string) []adapters.Adapter {
-	eng := engine.New(cfg, osName)
-	res, _ := eng.Resolve(engine.Filter{})
-	return res
 }
