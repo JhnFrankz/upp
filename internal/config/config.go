@@ -274,11 +274,10 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 		// A non-empty manager value naming something other than a known
 		// manager-kind official tool is IGNORED (the tool proceeds standalone)
 		// and a warning is emitted — forward-compatible. Empty is a valid
-		// "no manager" declaration.
+		// "no manager" declaration. Validate is strictly read-only (CQS) and
+		// emits the warning without mutating the in-memory config struct.
 		if custom.Manager != "" && !catalog.IsManager(custom.Manager) {
 			_, _ = fmt.Fprintf(w, "Warning: custom tool %q: unknown manager %q ignored; tool proceeds standalone\n", id, custom.Manager)
-			custom.Manager = ""
-			cfg.Custom[id] = custom
 		}
 	}
 
