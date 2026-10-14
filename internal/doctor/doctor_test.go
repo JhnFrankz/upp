@@ -917,9 +917,11 @@ type mockEnvToolAdapter struct {
 	detected bool
 }
 
-func (m *mockEnvToolAdapter) Name() string                                    { return m.name }
-func (m *mockEnvToolAdapter) Detect() bool                                    { return m.detected }
-func (m *mockEnvToolAdapter) Check(context.Context) (adapters.UpdateInfo, error) { return adapters.UpdateInfo{}, nil }
+func (m *mockEnvToolAdapter) Name() string { return m.name }
+func (m *mockEnvToolAdapter) Detect() bool { return m.detected }
+func (m *mockEnvToolAdapter) Check(context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
 func (m *mockEnvToolAdapter) Update(context.Context, bool) (adapters.Result, error) {
 	return adapters.Result{}, nil
 }
