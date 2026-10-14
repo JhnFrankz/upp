@@ -5,6 +5,8 @@ package security
 import (
 	"regexp"
 	"strings"
+
+	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // TrustLevel represents how much the system trusts a tool adapter.
@@ -121,20 +123,20 @@ func syncPipeTargets() {
 // ClassifyCommand uses a hybrid approach to determine the risk level of a command.
 // It checks keyword matching first, then pattern matching for chaining/piping.
 func ClassifyCommand(cmd string) RiskLevel {
-	if (containsFold(cmd, "eval") || containsFold(cmd, "sudo") || containsFold(cmd, "doas") || containsFold(cmd, "pkexec") || containsFold(cmd, "runas")) && reHighRiskWord.MatchString(cmd) {
+	if (platform.ContainsFold(cmd, "eval") || platform.ContainsFold(cmd, "sudo") || platform.ContainsFold(cmd, "doas") || platform.ContainsFold(cmd, "pkexec") || platform.ContainsFold(cmd, "runas")) && reHighRiskWord.MatchString(cmd) {
 		return RiskHigh
 	}
 
 	// 1. Keyword matching — high risk first (short-circuits).
 	for _, kw := range highRiskKeywordsLower {
-		if containsFold(cmd, kw) {
+		if platform.ContainsFold(cmd, kw) {
 			return RiskHigh
 		}
 	}
 
 	// 2. Keyword matching — medium risk.
 	for _, kw := range mediumRiskKeywordsLower {
-		if containsFold(cmd, kw) {
+		if platform.ContainsFold(cmd, kw) {
 			return RiskMedium
 		}
 	}
@@ -188,7 +190,7 @@ func hasPipeToShell(cmd string) bool {
 		return false
 	}
 	for _, target := range pipeTargets {
-		if containsFold(cmd, target) {
+		if platform.ContainsFold(cmd, target) {
 			return true
 		}
 	}

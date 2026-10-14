@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/version"
@@ -41,7 +42,7 @@ var (
 			// Own process group so the timeout can kill shell grandchildren
 			// (curl|tar, sudo apt, brew...) too — the direct child alone is
 			// not enough for the compound commands every adapter runs.
-			setpgid(cmd)
+			adapters.Setpgid(cmd)
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
@@ -60,7 +61,7 @@ var (
 			// Own process group so the timeout can kill descendants too
 			// (npm/pnpm workers holding the pipes): the direct child alone
 			// is not enough, exactly like runCmdFn's shell path.
-			setpgid(cmd)
+			adapters.Setpgid(cmd)
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
@@ -79,7 +80,7 @@ var (
 			// Own process group so the timeout can kill descendants too
 			// (workers holding the pipes): the direct child alone is
 			// not enough, exactly like runCmdFn's shell path.
-			setpgid(cmd)
+			adapters.Setpgid(cmd)
 		}
 		return adapters.RunCommandWithTimeout(ctx, cmd)
 	}
@@ -406,37 +407,20 @@ func parseScoopStatusOutput(out string) (current, latest string, found bool) {
 	return "", "", false
 }
 
-// containsFold reports whether substr is within s, ASCII case-insensitively without heap allocations.
-func containsFold(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
+// truncate shortens a string to maxLen characters, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
 	}
-	if len(s) < len(substr) {
-		return false
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "")
 	}
-	limit := len(s) - len(substr)
-	for i := 0; i <= limit; i++ {
-		match := true
-		for j := 0; j < len(substr); j++ {
-			c1 := s[i+j]
-			c2 := substr[j]
-			if c1 == c2 {
-				continue
-			}
-			if c1 >= 'A' && c1 <= 'Z' {
-				c1 += 'a' - 'A'
-			}
-			if c2 >= 'A' && c2 <= 'Z' {
-				c2 += 'a' - 'A'
-			}
-			if c1 != c2 {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
+	if len(s) <= maxLen {
+		return s
 	}
-	return false
+	// Rewind to the nearest valid UTF-8 rune start boundary to prevent splitting runes
+	for maxLen > 0 && !utf8.RuneStart(s[maxLen]) {
+		maxLen--
+	}
+	return s[:maxLen] + "..."
 }

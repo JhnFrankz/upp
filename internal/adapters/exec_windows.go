@@ -7,10 +7,14 @@ import (
 	"strconv"
 )
 
-// setpgid is a no-op on Windows: the process-group primitive does not exist,
+// Setpgid is a no-op on Windows: the process-group primitive does not exist,
 // so the timeout relies on the context kill, which terminates the direct child
 // (and, for CommandContext, the process tree via job objects).
-func setpgid(*exec.Cmd) {}
+func Setpgid(*exec.Cmd) {}
+
+func setpgid(cmd *exec.Cmd) {
+	Setpgid(cmd)
+}
 
 // killProcessGroup terminates the process tree on Windows using taskkill.
 func killProcessGroup(cmd *exec.Cmd) {
