@@ -125,6 +125,69 @@ func TestDiscoverTargets_EmptyExecPath(t *testing.T) {
 	}
 }
 
+func TestDiscoverTargets_WindowsBackups(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	binDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir binDir: %v", err)
+	}
+
+	exeBin := filepath.Join(binDir, "upp.exe")
+	if err := os.WriteFile(exeBin, []byte("binary-content"), 0o755); err != nil {
+		t.Fatalf("write exeBin: %v", err)
+	}
+
+	// Windows self-update backup: upp.backup.<timestamp>.exe
+	backup1 := filepath.Join(binDir, "upp.backup.20261012.150405.exe")
+	if err := os.WriteFile(backup1, []byte("backup-1"), 0o755); err != nil {
+		t.Fatalf("write backup1: %v", err)
+	}
+	// Windows legacy/alternative backup: upp.exe.backup.20261012
+	backup2 := filepath.Join(binDir, "upp.exe.backup.20261012")
+	if err := os.WriteFile(backup2, []byte("backup-2"), 0o755); err != nil {
+		t.Fatalf("write backup2: %v", err)
+	}
+	// Unrelated files that should not match
+	unrelated1 := filepath.Join(binDir, "upp.backup.txt")
+	_ = os.WriteFile(unrelated1, []byte("unrelated"), 0o644)
+	unrelated2 := filepath.Join(binDir, "other.backup.20261012.exe")
+	_ = os.WriteFile(unrelated2, []byte("unrelated"), 0o644)
+
+	backup1Resolved, err := filepath.EvalSymlinks(backup1)
+	if err != nil {
+		t.Fatalf("eval backup1: %v", err)
+	}
+	backup2Resolved, err := filepath.EvalSymlinks(backup2)
+	if err != nil {
+		t.Fatalf("eval backup2: %v", err)
+	}
+
+	targets, err := uninstall.DiscoverTargets(exeBin, "", "")
+	if err != nil {
+		t.Fatalf("DiscoverTargets failed: %v", err)
+	}
+
+	var foundBackup1, foundBackup2 int
+	for _, target := range targets {
+		if target.Type == uninstall.TargetBackup {
+			if target.Path == backup1Resolved {
+				foundBackup1++
+			}
+			if target.Path == backup2Resolved {
+				foundBackup2++
+			}
+		}
+	}
+
+	if foundBackup1 != 1 {
+		t.Errorf("expected backup1 (upp.backup.*.exe) to be discovered once, got %d", foundBackup1)
+	}
+	if foundBackup2 != 1 {
+		t.Errorf("expected backup2 (upp.exe.backup.*) to be discovered once, got %d", foundBackup2)
+	}
+}
+
 func TestExecute_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 

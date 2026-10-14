@@ -51,7 +51,7 @@ func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 			}
 			return checker.CheckPackage(ctx, pkg)
 		}
-		return adapters.UpdateInfo{}, fmt.Errorf("gh's manager %s does not support per-package checks", runtimeGOOSFn())
+		return adapters.UpdateInfo{}, fmt.Errorf("gh's manager %s does not support per-package checks", owner.Name())
 	}
 
 	return adapters.UpdateInfo{}, fmt.Errorf("gh has no resolving owner on %s", runtimeGOOSFn())
@@ -77,7 +77,7 @@ func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 			}
 			return updater.UpdatePackage(ctx, pkg)
 		}
-		return adapters.Result{Success: false}, fmt.Errorf("gh's manager %s does not support per-package updates", runtimeGOOSFn())
+		return adapters.Result{Success: false}, fmt.Errorf("gh's manager %s does not support per-package updates", owner.Name())
 	}
 
 	// Fail-closed fallback if ownership map ever regresses.

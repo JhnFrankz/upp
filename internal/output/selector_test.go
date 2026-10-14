@@ -2,10 +2,12 @@ package output
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -466,5 +468,46 @@ func TestSelector_ColorRepositioningAndCursorControl(t *testing.T) {
 	// Must clear line with \r\x1b[K.
 	if !strings.Contains(out, "\r\x1b[K") {
 		t.Errorf("expected line clear sequence \\r\\x1b[K in output, got:\n%q", out)
+	}
+}
+
+func TestSelector_BareEsc_NonBlocking(t *testing.T) {
+	opts := []SelectOption{
+		{ID: "tool1", Label: "tool1"},
+	}
+
+	pr, pw := io.Pipe()
+	defer func() { _ = pr.Close() }()
+
+	go func() {
+		// Write ONLY bare \x1b without closing the pipe.
+		// If Peek(1) blocks waiting for more input, Run will hang.
+		_, _ = pw.Write([]byte{0x1b})
+		defer func() { _ = pw.Close() }()
+	}()
+
+	var buf bytes.Buffer
+	sel := NewCheckboxSelector(&buf, pr, opts)
+
+	done := make(chan SelectResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		res, err := sel.Run()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- res
+	}()
+
+	select {
+	case res := <-done:
+		if !res.Canceled {
+			t.Errorf("expected Canceled=true, got %+v", res)
+		}
+	case err := <-errCh:
+		t.Fatalf("unexpected error: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("selector blocked indefinitely waiting on bare Esc key")
 	}
 }
