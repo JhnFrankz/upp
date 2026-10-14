@@ -39,6 +39,12 @@ type execFakes struct {
 	recordedCmds    *[][]string
 }
 
+func resetLinuxManagerCache() {
+	linuxManagerMu.Lock()
+	cachedLinuxManager = ""
+	linuxManagerMu.Unlock()
+}
+
 // setExecFakes swaps the package exec seam variables (runCmdFn,
 // runCmdArgsFn, lookPathFn) for the duration of the test and restores the
 // real implementations via t.Cleanup. No real subprocess ever runs.

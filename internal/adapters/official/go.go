@@ -556,13 +556,6 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 	return goInfo
 }
 
-// goTarballURL returns the go.dev Linux tarball URL for the given
-// architecture, so downloads match the running process instead of
-// hardcoding amd64.
-func goTarballURL(goarch string) string {
-	return fmt.Sprintf("https://go.dev/dl/$(curl -fsSL https://go.dev/VERSION?m=text | head -1).linux-%s.tar.gz", goarch)
-}
-
 // extractGoVersion extracts the version from "go version go1.22.0 linux/amd64".
 func extractGoVersion(output string) string {
 	// Format: "go version go1.22.0 linux/amd64"

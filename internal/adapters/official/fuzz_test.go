@@ -148,19 +148,3 @@ func FuzzExtractVersionFromString(f *testing.F) {
 		_ = got
 	})
 }
-
-func FuzzParseVersionFromHeader(f *testing.F) {
-	seeds := []string{
-		"ToolName v3.2.1 (c) 2026\nSecond line",
-		"v1.0",
-		"",
-	}
-	for _, seed := range seeds {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(t *testing.T, input string) {
-		got := parseVersionFromHeader(input)
-		_ = got
-	})
-}

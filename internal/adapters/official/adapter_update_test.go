@@ -534,11 +534,3 @@ func TestExtractGoVersion_EdgeCases(t *testing.T) {
 	}
 }
 
-// --- Helper Function Tests ---
-
-func TestFormatUpdateCmd(t *testing.T) {
-	got := formatUpdateCmd("brew upgrade")
-	if got != "exec: brew upgrade" {
-		t.Errorf("formatUpdateCmd = %q, want %q", got, "exec: brew upgrade")
-	}
-}

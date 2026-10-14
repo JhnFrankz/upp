@@ -273,6 +273,3 @@ func extractVersionFromOutput(output string) string {
 	return version.ExtractVersionFromOutput(output)
 }
 
-func isVersionLike(s string) bool {
-	return version.IsVersionLike(s)
-}

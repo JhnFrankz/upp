@@ -145,14 +145,6 @@ func BenchmarkExtractGoVersion(b *testing.B) {
 	}
 }
 
-func BenchmarkParseVersionFromHeader(b *testing.B) {
-	fixture := "ToolName v3.2.1 (c) 2026\nSecond line\nThird line\n"
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = parseVersionFromHeader(fixture)
-	}
-}
 
 func BenchmarkParseUvSelfUpdateOutput(b *testing.B) {
 	fixture := "uv 0.4.0 (installed)\nwould update to 0.5.0\n"
