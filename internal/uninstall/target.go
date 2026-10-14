@@ -53,13 +53,12 @@ func DiscoverTargets(execPath, configDir, cacheDir string) ([]Target, error) {
 	// 2. Historical backups in the binary directory
 	binDir := filepath.Dir(resolved)
 	binName := filepath.Base(resolved)
-	backupPrefix := binName + ".backup."
 
 	entries, err := os.ReadDir(binDir)
 	if err == nil {
 		for _, entry := range entries {
 			name := entry.Name()
-			if strings.HasPrefix(name, backupPrefix) {
+			if isBackupName(binName, name) {
 				backupPath := filepath.Join(binDir, name)
 				targets = append(targets, Target{
 					Type:   TargetBackup,
@@ -93,4 +92,18 @@ func DiscoverTargets(execPath, configDir, cacheDir string) ([]Target, error) {
 	}
 
 	return targets, nil
+}
+
+func isBackupName(binName, candidate string) bool {
+	if strings.HasPrefix(candidate, binName+".backup.") {
+		return true
+	}
+	ext := filepath.Ext(binName)
+	if strings.EqualFold(ext, ".exe") {
+		base := strings.TrimSuffix(binName, ext)
+		if strings.HasPrefix(candidate, base+".backup.") && strings.EqualFold(filepath.Ext(candidate), ".exe") {
+			return true
+		}
+	}
+	return false
 }
