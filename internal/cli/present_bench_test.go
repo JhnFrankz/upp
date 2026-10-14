@@ -1,4 +1,4 @@
-package output_test
+package cli
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/engine"
-	"github.com/JhnFrankz/upp/internal/output"
 )
 
 type benchAdapter struct {
@@ -27,7 +26,6 @@ func (b *benchAdapter) Info() adapters.ToolInfo {
 }
 
 func BenchmarkPresentGroups(b *testing.B) {
-	// Construct realistic 15 tools across 3 groups
 	toolNames := []string{
 		"brew", "gh", "node", "python", "go",
 		"rust", "git", "docker", "kubectl", "terraform",
@@ -72,6 +70,6 @@ func BenchmarkPresentGroups(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = output.PresentGroups(toolGroups, outcomes)
+		_ = presentGroups(toolGroups, outcomes)
 	}
 }

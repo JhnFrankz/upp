@@ -111,7 +111,7 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 		return fmt.Errorf("cannot check tools: %w", err)
 	}
 
-	groups := output.PresentGroups(toolGroups, outcomes)
+	groups := presentGroups(toolGroups, outcomes)
 	if len(groups) == 0 {
 		r.NoToolsConfigured()
 		return nil

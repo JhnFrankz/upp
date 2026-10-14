@@ -1,14 +1,13 @@
-package output
+package cli
 
 import (
 	"errors"
-	"slices"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/engine"
-	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/output"
 )
 
 func TestPresentGroups(t *testing.T) {
@@ -54,10 +53,10 @@ func TestPresentGroups(t *testing.T) {
 		// bun is intentionally missing from outcomes to test fallback to StatusSkipped
 	}
 
-	groups := PresentGroups(toolGroups, outcomes)
+	groups := presentGroups(toolGroups, outcomes)
 
 	if len(groups) != 2 {
-		t.Fatalf("PresentGroups returned %d groups, want 2", len(groups))
+		t.Fatalf("presentGroups returned %d groups, want 2", len(groups))
 	}
 
 	// First group: Homebrew
@@ -68,11 +67,11 @@ func TestPresentGroups(t *testing.T) {
 		t.Fatalf("group[0].Items len = %d, want 2", len(groups[0].Items))
 	}
 	// brew
-	if item := groups[0].Items[0]; item.ID != "brew" || item.Status != StatusCurrent || item.Version != "4.2.0" {
+	if item := groups[0].Items[0]; item.ID != "brew" || item.Status != output.StatusCurrent || item.Version != "4.2.0" {
 		t.Errorf("brew item = %+v, want ID=brew, Status=StatusCurrent, Version=4.2.0", item)
 	}
 	// gh
-	if item := groups[0].Items[1]; item.ID != "gh" || item.Status != StatusAvailable || item.Version != "2.40.0" {
+	if item := groups[0].Items[1]; item.ID != "gh" || item.Status != output.StatusAvailable || item.Version != "2.40.0" {
 		t.Errorf("gh item = %+v, want ID=gh, Status=StatusAvailable, Version=2.40.0", item)
 	}
 
@@ -84,11 +83,11 @@ func TestPresentGroups(t *testing.T) {
 		t.Fatalf("group[1].Items len = %d, want 2", len(groups[1].Items))
 	}
 	// npm
-	if item := groups[1].Items[0]; item.ID != "npm" || item.Status != StatusFailed || item.Version != "" {
+	if item := groups[1].Items[0]; item.ID != "npm" || item.Status != output.StatusFailed || item.Version != "" {
 		t.Errorf("npm item = %+v, want ID=npm, Status=StatusFailed, Version=\"\"", item)
 	}
 	// bun (missing outcome -> Skipped)
-	if item := groups[1].Items[1]; item.ID != "bun" || item.Status != StatusSkipped || item.Version != "" {
+	if item := groups[1].Items[1]; item.ID != "bun" || item.Status != output.StatusSkipped || item.Version != "" {
 		t.Errorf("bun item = %+v, want ID=bun, Status=StatusSkipped, Version=\"\"", item)
 	}
 }
@@ -110,11 +109,11 @@ func TestPresentGroups_StatusSkippedOutcome(t *testing.T) {
 		},
 	}
 
-	groups := PresentGroups(toolGroups, outcomes)
+	groups := presentGroups(toolGroups, outcomes)
 	if len(groups) != 1 || len(groups[0].Items) != 1 {
 		t.Fatalf("expected 1 group with 1 item, got %+v", groups)
 	}
-	if item := groups[0].Items[0]; item.Status != StatusSkipped {
+	if item := groups[0].Items[0]; item.Status != output.StatusSkipped {
 		t.Errorf("item status = %v, want StatusSkipped", item.Status)
 	}
 }
@@ -136,44 +135,11 @@ func TestPresentGroups_StatusUnknownOutcome(t *testing.T) {
 		},
 	}
 
-	groups := PresentGroups(toolGroups, outcomes)
+	groups := presentGroups(toolGroups, outcomes)
 	if len(groups) != 1 || len(groups[0].Items) != 1 {
 		t.Fatalf("expected 1 group with 1 item, got %+v", groups)
 	}
-	if item := groups[0].Items[0]; item.Status != StatusSkipped {
+	if item := groups[0].Items[0]; item.Status != output.StatusSkipped {
 		t.Errorf("item status = %v, want StatusSkipped (never StatusAvailable)", item.Status)
-	}
-}
-
-func TestBackwardCompatibilityHelpers(t *testing.T) {
-	tools := []adapters.Adapter{
-		official.AdapterByName("npm"),
-		official.AdapterByName("gh"),
-		official.AdapterByName("brew"),
-	}
-
-	// GroupOrder
-	ordered := GroupOrder(tools, platform.OSMacOS)
-	names := make([]string, len(ordered))
-	for i, a := range ordered {
-		names[i] = a.Name()
-	}
-	if !slices.Equal(names, []string{"brew", "gh", "npm"}) {
-		t.Errorf("GroupOrder = %v, want [brew gh npm]", names)
-	}
-
-	// OwnerGroupLabel
-	label := OwnerGroupLabel(official.AdapterByName("gh"), platform.OSMacOS, tools)
-	if label != "Homebrew" {
-		t.Errorf("OwnerGroupLabel = %q, want Homebrew", label)
-	}
-
-	// GroupByOwner
-	groups := GroupByOwner(tools, platform.OSMacOS)
-	if len(groups) < 1 {
-		t.Fatalf("GroupByOwner returned empty groups")
-	}
-	if groups[0].Header != "Homebrew" {
-		t.Errorf("GroupByOwner header = %q, want Homebrew", groups[0].Header)
 	}
 }
