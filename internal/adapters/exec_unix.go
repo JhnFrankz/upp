@@ -7,11 +7,15 @@ import (
 	"syscall"
 )
 
-// setpgid marks cmd to run in its own process group on Unix so a timeout
+// Setpgid marks cmd to run in its own process group on Unix so a timeout
 // can kill shell grandchildren too. Windows has no process-group primitive;
 // the build-tag split keeps syscall.SysProcAttr.Setpgid out of Windows builds.
-func setpgid(cmd *exec.Cmd) {
+func Setpgid(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+}
+
+func setpgid(cmd *exec.Cmd) {
+	Setpgid(cmd)
 }
 
 // killProcessGroup kills the command's whole process group on Unix. On

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -137,7 +138,7 @@ func isExternalManagerError(err error, output string) bool {
 	if !isCode2 {
 		return false
 	}
-	return containsFold(output, "external package manager") || containsFold(err.Error(), "external package manager")
+	return platform.ContainsFold(output, "external package manager") || platform.ContainsFold(err.Error(), "external package manager")
 }
 
 func parseUvSelfUpdateOutput(output string) bool {
@@ -145,12 +146,12 @@ func parseUvSelfUpdateOutput(output string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if containsFold(trimmed, "up to date") {
+	if platform.ContainsFold(trimmed, "up to date") {
 		return false
 	}
-	return containsFold(trimmed, "would update") ||
-		containsFold(trimmed, "new version") ||
-		containsFold(trimmed, "updating")
+	return platform.ContainsFold(trimmed, "would update") ||
+		platform.ContainsFold(trimmed, "new version") ||
+		platform.ContainsFold(trimmed, "updating")
 }
 
 func parseUvToolListOutdatedOutput(output string) bool {
@@ -158,7 +159,7 @@ func parseUvToolListOutdatedOutput(output string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if containsFold(trimmed, "no tools installed") || containsFold(trimmed, "no outdated tools") {
+	if platform.ContainsFold(trimmed, "no tools installed") || platform.ContainsFold(trimmed, "no outdated tools") {
 		return false
 	}
 	return true

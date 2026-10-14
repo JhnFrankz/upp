@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -220,22 +219,4 @@ func (a *AptAdapter) CurrentVersion(ctx context.Context) (string, error) {
 	}
 	current, _ := parseAptPolicyOutput(stdout)
 	return current, nil
-}
-
-// truncate shortens a string to maxLen characters, appending "..." if truncated.
-func truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
-	}
-	if !utf8.ValidString(s) {
-		s = strings.ToValidUTF8(s, "")
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	// Rewind to the nearest valid UTF-8 rune start boundary to prevent splitting runes
-	for maxLen > 0 && !utf8.RuneStart(s[maxLen]) {
-		maxLen--
-	}
-	return s[:maxLen] + "..."
 }
