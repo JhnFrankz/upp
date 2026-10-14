@@ -285,3 +285,31 @@ func TestConfirmAction_CustomLowRisk_Interactive(t *testing.T) {
 		})
 	}
 }
+
+func TestConfirmAction_WriterCapture(t *testing.T) {
+	t.Parallel()
+	var out strings.Builder
+	cfg := ConfirmConfig{
+		ToolName:   "mytool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskHigh,
+		Command:    "sudo mytool --update",
+		CI:         false,
+		Privileges: []string{"sudo"},
+		Reader:     strings.NewReader("y\n"),
+		Writer:     &out,
+	}
+
+	got := ConfirmAction(cfg)
+	if got != ConfirmProceed {
+		t.Errorf("ConfirmAction() = %v, want ConfirmProceed", got)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Proceed? [y/N]") {
+		t.Errorf("expected prompt text in Writer, got: %q", output)
+	}
+	if !strings.Contains(output, "Command: sudo mytool --update") {
+		t.Errorf("expected command details in Writer, got: %q", output)
+	}
+}
