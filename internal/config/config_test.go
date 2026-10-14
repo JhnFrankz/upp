@@ -496,9 +496,9 @@ func TestValidate_UnknownManagerIgnoredWarn(t *testing.T) {
 		t.Fatalf("Validate() with an unknown manager must not error (forward-compatible): %v", err)
 	}
 
-	// The unknown manager is ignored: the tool proceeds standalone.
-	if cell, ok := cfg.Custom["mytool"]; !ok || cell.Manager != "" {
-		t.Errorf("unknown manager must be ignored (standalone), got %+v", cfg.Custom["mytool"])
+	// Validate is strictly read-only (CQS): it must NOT mutate cfg.Custom["mytool"].Manager.
+	if cell, ok := cfg.Custom["mytool"]; !ok || cell.Manager != "bogus" {
+		t.Errorf("Validate() must preserve declared manager on struct (read-only CQS), got %+v", cfg.Custom["mytool"])
 	}
 
 	if buf.Len() == 0 {
@@ -543,6 +543,36 @@ func TestValidate_ManagerRoundTrip(t *testing.T) {
 	}
 	if cfg.Custom["mytool"].Manager != "brew" {
 		t.Errorf("Manager round-trip = %q, want %q", cfg.Custom["mytool"].Manager, "brew")
+	}
+}
+
+// TestValidate_SavePreservesUnknownManagerRoundTrip pins that validating and
+// saving a config does not strip forward-compatible unknown manager values.
+func TestValidate_SavePreservesUnknownManagerRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	testConfigDir(t, tmpDir)
+
+	cfg := DefaultConfigWithDefaults()
+	cfg.Custom["mytool"] = CustomTool{
+		Command: "mytool --update",
+		Manager: "future-pm",
+	}
+
+	var buf bytes.Buffer
+	if err := Validate(cfg, &buf); err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.Custom["mytool"].Manager != "future-pm" {
+		t.Errorf("Save/Load must preserve declared manager (CQS), got %q", loaded.Custom["mytool"].Manager)
 	}
 }
 
