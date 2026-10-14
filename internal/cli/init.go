@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -23,6 +24,7 @@ var ErrInitDeniedCI = errors.New("init denied in --ci mode")
 
 type initDeps struct {
 	acquireLock func() (*lock.Lock, error)
+	scanPrompt  func() string
 }
 
 // NewInitCommand creates the `upp init` command.
@@ -97,8 +99,13 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		fmt.Println()
 		fmt.Println("  Config already exists. Overwrite with new detection?")
 		fmt.Print("  [y/N] ")
-		var response string
-		if _, err := fmt.Scanln(&response); err != nil || (response != "y" && response != "yes") {
+		scanFn := deps.scanPrompt
+		if scanFn == nil {
+			scanFn = defaultScanPrompt
+		}
+		response := scanFn()
+		norm := strings.ToLower(strings.TrimSpace(response))
+		if norm != "y" && norm != "yes" {
 			fmt.Println("  Canceled.")
 			return nil
 		}

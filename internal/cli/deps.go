@@ -1,6 +1,10 @@
 package cli
 
-import "github.com/JhnFrankz/upp/internal/lock"
+import (
+	"fmt"
+
+	"github.com/JhnFrankz/upp/internal/lock"
+)
 
 // cliDeps is the package-level injection point for the cobra entry points.
 // Each New*Command RunE body passes the matching field down to its run*
@@ -22,6 +26,7 @@ var cliDeps = struct {
 }{
 	init: initDeps{
 		acquireLock: defaultAcquireLock,
+		scanPrompt:  defaultScanPrompt,
 	},
 }
 
@@ -31,4 +36,10 @@ func defaultAcquireLock() (*lock.Lock, error) {
 		return nil, err
 	}
 	return lock.Acquire(path)
+}
+
+func defaultScanPrompt() string {
+	var response string
+	_, _ = fmt.Scanln(&response)
+	return response
 }

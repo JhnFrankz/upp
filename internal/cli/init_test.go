@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/lock"
 )
 
@@ -56,4 +57,58 @@ func TestInit_LockAcquiredAndReleased(t *testing.T) {
 		t.Fatalf("lock was not released after runInit returned: %v", err)
 	}
 	_ = l2.Release()
+}
+
+func TestInit_OverwritePrompt_CaseInsensitive(t *testing.T) {
+	cases := []struct {
+		input       string
+		expectAbort bool
+	}{
+		{"y", false},
+		{"yes", false},
+		{"Y", false},
+		{"YES", false},
+		{" Yes ", false},
+		{"n", true},
+		{"no", true},
+		{"", true},
+		{"other", true},
+	}
+
+	for _, tc := range cases {
+		t.Run("input="+tc.input, func(t *testing.T) {
+			probeHome(t)
+			sentinelConfig := config.DefaultConfig()
+			sentinelConfig.Custom = map[string]config.CustomTool{
+				"sentinel": {Command: "echo sentinel"},
+			}
+			if err := config.Save(sentinelConfig); err != nil {
+				t.Fatalf("config.Save: %v", err)
+			}
+
+			deps := initDeps{
+				scanPrompt: func() string {
+					return tc.input
+				},
+			}
+
+			err := runInit(context.Background(), &GlobalFlags{CI: false}, deps)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			loaded, err := config.Load()
+			if err != nil {
+				t.Fatalf("config.Load: %v", err)
+			}
+
+			_, hasSentinel := loaded.Custom["sentinel"]
+			if tc.expectAbort && !hasSentinel {
+				t.Errorf("expected abort with sentinel preserved, but sentinel was overwritten for input %q", tc.input)
+			}
+			if !tc.expectAbort && hasSentinel {
+				t.Errorf("expected overwrite removing sentinel, but sentinel remains for input %q", tc.input)
+			}
+		})
+	}
 }
