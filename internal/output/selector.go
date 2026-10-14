@@ -191,8 +191,12 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 			return SelectResult{Canceled: true}, nil
 		case 0x1b:
 			// Escape either starts an arrow sequence (\x1b[A / \x1b[B) or
-			// cancels on its own; any other \x1b-prefixed sequence also
-			// cancels (raw-mode terminals send bare \x1b for Esc).
+			// cancels on its own (raw-mode terminals send bare \x1b for Esc).
+			// If no subsequent bytes were received in the same burst (br.Buffered() == 0),
+			// cancel immediately without blocking on a synchronous Peek/Read.
+			if br.Buffered() == 0 {
+				return SelectResult{Canceled: true}, nil
+			}
 			next, err := br.Peek(1)
 			if err != nil || next[0] != '[' {
 				return SelectResult{Canceled: true}, nil
