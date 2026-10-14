@@ -59,6 +59,8 @@ func DefaultDoctorDeps() DoctorDeps {
 }
 
 var (
+	runtimeGOOSFn = func() string { return runtime.GOOS }
+
 	pathEnvMu      sync.RWMutex
 	cachedPathEnv  string
 	cachedPathDirs []string
@@ -109,7 +111,7 @@ func defaultFindAllPaths(name string) []string {
 	seen := make(map[string]bool)
 
 	exts := unixExts
-	if runtime.GOOS == "windows" {
+	if runtimeGOOSFn() == "windows" {
 		exts = windowsExts
 	}
 
@@ -136,7 +138,7 @@ func defaultFindAllPaths(name string) []string {
 			}
 			fi, err := os.Stat(target)
 			if err == nil && !fi.IsDir() {
-				if runtime.GOOS != "windows" && (fi.Mode().Perm()&0o111) == 0 {
+				if runtimeGOOSFn() != "windows" && (fi.Mode().Perm()&0o111) == 0 {
 					continue
 				}
 				clean := target
@@ -661,6 +663,18 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 	sort.Strings(names)
 
 	for _, name := range names {
+		if isShellFunctionTool(name) {
+			if a := findAdapter(deps.Adapters, name); a != nil && a.Detect() {
+				results = append(results, CheckResult{
+					Category: "Tool Paths",
+					Name:     name,
+					Status:   SeverityOK,
+					Message:  fmt.Sprintf("%s detected via environment", name),
+				})
+				continue
+			}
+		}
+
 		var paths []string
 		if deps.FindAllPaths != nil {
 			paths = deps.FindAllPaths(name)
@@ -702,6 +716,19 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 	}
 
 	return results
+}
+
+func isShellFunctionTool(name string) bool {
+	return name == "nvm"
+}
+
+func findAdapter(adapters []adapters.Adapter, name string) adapters.Adapter {
+	for _, a := range adapters {
+		if a.Name() == name {
+			return a
+		}
+	}
+	return nil
 }
 
 func checkNetwork(ctx context.Context, results []CheckResult, deps DoctorDeps) []CheckResult {
