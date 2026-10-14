@@ -8,6 +8,9 @@ import (
 // For each official tool on the current platform that is not already
 // configured, it adds a ToolConfig with Enabled=true.
 func ApplyDefaults(cfg *Config) {
+	if cfg == nil {
+		return
+	}
 	p, err := detectPlatformFn()
 	if err != nil {
 		if cfg.Tools == nil {

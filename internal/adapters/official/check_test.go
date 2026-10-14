@@ -1802,6 +1802,86 @@ Docker Desktop                Docker.DockerDesktop           4.28.0         4.29
 	if notFound {
 		t.Fatal("expected found=false for missing package")
 	}
+
+	bannerFixture := `Notice: Checking updates for GitHub.cli
+Name                          Id                             Version        Available      Source
+-------------------------------------------------------------------------------------------------
+GitHub CLI                    GitHub.cli                     2.40.0         2.45.0         winget
+`
+	curB, latB, foundB := parseWingetPackageUpgradeOutput(bannerFixture, "github.cli")
+	if !foundB || curB != "2.40.0" || latB != "2.45.0" {
+		t.Fatalf("parseWingetPackageUpgradeOutput with banner got (%q, %q, %v), want (2.40.0, 2.45.0, true)", curB, latB, foundB)
+	}
+}
+
+func TestParseBrewOutdatedJSON(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantCurrent string
+		wantLatest  string
+		wantFound   bool
+	}{
+		{
+			name:        "empty string",
+			input:       "",
+			wantCurrent: "",
+			wantLatest:  "",
+			wantFound:   false,
+		},
+		{
+			name:        "empty array",
+			input:       "[]",
+			wantCurrent: "",
+			wantLatest:  "",
+			wantFound:   false,
+		},
+		{
+			name:        "v1 array format with update",
+			input:       `[{"name":"gh","installed_versions":["2.40.0"],"current_version":"2.45.0"}]`,
+			wantCurrent: "2.40.0",
+			wantLatest:  "2.45.0",
+			wantFound:   true,
+		},
+		{
+			name:        "v1 array format up to date",
+			input:       `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.45.0"}]`,
+			wantCurrent: "2.45.0",
+			wantLatest:  "2.45.0",
+			wantFound:   false,
+		},
+		{
+			name:        "v2 object formulae format with update",
+			input:       `{"formulae":[{"name":"gh","installed_versions":["2.40.0"],"current_version":"2.45.0"}],"casks":[]}`,
+			wantCurrent: "2.40.0",
+			wantLatest:  "2.45.0",
+			wantFound:   true,
+		},
+		{
+			name:        "v2 object casks format with update",
+			input:       `{"formulae":[],"casks":[{"name":"docker","installed_versions":["4.28.0"],"current_version":"4.29.0"}]}`,
+			wantCurrent: "4.28.0",
+			wantLatest:  "4.29.0",
+			wantFound:   true,
+		},
+		{
+			name:        "malformed json",
+			input:       `{"corrupt`,
+			wantCurrent: "",
+			wantLatest:  "",
+			wantFound:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCur, gotLat, gotFound := parseBrewOutdatedJSON(tt.input)
+			if gotCur != tt.wantCurrent || gotLat != tt.wantLatest || gotFound != tt.wantFound {
+				t.Errorf("parseBrewOutdatedJSON(%q) = (%q, %q, %v), want (%q, %q, %v)",
+					tt.input, gotCur, gotLat, gotFound, tt.wantCurrent, tt.wantLatest, tt.wantFound)
+			}
+		})
+	}
 }
 
 func TestParseScoopStatusOutput(t *testing.T) {

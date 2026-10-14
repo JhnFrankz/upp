@@ -522,6 +522,10 @@ func TestExtractGoVersion_EdgeCases(t *testing.T) {
 		{"go version go1.19.0", "1.19.0"},
 		{"", ""},
 		{"not go version", ""},
+		{"good morning", ""},
+		{"golang version 1.22.0", "1.22.0"},
+		{"go version (go1.22.0)", "1.22.0"},
+		{"go version devel go1.22-abc1234 linux/amd64", "1.22-abc1234"},
 	}
 
 	for _, tt := range tests {

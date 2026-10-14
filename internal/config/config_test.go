@@ -50,6 +50,11 @@ func TestValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "nil config",
+			cfg:     nil,
+			wantErr: true,
+		},
+		{
 			name: "invalid version",
 			cfg: &Config{
 				Version:  0,
@@ -645,4 +650,9 @@ package = "ripgrep"
 	if cfg.Custom["rg"].Package != "ripgrep" {
 		t.Errorf("CustomTool.Package = %q, want ripgrep", cfg.Custom["rg"].Package)
 	}
+}
+
+func TestApplyDefaults_Nil(t *testing.T) {
+	// Should not panic on nil config
+	ApplyDefaults(nil)
 }

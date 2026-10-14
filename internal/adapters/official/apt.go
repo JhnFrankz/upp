@@ -65,7 +65,7 @@ func parseAptPolicyOutput(out string) (string, string) {
 	if current == "" || current == "(none)" {
 		current = "unknown"
 	}
-	if latest == "" {
+	if latest == "" || latest == "(none)" {
 		latest = "unknown"
 	}
 	return current, latest
@@ -224,6 +224,12 @@ func (a *AptAdapter) CurrentVersion(ctx context.Context) (string, error) {
 
 // truncate shortens a string to maxLen characters, appending "..." if truncated.
 func truncate(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "")
+	}
 	if len(s) <= maxLen {
 		return s
 	}

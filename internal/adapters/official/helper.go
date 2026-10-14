@@ -262,11 +262,17 @@ type brewOutdatedEntry struct {
 	CurrentVersion    string   `json:"current_version"`
 }
 
+type brewOutdatedV2 struct {
+	Formulae []brewOutdatedEntry `json:"formulae"`
+	Casks    []brewOutdatedEntry `json:"casks"`
+}
+
 // parseBrewOutdatedJSON is a PURE, fail-closed function that parses the JSON
 // array produced by `brew outdated --json <pkg>`. brew emits an empty array
 // `[]` when the formula is current (or not installed), so found=false and both
 // versions empty means "no update". When the formula IS outdated, the single
 // element carries the oldest installed version and the newest current_version.
+// Both v1 JSON arrays and v2 JSON objects (with formulae or casks) are supported.
 // Malformed JSON yields the empty fail-closed tuple (no error), matching the
 // fail-closed helper convention — the caller distinguishes that from a real
 // subprocess failure via commandOutputErr.
@@ -277,7 +283,17 @@ func parseBrewOutdatedJSON(out string) (current, latest string, found bool) {
 	}
 	var entries []brewOutdatedEntry
 	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
-		return "", "", false
+		var v2 brewOutdatedV2
+		if errV2 := json.Unmarshal([]byte(trimmed), &v2); errV2 == nil {
+			if len(v2.Formulae) > 0 {
+				entries = v2.Formulae
+			} else if len(v2.Casks) > 0 {
+				entries = v2.Casks
+			}
+		}
+		if len(entries) == 0 {
+			return "", "", false
+		}
 	}
 	if len(entries) == 0 {
 		return "", "", false
@@ -333,7 +349,7 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 				if c != "" && l != "" {
 					return c, l, true
 				}
-				return "", "", false
+				break
 			}
 		}
 	}

@@ -19,6 +19,18 @@ func TestTruncate_UTF8RuneBoundary(t *testing.T) {
 			want:   "",
 		},
 		{
+			name:   "zero maxLen",
+			input:  "hello",
+			maxLen: 0,
+			want:   "",
+		},
+		{
+			name:   "negative maxLen",
+			input:  "hello",
+			maxLen: -1,
+			want:   "",
+		},
+		{
 			name:   "ascii shorter than maxLen",
 			input:  "hello",
 			maxLen: 10,
@@ -121,6 +133,14 @@ Candidate: 1.2.3
 `,
 			wantCurrent: "unknown",
 			wantLatest:  "1.2.3",
+		},
+		{
+			name: "none candidate",
+			input: `Installed: 1.2.3
+Candidate: (none)
+`,
+			wantCurrent: "1.2.3",
+			wantLatest:  "unknown",
 		},
 		{
 			name: "empty values",
