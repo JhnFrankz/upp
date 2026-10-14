@@ -245,6 +245,9 @@ func Save(cfg *Config) error {
 // compatibility) are written to the optional warn writers, defaulting to
 // os.Stderr. The variadic form keeps existing single-arg callers working.
 func Validate(cfg *Config, warn ...io.Writer) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
 	if cfg.Version < 1 {
 		return fmt.Errorf("config version must be >= 1, got %d", cfg.Version)
 	}

@@ -566,8 +566,9 @@ func extractGoVersion(output string) string {
 		if field == "" {
 			break
 		}
-		if strings.HasPrefix(field, "go") && len(field) > 2 {
-			return field[2:] // strip "go" prefix
+		cleaned := strings.Trim(field, "(),:;[]\"'")
+		if strings.HasPrefix(cleaned, "go") && len(cleaned) > 2 && cleaned[2] >= '0' && cleaned[2] <= '9' && isVersionLike(cleaned[2:]) {
+			return cleaned[2:] // strip "go" prefix
 		}
 	}
 	return extractVersion(output)
