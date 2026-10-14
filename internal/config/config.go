@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/catalog"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -259,7 +259,7 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 
 	// Validate tools reference official catalog where possible
 	for id, tool := range cfg.Tools {
-		if tool.Enabled && !official.IsOfficial(id) && cfg.Custom[id].Command == "" {
+		if tool.Enabled && !catalog.IsOfficial(id) && cfg.Custom[id].Command == "" {
 			return fmt.Errorf("tool %q is enabled but not official and has no custom command", id)
 		}
 	}
@@ -275,7 +275,7 @@ func Validate(cfg *Config, warn ...io.Writer) error {
 		// manager-kind official tool is IGNORED (the tool proceeds standalone)
 		// and a warning is emitted — forward-compatible. Empty is a valid
 		// "no manager" declaration.
-		if custom.Manager != "" && !official.IsManager(custom.Manager) {
+		if custom.Manager != "" && !catalog.IsManager(custom.Manager) {
 			_, _ = fmt.Fprintf(w, "Warning: custom tool %q: unknown manager %q ignored; tool proceeds standalone\n", id, custom.Manager)
 			custom.Manager = ""
 			cfg.Custom[id] = custom

@@ -32,6 +32,7 @@ type ConfirmConfig struct {
 	Privileges []string
 	CI         bool
 	Reader     io.Reader // injectable for testing
+	Writer     io.Writer // injectable for testing (defaults to os.Stdout)
 	// EnforceRisk bypasses the TrustOfficial → ConfirmAuto short-circuit so
 	// the REAL command risk decides (design D4). Default false keeps every
 	// existing decision byte-identical. The CLI sets it true from a non-empty
@@ -101,9 +102,16 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 	}
 }
 
+func confirmWriter(cfg ConfirmConfig) io.Writer {
+	if cfg.Writer != nil {
+		return cfg.Writer
+	}
+	return os.Stdout
+}
+
 // printInfo shows the command details without asking for confirmation.
 func printInfo(cfg ConfirmConfig) {
-	fmt.Printf("  %s (%s) — Command: %s — Risk: %s\n",
+	_, _ = fmt.Fprintf(confirmWriter(cfg), "  %s (%s) — Command: %s — Risk: %s\n",
 		cfg.ToolName, cfg.TrustLevel, cfg.Command, cfg.RiskLevel)
 }
 
@@ -114,11 +122,12 @@ func promptUser(cfg ConfirmConfig) ConfirmDecision {
 		privs = strings.Join(cfg.Privileges, ", ")
 	}
 
-	fmt.Printf("\n  %s (%s)\n", cfg.ToolName, cfg.TrustLevel)
-	fmt.Printf("  Command: %s\n", cfg.Command)
-	fmt.Printf("  Privileges: %s\n", privs)
-	fmt.Printf("  Risk: %s\n", cfg.RiskLevel)
-	fmt.Printf("  Proceed? [y/N] ")
+	w := confirmWriter(cfg)
+	_, _ = fmt.Fprintf(w, "\n  %s (%s)\n", cfg.ToolName, cfg.TrustLevel)
+	_, _ = fmt.Fprintf(w, "  Command: %s\n", cfg.Command)
+	_, _ = fmt.Fprintf(w, "  Privileges: %s\n", privs)
+	_, _ = fmt.Fprintf(w, "  Risk: %s\n", cfg.RiskLevel)
+	_, _ = fmt.Fprintf(w, "  Proceed? [y/N] ")
 
 	reader := cfg.Reader
 	if reader == nil {
