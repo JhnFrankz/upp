@@ -50,7 +50,7 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 			}
 			return checker.CheckPackage(ctx, pkg)
 		}
-		return adapters.UpdateInfo{}, fmt.Errorf("docker's manager %s does not support per-package checks", runtimeGOOSFn())
+		return adapters.UpdateInfo{}, fmt.Errorf("docker's manager %s does not support per-package checks", owner.Name())
 	}
 
 	return adapters.UpdateInfo{}, fmt.Errorf("docker has no resolving owner on %s", runtimeGOOSFn())
@@ -76,7 +76,7 @@ func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 			}
 			return updater.UpdatePackage(ctx, pkg)
 		}
-		return adapters.Result{Success: false}, fmt.Errorf("docker's manager %s does not support per-package updates", runtimeGOOSFn())
+		return adapters.Result{Success: false}, fmt.Errorf("docker's manager %s does not support per-package updates", owner.Name())
 	}
 
 	// Fail-closed fallback if ownership map ever regresses.
