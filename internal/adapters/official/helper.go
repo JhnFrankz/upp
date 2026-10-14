@@ -34,7 +34,7 @@ var (
 		defer cancel()
 
 		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
+		if runtimeGOOSFn() == "windows" {
 			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		} else {
 			cmd = exec.CommandContext(ctx, "sh", "-c", command)
@@ -53,7 +53,7 @@ var (
 		defer cancel()
 
 		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
+		if runtimeGOOSFn() == "windows" {
 			cmd = exec.CommandContext(ctx, name, args...)
 		} else {
 			cmd = exec.CommandContext(ctx, name, args...)
@@ -72,7 +72,7 @@ var (
 		defer cancel()
 
 		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
+		if runtimeGOOSFn() == "windows" {
 			cmd = exec.CommandContext(ctx, name, args...)
 		} else {
 			cmd = exec.CommandContext(ctx, name, args...)
