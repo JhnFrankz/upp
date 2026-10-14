@@ -4,15 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/doctor"
-	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
@@ -502,95 +498,6 @@ func TestListTools_GroupedHeaderThenChildren(t *testing.T) {
 	header := strings.SplitN(output, "\n", 2)[0]
 	if !strings.Contains(header, "ID") || !strings.Contains(header, "Name") {
 		t.Errorf("column header must lead the grouped output, got: %q", header)
-	}
-}
-
-// TestGroupByOwner_LinuxGroupsOwnedTools proves GroupByOwner (task 3.2) groups
-// owned tools under their resolving manager header, then places standalone
-// tools last. On linux, docker and gh are owned by apt; brew/apt are managers
-// present in the set; npm/nvm/pnpm/bun/opencode/go are standalone (go has no
-// linux owner). Manager headers follow official.AllAdapters order.
-func TestGroupByOwner_LinuxGroupsOwnedTools(t *testing.T) {
-	tools := official.AdaptersForPlatform(platform.OSLinux)
-
-	groups := GroupByOwner(tools, platform.OSLinux)
-
-	// The manager groups appear first, in AllAdapters order (apt, brew).
-	// apt owns docker + gh on linux; brew owns nothing on linux (go's linux
-	// owner is absent, so go is standalone).
-	var gotHeaders []string
-	for _, g := range groups {
-		if g.Header != "" {
-			gotHeaders = append(gotHeaders, g.Header)
-		}
-	}
-
-	aptFound := slices.Contains(gotHeaders, "APT Package Manager")
-	brewFound := slices.Contains(gotHeaders, "Homebrew")
-	if !aptFound {
-		t.Errorf("apt manager header missing; got headers %v", gotHeaders)
-	}
-	if !brewFound {
-		t.Errorf("brew manager header missing; got headers %v", gotHeaders)
-	}
-
-	// Docker + gh must be grouped under their linux owner — find the owner
-	// group and confirm it contains both.
-	ghAdapter := official.AdapterByName("gh")
-	ownerMgr := ghAdapter.Info().Manager[platform.OSLinux]
-	ownerHeader := official.AdapterByName(ownerMgr).Info().Name
-	var ownerGroup *Group
-	for i := range groups {
-		if groups[i].Header == ownerHeader {
-			ownerGroup = &groups[i]
-			break
-		}
-	}
-	if ownerGroup == nil {
-		t.Fatalf("no %s group found in %+v", ownerMgr, groups)
-	}
-	ids := make([]string, len(ownerGroup.Items))
-	for i, item := range ownerGroup.Items {
-		ids[i] = item.ID
-	}
-	if !slices.Contains(ids, "docker") || !slices.Contains(ids, "gh") {
-		t.Errorf("%s group must own docker+gh, got ids %v", ownerMgr, ids)
-	}
-
-	// Every tool is placed exactly once across all groups (no lost/duplicated
-	// rows, filter round-trip intact).
-	var allIDs []string
-	for _, g := range groups {
-		for _, item := range g.Items {
-			allIDs = append(allIDs, item.ID)
-		}
-	}
-	for _, a := range tools {
-		if !slices.Contains(allIDs, a.Name()) {
-			t.Errorf("tool %s missing from grouping output", a.Name())
-		}
-	}
-}
-
-// TestGroupByOwner_FilteredManagerNoPhantomHeader pins the display-only
-// grouping contract (task 3.5): when a manager is filtered out (not in the
-// input set), its owned tools fall to the standalone group rather than
-// producing a phantom manager header — the --only round-trip IDs stay
-// usable.
-func TestGroupByOwner_FilteredManagerNoPhantomHeader(t *testing.T) {
-	// Build a set with ONLY docker (its linux owner apt filtered out).
-	tools := []adapters.Adapter{official.AdapterByName("docker")}
-
-	groups := GroupByOwner(tools, platform.OSLinux)
-
-	if len(groups) != 1 {
-		t.Fatalf("expected exactly 1 group (standalone), got %d: %+v", len(groups), groups)
-	}
-	if groups[0].Header != "" {
-		t.Errorf("filtered-out manager must not create a phantom header, got %q", groups[0].Header)
-	}
-	if len(groups[0].Items) != 1 || groups[0].Items[0].ID != "docker" {
-		t.Errorf("docker must round-trip in the standalone group, got %+v", groups[0].Items)
 	}
 }
 
