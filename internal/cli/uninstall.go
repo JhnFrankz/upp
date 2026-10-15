@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,19 +39,6 @@ type uninstallDeps struct {
 	removeAll   func(string) error
 	stdin       io.Reader
 	isTTY       func() bool
-}
-
-// defaultCacheDir resolves the platform-appropriate cache directory for upp.
-func defaultCacheDir() (string, error) {
-	cacheRoot, err := os.UserCacheDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", fmt.Errorf("cannot determine cache directory: %w", err)
-		}
-		return filepath.Join(home, ".cache", "upp"), nil
-	}
-	return filepath.Join(cacheRoot, "upp"), nil
 }
 
 // NewUninstallCommand creates the `upp uninstall` command.
@@ -90,7 +76,7 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 		deps.configDir = config.ConfigDir
 	}
 	if deps.cacheDir == nil {
-		deps.cacheDir = defaultCacheDir
+		deps.cacheDir = config.CacheDir
 	}
 	if deps.discover == nil {
 		deps.discover = uninstall.DiscoverTargets

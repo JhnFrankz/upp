@@ -2,9 +2,11 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -685,4 +687,33 @@ package = "ripgrep"
 func TestApplyDefaults_Nil(t *testing.T) {
 	// Should not panic on nil config
 	ApplyDefaults(nil)
+}
+
+func TestConfigPath_Concurrent(t *testing.T) {
+	const goroutines = 20
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p, err := ConfigPath()
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if p == "" || !strings.HasSuffix(p, "config.toml") {
+				errCh <- fmt.Errorf("unexpected config path: %s", p)
+				return
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		t.Errorf("concurrent ConfigPath() error: %v", err)
+	}
 }

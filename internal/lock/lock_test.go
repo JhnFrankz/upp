@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/lock"
 )
 
@@ -99,6 +100,14 @@ func TestDefaultLockPath(t *testing.T) {
 	}
 	if filepath.Base(p) != "upp.lock" {
 		t.Fatalf("expected lock file named upp.lock, got %s", filepath.Base(p))
+	}
+	expectedDir, err := config.CacheDir()
+	if err != nil {
+		t.Fatalf("config.CacheDir failed: %v", err)
+	}
+	expectedPath := filepath.Join(expectedDir, "upp.lock")
+	if p != expectedPath {
+		t.Errorf("DefaultLockPath() = %q, want %q", p, expectedPath)
 	}
 }
 

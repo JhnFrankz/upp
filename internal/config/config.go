@@ -135,6 +135,11 @@ func ConfigPath() (string, error) {
 	fullPath := filepath.Join(dir, "config.toml")
 
 	configPathMu.Lock()
+	if cachedConfigPath != "" && cachedHome == home && cachedAppData == appData {
+		p := cachedConfigPath
+		configPathMu.Unlock()
+		return p, nil
+	}
 	cachedHome = home
 	cachedAppData = appData
 	cachedConfigPath = fullPath
