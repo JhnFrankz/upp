@@ -5,32 +5,30 @@ import (
 	"fmt"
 	"io"
 	"testing"
-
-	"github.com/JhnFrankz/upp/internal/doctor"
 )
 
 func BenchmarkRenderer_DoctorResults(b *testing.B) {
 	categories := []string{"System", "Network", "Configuration", "Tools"}
-	results := make([]doctor.CheckResult, 15)
+	results := make([]DiagnosticResult, 15)
 	for i := 0; i < 15; i++ {
 		cat := categories[i%len(categories)]
-		status := doctor.SeverityOK
+		status := DiagnosticSeverityOK
 		msg := "All checks passed successfully"
 		hint := ""
 		detail := ""
 		switch i % 3 {
 		case 1:
-			status = doctor.SeverityWarn
+			status = DiagnosticSeverityWarn
 			msg = "Non-critical configuration notice detected"
 			hint = "Run check again with --fix if applicable"
 			detail = "diagnostic detail line 1\ndiagnostic detail line 2"
 		case 2:
-			status = doctor.SeverityError
+			status = DiagnosticSeverityError
 			msg = "Required component is missing or misconfigured"
 			hint = "Install missing dependency"
 			detail = "error log trace line 1\nerror log trace line 2"
 		}
-		results[i] = doctor.CheckResult{
+		results[i] = DiagnosticResult{
 			Category: cat,
 			Name:     fmt.Sprintf("check-%02d", i),
 			Status:   status,
@@ -51,26 +49,26 @@ func BenchmarkRenderer_DoctorResults(b *testing.B) {
 
 func BenchmarkRenderer_DoctorResults_Color(b *testing.B) {
 	categories := []string{"System", "Network", "Configuration", "Tools"}
-	results := make([]doctor.CheckResult, 15)
+	results := make([]DiagnosticResult, 15)
 	for i := 0; i < 15; i++ {
 		cat := categories[i%len(categories)]
-		status := doctor.SeverityOK
+		status := DiagnosticSeverityOK
 		msg := "All checks passed successfully"
 		hint := ""
 		detail := ""
 		switch i % 3 {
 		case 1:
-			status = doctor.SeverityWarn
+			status = DiagnosticSeverityWarn
 			msg = "Non-critical configuration notice detected"
 			hint = "Run check again with --fix if applicable"
 			detail = "diagnostic detail line 1\ndiagnostic detail line 2"
 		case 2:
-			status = doctor.SeverityError
+			status = DiagnosticSeverityError
 			msg = "Required component is missing or misconfigured"
 			hint = "Install missing dependency"
 			detail = "error log trace line 1\nerror log trace line 2"
 		}
-		results[i] = doctor.CheckResult{
+		results[i] = DiagnosticResult{
 			Category: cat,
 			Name:     fmt.Sprintf("check-%02d", i),
 			Status:   status,

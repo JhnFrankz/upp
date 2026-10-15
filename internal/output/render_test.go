@@ -7,9 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/JhnFrankz/upp/internal/doctor"
-	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
 func TestStatusIcons_ColorMode(t *testing.T) {
@@ -1121,10 +1118,10 @@ func TestRenderer_UninstallCanceled(t *testing.T) {
 func TestRenderer_UninstallPlan(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, false, false, false)
-	targets := []uninstall.Target{
-		{Type: uninstall.TargetBinary, Path: "/usr/local/bin/upp", Exists: true},
-		{Type: uninstall.TargetConfig, Path: "/home/user/.config/upp", Exists: true},
-		{Type: uninstall.TargetCache, Path: "/home/user/.cache/upp", Exists: false},
+	targets := []TargetItem{
+		{Type: "binary", Path: "/usr/local/bin/upp", Exists: true},
+		{Type: "config", Path: "/home/user/.config/upp", Exists: true},
+		{Type: "cache", Path: "/home/user/.cache/upp", Exists: false},
 	}
 	r.UninstallPlan(targets)
 
@@ -1144,17 +1141,17 @@ func TestRenderer_UninstallPlan(t *testing.T) {
 }
 
 func TestRenderer_DoctorResults_AllOK(t *testing.T) {
-	results := []doctor.CheckResult{
+	results := []DiagnosticResult{
 		{
 			Category: "Configuration & Storage",
 			Name:     "Config File",
-			Status:   doctor.SeverityOK,
+			Status:   DiagnosticSeverityOK,
 			Message:  "Configuration file is valid",
 		},
 		{
 			Category: "Network",
 			Name:     "api.github.com",
-			Status:   doctor.SeverityOK,
+			Status:   DiagnosticSeverityOK,
 			Message:  "Reachable (status 200)",
 		},
 	}
@@ -1190,24 +1187,24 @@ func TestRenderer_DoctorResults_AllOK(t *testing.T) {
 }
 
 func TestRenderer_DoctorResults_WarningsAndErrors(t *testing.T) {
-	results := []doctor.CheckResult{
+	results := []DiagnosticResult{
 		{
 			Category: "Configuration & Storage",
 			Name:     "Config File",
-			Status:   doctor.SeverityOK,
+			Status:   DiagnosticSeverityOK,
 			Message:  "Configuration file is valid",
 		},
 		{
 			Category: "Process Lock",
 			Name:     "Process Lock",
-			Status:   doctor.SeverityWarn,
+			Status:   DiagnosticSeverityWarn,
 			Message:  "Stale lock file detected (PID: 999 is dead)",
 			FixHint:  "Remove stale lock file: rm /path/to/upp.lock",
 		},
 		{
 			Category: "Configuration & Storage",
 			Name:     "Config Directory",
-			Status:   doctor.SeverityError,
+			Status:   DiagnosticSeverityError,
 			Message:  "Config directory is not writable",
 			Detail:   "permission denied",
 			FixHint:  "chmod 755 ~/.config/upp",
