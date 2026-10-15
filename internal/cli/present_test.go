@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -141,5 +142,70 @@ func TestPresentGroups_StatusUnknownOutcome(t *testing.T) {
 	}
 	if item := groups[0].Items[0]; item.Status != output.StatusSkipped {
 		t.Errorf("item status = %v, want StatusSkipped (never StatusAvailable)", item.Status)
+	}
+}
+
+type stubPresentAdapter struct {
+	name string
+	info adapters.ToolInfo
+}
+
+func (s *stubPresentAdapter) Name() string { return s.name }
+func (s *stubPresentAdapter) Detect() bool { return true }
+func (s *stubPresentAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (s *stubPresentAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{}, nil
+}
+func (s *stubPresentAdapter) Info() adapters.ToolInfo { return s.info }
+
+func TestPresentGroups_SharedDisplayNameDoesNotCollide(t *testing.T) {
+	toolA := &stubPresentAdapter{
+		name: "tool-a",
+		info: adapters.ToolInfo{
+			ID:   "tool-a-id",
+			Name: "Shared Display Name",
+		},
+	}
+	toolB := &stubPresentAdapter{
+		name: "tool-b",
+		info: adapters.ToolInfo{
+			ID:   "tool-b-id",
+			Name: "Shared Display Name",
+		},
+	}
+	toolGroups := []engine.ToolGroup{
+		{
+			Header:   "Group",
+			Adapters: []adapters.Adapter{toolA, toolB},
+		},
+	}
+	outcomes := []engine.CheckOutcome{
+		{
+			ToolID:          "tool-a-id",
+			ToolName:        "Shared Display Name",
+			Status:          engine.StatusAvailable,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		{
+			ToolID:         "tool-b-id",
+			ToolName:       "Shared Display Name",
+			Status:         engine.StatusCurrent,
+			CurrentVersion: "1.0.0",
+		},
+	}
+
+	groups := presentGroups(toolGroups, outcomes)
+	if len(groups) != 1 || len(groups[0].Items) != 2 {
+		t.Fatalf("expected 1 group with 2 items, got %+v", groups)
+	}
+	if groups[0].Items[0].Status != output.StatusAvailable {
+		t.Errorf("item 0 status = %v, want StatusAvailable", groups[0].Items[0].Status)
+	}
+	if groups[0].Items[1].Status != output.StatusCurrent {
+		t.Errorf("item 1 status = %v, want StatusCurrent", groups[0].Items[1].Status)
 	}
 }
