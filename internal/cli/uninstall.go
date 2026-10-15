@@ -170,7 +170,7 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 	}
 
 	if !flags.Yes {
-		r.UninstallPlan(targets)
+		presentUninstallPlan(r, targets)
 		_, _ = fmt.Fprint(out, "Proceed with uninstallation? [y/N]: ")
 		scanner := bufio.NewScanner(deps.stdin)
 		var ans string

@@ -43,7 +43,7 @@ func runDoctor(ctx context.Context, gf *GlobalFlags, out io.Writer, deps doctorD
 	results := deps.diagnose(ctx, deps.deps)
 
 	r := output.NewRendererVerbose(out, gf.Quiet, gf.Verbose)
-	r.DoctorResults(results, gf.Quiet, gf.Verbose)
+	presentDoctorResults(r, results, gf.Quiet, gf.Verbose)
 
 	if doctor.HasErrors(results) {
 		return errors.New("doctor found issues that require attention")

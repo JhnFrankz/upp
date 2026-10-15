@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"github.com/JhnFrankz/upp/internal/doctor"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
+	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
 // presentGroups maps domain ToolGroup slices and their corresponding CheckOutcome
@@ -71,4 +73,44 @@ func presentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome
 		})
 	}
 	return groups
+}
+
+// presentDoctorResults maps doctor domain models into presentation view models and renders them.
+func presentDoctorResults(r *output.Renderer, results []doctor.CheckResult, quiet, verbose bool) {
+	items := make([]output.DiagnosticResult, len(results))
+	for i, res := range results {
+		var sev output.DiagnosticSeverity
+		switch res.Status {
+		case doctor.SeverityOK:
+			sev = output.DiagnosticSeverityOK
+		case doctor.SeverityWarn:
+			sev = output.DiagnosticSeverityWarn
+		case doctor.SeverityError:
+			sev = output.DiagnosticSeverityError
+		default:
+			sev = output.DiagnosticSeverityWarn
+		}
+		items[i] = output.DiagnosticResult{
+			Name:     res.Name,
+			Status:   sev,
+			Category: res.Category,
+			Message:  res.Message,
+			Detail:   res.Detail,
+			FixHint:  res.FixHint,
+		}
+	}
+	r.DoctorResults(items, quiet, verbose)
+}
+
+// presentUninstallPlan maps uninstall domain models into presentation view models and renders them.
+func presentUninstallPlan(r *output.Renderer, targets []uninstall.Target) {
+	items := make([]output.TargetItem, len(targets))
+	for i, t := range targets {
+		items[i] = output.TargetItem{
+			Type:   string(t.Type),
+			Path:   t.Path,
+			Exists: t.Exists,
+		}
+	}
+	r.UninstallPlan(items)
 }

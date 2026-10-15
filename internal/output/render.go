@@ -10,9 +10,6 @@ import (
 	"strings"
 	"sync"
 	"text/tabwriter"
-
-	"github.com/JhnFrankz/upp/internal/doctor"
-	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
 // Status represents the outcome of a tool operation.
@@ -729,8 +726,15 @@ func (r *Renderer) UninstallRemoved(targetType, path string) {
 	_, _ = fmt.Fprintf(r.w, "  %s Removed %s: %s\n", r.statusIcon(StatusUpdated), targetType, path)
 }
 
+// TargetItem represents a target file or directory for display in an operation plan.
+type TargetItem struct {
+	Type   string
+	Path   string
+	Exists bool
+}
+
 // UninstallPlan renders the list of targets to be removed before interactive confirmation.
-func (r *Renderer) UninstallPlan(targets []uninstall.Target) {
+func (r *Renderer) UninstallPlan(targets []TargetItem) {
 	_, _ = fmt.Fprintln(r.w, "The following targets will be removed:")
 	hasExisting := false
 	for _, t := range targets {
@@ -743,7 +747,7 @@ func (r *Renderer) UninstallPlan(targets []uninstall.Target) {
 		if hasExisting && !t.Exists {
 			continue
 		}
-		typeName := string(t.Type)
+		typeName := t.Type
 		if len(typeName) > 0 {
 			typeName = strings.ToUpper(typeName[:1]) + typeName[1:]
 		}
@@ -785,25 +789,44 @@ const (
 	doctorIconErrorColor = "\033[31m[✗]\033[0m"
 )
 
-func (r *Renderer) doctorIcon(s doctor.Severity) string {
+// DiagnosticSeverity represents the severity of a diagnostic result.
+type DiagnosticSeverity int
+
+const (
+	DiagnosticSeverityOK DiagnosticSeverity = iota
+	DiagnosticSeverityWarn
+	DiagnosticSeverityError
+)
+
+// DiagnosticResult holds a single diagnostic check outcome for display.
+type DiagnosticResult struct {
+	Name     string
+	Status   DiagnosticSeverity
+	Category string
+	Message  string
+	Detail   string
+	FixHint  string
+}
+
+func (r *Renderer) doctorIcon(s DiagnosticSeverity) string {
 	if !r.color {
 		switch s {
-		case doctor.SeverityOK:
+		case DiagnosticSeverityOK:
 			return doctorIconOKPlain
-		case doctor.SeverityWarn:
+		case DiagnosticSeverityWarn:
 			return doctorIconWarnPlain
-		case doctor.SeverityError:
+		case DiagnosticSeverityError:
 			return doctorIconErrorPlain
 		default:
 			return doctorIconUnknown
 		}
 	}
 	switch s {
-	case doctor.SeverityOK:
+	case DiagnosticSeverityOK:
 		return doctorIconOKColor
-	case doctor.SeverityWarn:
+	case DiagnosticSeverityWarn:
 		return doctorIconWarnColor
-	case doctor.SeverityError:
+	case DiagnosticSeverityError:
 		return doctorIconErrorColor
 	default:
 		return doctorIconUnknown
@@ -811,9 +834,17 @@ func (r *Renderer) doctorIcon(s doctor.Severity) string {
 }
 
 // DoctorResults renders diagnostics results grouped by category.
-func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bool) {
-	hasErrors := doctor.HasErrors(results)
-	hasWarnings := doctor.HasWarnings(results)
+func (r *Renderer) DoctorResults(results []DiagnosticResult, quiet, verbose bool) {
+	hasErrors := false
+	hasWarnings := false
+	for _, res := range results {
+		switch res.Status {
+		case DiagnosticSeverityError:
+			hasErrors = true
+		case DiagnosticSeverityWarn:
+			hasWarnings = true
+		}
+	}
 
 	if quiet && !hasErrors && !hasWarnings {
 		_, _ = io.WriteString(r.w, "upp doctor: all checks passed.\n")
@@ -833,14 +864,14 @@ func (r *Renderer) DoctorResults(results []doctor.CheckResult, quiet, verbose bo
 	numDisplay := 0
 	for idx := range results {
 		switch results[idx].Status {
-		case doctor.SeverityOK:
+		case DiagnosticSeverityOK:
 			passedCount++
-		case doctor.SeverityWarn:
+		case DiagnosticSeverityWarn:
 			warnCount++
-		case doctor.SeverityError:
+		case DiagnosticSeverityError:
 			errCount++
 		}
-		if quiet && results[idx].Status == doctor.SeverityOK {
+		if quiet && results[idx].Status == DiagnosticSeverityOK {
 			continue
 		}
 		numDisplay++
