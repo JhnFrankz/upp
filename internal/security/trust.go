@@ -67,7 +67,7 @@ func (r RiskLevel) String() string {
 	}
 }
 
-var reHighRiskWord = regexp.MustCompile(`(?i)\b(eval|sudo|doas|pkexec|runas)\b`)
+var reEval = regexp.MustCompile(`(?i)\beval\b`)
 
 // HighRiskKeywords are substrings that immediately classify a command as high risk.
 var HighRiskKeywords = []string{
@@ -123,7 +123,10 @@ func syncPipeTargets() {
 // ClassifyCommand uses a hybrid approach to determine the risk level of a command.
 // It checks keyword matching first, then pattern matching for chaining/piping.
 func ClassifyCommand(cmd string) RiskLevel {
-	if (platform.ContainsFold(cmd, "eval") || platform.ContainsFold(cmd, "sudo") || platform.ContainsFold(cmd, "doas") || platform.ContainsFold(cmd, "pkexec") || platform.ContainsFold(cmd, "runas")) && reHighRiskWord.MatchString(cmd) {
+	if platform.ContainsFold(cmd, "eval") && reEval.MatchString(cmd) {
+		return RiskHigh
+	}
+	if len(DetectPrivileges(cmd)) > 0 {
 		return RiskHigh
 	}
 

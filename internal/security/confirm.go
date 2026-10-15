@@ -65,7 +65,12 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 		return ConfirmAuto
 	}
 
-	switch cfg.RiskLevel {
+	effectiveRisk := cfg.RiskLevel
+	if len(cfg.Privileges) > 0 {
+		effectiveRisk = RiskHigh
+	}
+
+	switch effectiveRisk {
 	case RiskLow:
 		// Low risk never requires confirmation; CI auto-proceeds without info.
 		if cfg.CI {
