@@ -194,6 +194,28 @@ func TestDiagnose_StorageAndConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("config path resolution error fix hint", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		deps.ConfigPath = func() (string, error) {
+			return "", errors.New("cannot determine home directory")
+		}
+		results := Diagnose(context.Background(), deps)
+
+		cfgRes := findResult(results, "Configuration & Storage", "Config File")
+		if cfgRes == nil {
+			t.Fatal("missing Config File result")
+		}
+		if cfgRes.Status != SeverityError {
+			t.Errorf("expected SeverityError, got %v", cfgRes.Status)
+		}
+		if strings.Contains(cfgRes.FixHint, "XDG_CONFIG_HOME") {
+			t.Errorf("FixHint must not mention XDG_CONFIG_HOME per spec, got: %q", cfgRes.FixHint)
+		}
+		if !strings.Contains(cfgRes.FixHint, "HOME or APPDATA") {
+			t.Errorf("FixHint must mention HOME or APPDATA, got: %q", cfgRes.FixHint)
+		}
+	})
+
 	t.Run("unwritable config directory", func(t *testing.T) {
 		deps := baseTestDeps(t)
 		regularFile := filepath.Join(t.TempDir(), "blocking_file")

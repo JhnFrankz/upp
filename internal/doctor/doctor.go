@@ -291,7 +291,7 @@ func checkStorageAndConfig(results []CheckResult, deps DoctorDeps) []CheckResult
 			Name:     "Config File",
 			Status:   SeverityError,
 			Message:  fmt.Sprintf("Failed to resolve config path: %v", err),
-			FixHint:  "Ensure environment variables (HOME, APPDATA, XDG_CONFIG_HOME) are set properly.",
+			FixHint:  "Ensure environment variables (HOME or APPDATA) are set properly.",
 		})
 	} else {
 		fi, statErr := os.Stat(cfgPath)
