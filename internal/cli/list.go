@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,14 @@ func NewListCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "List detected tools and their status",
 		Long:  "Show all tools available on the current platform with installation status.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(cmd.Context(), gf, cliDeps.list)
+			d := cliDeps.list
+			if d.out == nil {
+				d.out = cmd.OutOrStdout()
+			}
+			if d.errOut == nil {
+				d.errOut = cmd.ErrOrStderr()
+			}
+			return runList(cmd.Context(), gf, d)
 		},
 	}
 }
@@ -32,11 +40,22 @@ func NewListCommand(gf *GlobalFlags) *cobra.Command {
 // builder.
 type listDeps struct {
 	buildAdapterList func(cfg *config.Config, osName string) []adapters.Adapter
+	out              io.Writer
+	errOut           io.Writer
 }
 
 func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	out := deps.out
+	if out == nil {
+		out = os.Stdout
+	}
+	errOut := deps.errOut
+	if errOut == nil {
+		errOut = os.Stderr
 	}
 
 	cfg, err := config.Load()
@@ -66,7 +85,7 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 
 	only := ParseFilter(gf.Only)
 	if len(only) > 0 {
-		FilterTools(adapterIDs(allAdapters), only, os.Stderr)
+		FilterTools(adapterIDs(allAdapters), only, errOut)
 	}
 
 	var adapterList []adapters.Adapter
@@ -76,7 +95,7 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 		adapterList = engine.FilterAdapters(allAdapters, only)
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	r := output.NewRenderer(out, gf.Quiet)
 
 	// Build the grouped rows (manager headers first, then their owned tools,
 	// then standalone tools) from the filtered adapter set. Grouping is

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 
 	"github.com/JhnFrankz/upp/internal/doctor"
 	"github.com/JhnFrankz/upp/internal/output"
@@ -25,7 +24,7 @@ func NewDoctorCommand(gf *GlobalFlags) *cobra.Command {
 			"storage permissions, orphaned process locks, package manager conflicts, active tool PATH shadowing, " +
 			"and upstream network connectivity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDoctor(cmd.Context(), gf, os.Stdout, cliDeps.doctor)
+			return runDoctor(cmd.Context(), gf, cmd.OutOrStdout(), cliDeps.doctor)
 		},
 	}
 	return cmd

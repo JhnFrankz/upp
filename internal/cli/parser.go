@@ -5,7 +5,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -42,7 +41,7 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 		},
 		// No args → show dashboard welcome screen (read-only)
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDashboard(gf, cmd.Root().Version, os.Stdout, cliDeps.dashboard)
+			return runDashboard(gf, cmd.Root().Version, cmd.OutOrStdout(), cliDeps.dashboard)
 		},
 	}
 

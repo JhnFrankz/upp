@@ -42,7 +42,11 @@ func NewSelfUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Long: "Check for a newer upp release, verify its sha256 checksum, and replace the current binary after confirmation. " +
 			"--only is ignored: it filters tools for update/check, not releases.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSelfUpdate(cmd.Context(), gf, cmd.Root().Version, cliDeps.selfUpdate)
+			d := cliDeps.selfUpdate
+			if d.out == nil {
+				d.out = cmd.OutOrStdout()
+			}
+			return runSelfUpdate(cmd.Context(), gf, cmd.Root().Version, d)
 		},
 	}
 }
@@ -58,6 +62,7 @@ type selfUpdateDeps struct {
 	detect      func() (platform.Platform, error)
 	execPath    func() (string, error)
 	client      *selfupdate.Client
+	out         io.Writer
 }
 
 // runSelfUpdate implements `upp self-update` (design data flow (a);
@@ -81,6 +86,12 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 		deps.execPath = os.Executable
 	}
 
+	out := deps.out
+	if out == nil {
+		out = os.Stdout
+	}
+	r := output.NewRenderer(out, gf.Quiet)
+
 	// --ci denies always, before any work: never auto-proceed, never
 	// hang, no network (spec Confirmation Gate + flag semantics).
 	if gf.CI {
@@ -94,7 +105,6 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 	// Development builds: informational exit 0, no update claim, no
 	// network (spec R1).
 	if current.Dev || current.Dirty {
-		r := output.NewRenderer(os.Stdout, gf.Quiet)
 		r.SelfUpdateDevBuild()
 		return nil
 	}
@@ -130,7 +140,6 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 	case errors.Is(err, selfupdate.ErrUpToDate):
 		// Up to date: latest lookup happened (1 request), no download
 		// (spec R1).
-		r := output.NewRenderer(os.Stdout, gf.Quiet)
 		r.SelfUpdateUpToDate(formatVersion(current))
 		return nil
 	case errors.Is(err, selfupdate.ErrUnsupportedPlatform):
@@ -160,7 +169,6 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 		return fmt.Errorf("self-update requires an interactive terminal; run upp self-update in a terminal: %w", selfupdate.ErrNotTTY)
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
 	if !confirmReplace(r, deps.stdin, formatVersion(current), rel.Tag, target) {
 		return nil // declined: nothing modified, exit 0 (spec R7)
 	}
