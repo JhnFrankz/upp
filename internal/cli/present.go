@@ -11,14 +11,15 @@ import (
 // results into presentation output.Group items with status and version populated,
 // without performing any command execution or I/O.
 func presentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome) []output.Group {
-	outcomeByID := make(map[string]*engine.CheckOutcome, len(outcomes)*2)
+	outcomeByID := make(map[string]*engine.CheckOutcome, len(outcomes))
 	for i := range outcomes {
 		oc := &outcomes[i]
-		if oc.ToolID != "" {
-			outcomeByID[oc.ToolID] = oc
+		id := oc.ToolID
+		if id == "" {
+			id = oc.ToolName
 		}
-		if oc.ToolName != "" {
-			outcomeByID[oc.ToolName] = oc
+		if id != "" {
+			outcomeByID[id] = oc
 		}
 	}
 
@@ -27,23 +28,17 @@ func presentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome
 		items := make([]output.ListEntry, 0, len(tg.Adapters))
 		for _, a := range tg.Adapters {
 			info := a.Info()
-			id := info.ID
-			if id == "" {
-				id = a.Name()
-			}
+			id := toolSelectionID(a)
 			name := info.Name
 			if name == "" {
 				name = a.Name()
 			}
 
-			oc, ok := outcomeByID[id]
-			if !ok {
-				oc, ok = outcomeByID[a.Name()]
-			}
+			oc := outcomeByID[id]
 
 			status := output.StatusSkipped
 			version := ""
-			if ok {
+			if oc != nil {
 				switch oc.Status {
 				case engine.StatusAvailable:
 					status = output.StatusAvailable

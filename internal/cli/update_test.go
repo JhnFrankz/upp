@@ -2652,3 +2652,43 @@ func TestResolveOwnerByID_NilAdapter(t *testing.T) {
 		t.Errorf("expected nil, got %v", gotNotFound)
 	}
 }
+
+func TestRunUpdate_SharedDisplayNameDoesNotCollideInUpdatesByTool(t *testing.T) {
+	fakeA := &fakeUpdateAdapter{
+		name:     "tool-alpha",
+		infoName: "Shared CLI",
+		policy:   adapters.PolicyGated,
+		trust:    security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	fakeB := &fakeUpdateAdapter{
+		name:     "tool-beta",
+		infoName: "Shared CLI",
+		policy:   adapters.PolicyGated,
+		trust:    security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.0.0",
+			UpdateAvailable: false,
+		},
+	}
+
+	gf := &GlobalFlags{CI: true}
+	uf := &UpdateFlags{}
+	_, err := runUpdateDefault(t, gf, uf, "", fakeA, fakeB)
+	if err != nil {
+		t.Fatalf("runUpdateDefault error: %v", err)
+	}
+
+	if !fakeA.updated {
+		t.Error("tool-alpha (with update available) must have been updated")
+	}
+	if fakeB.updated {
+		t.Error("tool-beta (already current) must NOT have been updated")
+	}
+}

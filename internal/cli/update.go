@@ -241,8 +241,13 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 
 	updatesByTool := make(map[string]engine.PlannedUpdate, len(plan.Updates))
 	for _, u := range plan.Updates {
-		updatesByTool[u.ToolName] = u
-		updatesByTool[u.ToolID] = u
+		id := u.ToolID
+		if id == "" {
+			id = u.ToolName
+		}
+		if id != "" {
+			updatesByTool[id] = u
+		}
 	}
 
 	results := make([]output.ToolResult, total)
@@ -270,10 +275,7 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 			}
 			hasFailure = true
 		case engine.StatusCurrent, engine.StatusAvailable:
-			u, isUpdate := updatesByTool[info.Name]
-			if !isUpdate {
-				u, isUpdate = updatesByTool[info.ID]
-			}
+			u, isUpdate := updatesByTool[toolSelectionID(a)]
 			if !isUpdate {
 				results[i] = output.ToolResult{
 					Name:    info.Name,
