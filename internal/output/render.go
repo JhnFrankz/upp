@@ -313,43 +313,7 @@ func (r *Renderer) Progress(op string, current, total int, name string) {
 	_, _ = io.WriteString(r.w, r.scratch.String())
 }
 
-// ProgressInPlace shows a single-line progress indicator. In interactive
-// (color/TTY) mode, it updates in-place using carriage return \r without a
-// trailing newline. In non-TTY/CI mode, it falls back to line-buffered output
-// with newlines and without carriage returns.
-func (r *Renderer) ProgressInPlace(op string, current, total int, name string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.quiet || total <= 1 {
-		return
-	}
-	r.scratch.Reset()
-	if r.color {
-		r.scratch.WriteString("\r  ")
-	} else {
-		r.scratch.WriteString("  ")
-	}
-	r.writeColor(&r.scratch, "2", "⟳")
-	r.scratch.WriteByte(' ')
-	r.scratch.WriteString(op)
-	r.scratch.WriteByte(' ')
-	r.scratch.WriteString(strconv.Itoa(current))
-	r.scratch.WriteByte('/')
-	r.scratch.WriteString(strconv.Itoa(total))
-	r.scratch.WriteString(": ")
-	r.writeColor(&r.scratch, "36", name)
-	if !r.color {
-		r.scratch.WriteByte('\n')
-	}
-	_, _ = io.WriteString(r.w, r.scratch.String())
-}
-
 // --- Summary ---
-
-// Summary renders the final summary of an update or check run.
-func (r *Renderer) Summary(summary Summary) {
-	r.UpdateSummary(summary)
-}
 
 type summaryIndices struct {
 	updated    []int

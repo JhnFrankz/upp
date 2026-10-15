@@ -115,7 +115,7 @@ func BenchmarkRenderer_Summary(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r.Summary(summary)
+		r.UpdateSummary(summary)
 	}
 }
 
@@ -162,15 +162,5 @@ func BenchmarkRenderer_Progress(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		r.Progress("Updating", 3, 10, "golang")
-	}
-}
-
-func BenchmarkRenderer_ProgressInPlace(b *testing.B) {
-	r := NewRendererForced(io.Discard, true, true, false, false)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		r.ProgressInPlace("Updating", 3, 10, "golang")
 	}
 }
