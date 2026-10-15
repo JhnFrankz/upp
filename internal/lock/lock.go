@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/JhnFrankz/upp/internal/config"
 )
 
 // ErrLocked indicates that the file is currently locked by another process.
@@ -35,18 +37,13 @@ type Lock struct {
 	err  error
 }
 
-// DefaultLockPath resolves cacheDir/upp/upp.lock using os.UserCacheDir(),
-// falling back to ~/.cache/upp/upp.lock if os.UserCacheDir() fails.
+// DefaultLockPath resolves upp.lock inside config.CacheDir().
 func DefaultLockPath() (string, error) {
-	cacheRoot, err := os.UserCacheDir()
+	dir, err := config.CacheDir()
 	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", fmt.Errorf("cannot determine cache directory: %w", err)
-		}
-		return filepath.Join(home, ".cache", "upp", "upp.lock"), nil
+		return "", err
 	}
-	return filepath.Join(cacheRoot, "upp", "upp.lock"), nil
+	return filepath.Join(dir, "upp.lock"), nil
 }
 
 // Acquire attempts to acquire an exclusive advisory process lock on the given path.

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
@@ -510,5 +511,27 @@ func TestUninstall_DryRunSkipsLock(t *testing.T) {
 	}
 	if lockAcquired {
 		t.Error("expected dry-run to not acquire process lock")
+	}
+}
+
+func TestUninstall_DefaultCacheDirUsesConfig(t *testing.T) {
+	var capturedCacheDir string
+	deps := uninstallDeps{
+		execPath:  func() (string, error) { return "/bin/upp", nil },
+		configDir: func() (string, error) { return "/cfg", nil },
+		// cacheDir is left nil so default is resolved
+		discover: func(execPath, configDir, cacheDir string) ([]uninstall.Target, error) {
+			capturedCacheDir = cacheDir
+			return nil, nil
+		},
+	}
+	var buf bytes.Buffer
+	err := runUninstall(context.Background(), &GlobalFlags{}, UninstallFlags{DryRun: true}, &buf, deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expectedCacheDir, _ := config.CacheDir()
+	if capturedCacheDir != expectedCacheDir {
+		t.Errorf("captured cache dir %q, want %q", capturedCacheDir, expectedCacheDir)
 	}
 }
