@@ -53,7 +53,7 @@ func NewUninstallCommand(gf *GlobalFlags) *cobra.Command {
 			"Zero-Sudo policy: upp never escalates privileges. If an unwritable path is encountered, " +
 			"it performs best-effort deletion, emits remediation instructions, and exits with code 1.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUninstall(cmd.Context(), gf, flags, os.Stdout, cliDeps.uninstall)
+			return runUninstall(cmd.Context(), gf, flags, cmd.OutOrStdout(), cliDeps.uninstall)
 		},
 	}
 

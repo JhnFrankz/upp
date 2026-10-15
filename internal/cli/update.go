@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -26,7 +27,14 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Apply updates to enabled tools",
 		Long:  "Process each enabled tool: detect, check, confirm, and update.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdateContext(cmd.Context(), gf, uf, cliDeps.update)
+			d := cliDeps.update
+			if d.out == nil {
+				d.out = cmd.OutOrStdout()
+			}
+			if d.errOut == nil {
+				d.errOut = cmd.ErrOrStderr()
+			}
+			return runUpdateContext(cmd.Context(), gf, uf, d)
 		},
 	}
 
@@ -50,6 +58,8 @@ type updateDeps struct {
 	// returns the selected tool IDs plus whether the user canceled. Zero
 	// value = production CheckboxSelector over os.Stdout/os.Stdin.
 	selector func(pending []output.SelectOption) ([]string, bool)
+	out      io.Writer
+	errOut   io.Writer
 }
 
 func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
@@ -103,9 +113,18 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		}
 	}
 
+	out := deps.out
+	if out == nil {
+		out = os.Stdout
+	}
+	errOut := deps.errOut
+	if errOut == nil {
+		errOut = os.Stderr
+	}
+
 	onlyList := ParseFilter(gf.Only)
 	if len(onlyList) > 0 {
-		FilterTools(adapterIDs(allAdapters), onlyList, os.Stderr)
+		FilterTools(adapterIDs(allAdapters), onlyList, errOut)
 	}
 
 	var filteredAdapters []adapters.Adapter
@@ -115,7 +134,7 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		filteredAdapters = engine.FilterAdapters(allAdapters, onlyList)
 	}
 
-	r := output.NewRendererVerbose(os.Stdout, gf.Quiet, gf.Verbose)
+	r := output.NewRendererVerbose(out, gf.Quiet, gf.Verbose)
 
 	if uf.DryRun {
 		r.DryRunHeader()
@@ -371,6 +390,11 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		return err
 	}
 
+	out := deps.out
+	if out == nil {
+		out = os.Stdout
+	}
+
 	grouped := engine.GroupOrder(filteredAdapters, osName, allAdapters...)
 	authorized, err := authorizeChecks(gf, grouped, r)
 	if err != nil {
@@ -381,7 +405,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 	for i, a := range grouped {
 		names[i] = a.Info().Name
 	}
-	board := output.NewCheckBoard(os.Stdout, r.Color(), names)
+	board := output.NewCheckBoard(out, r.Color(), names)
 	board.Start()
 	outcomes, _ := eng.Check(ctx, grouped, func(prog engine.CheckProgress) {
 		board.Complete(prog.Index, outcomeToToolResult(&prog.Outcome))
@@ -455,7 +479,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 
 	if deps.selector == nil {
 		deps.selector = func(opts []output.SelectOption) ([]string, bool) {
-			res, err := output.NewCheckboxSelector(os.Stdout, os.Stdin, opts).Run()
+			res, err := output.NewCheckboxSelector(out, os.Stdin, opts).Run()
 			if err != nil {
 				return nil, true
 			}

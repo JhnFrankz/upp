@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -25,6 +26,7 @@ var ErrInitDeniedCI = errors.New("init denied in --ci mode")
 type initDeps struct {
 	acquireLock func() (*lock.Lock, error)
 	scanPrompt  func() string
+	out         io.Writer
 }
 
 // NewInitCommand creates the `upp init` command.
@@ -34,7 +36,11 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 		Short: "Initialize upp configuration",
 		Long:  "Detect installed tools and generate the initial config file.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(cmd.Context(), gf, cliDeps.init)
+			d := cliDeps.init
+			if d.out == nil {
+				d.out = cmd.OutOrStdout()
+			}
+			return runInit(cmd.Context(), gf, d)
 		},
 	}
 }
@@ -63,7 +69,12 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		}
 	}
 
-	r := output.NewRenderer(os.Stdout, gf.Quiet)
+	out := deps.out
+	if out == nil {
+		out = os.Stdout
+	}
+
+	r := output.NewRenderer(out, gf.Quiet)
 	r.InitHeader()
 
 	// Detect platform
@@ -96,9 +107,9 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 	// applied defaults. Existing config: confirm before overwriting. Reaching
 	// here implies no --ci, which denied above.
 	if config.Exists() {
-		fmt.Println()
-		fmt.Println("  Config already exists. Overwrite with new detection?")
-		fmt.Print("  [y/N] ")
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, "  Config already exists. Overwrite with new detection?")
+		_, _ = fmt.Fprint(out, "  [y/N] ")
 		scanFn := deps.scanPrompt
 		if scanFn == nil {
 			scanFn = defaultScanPrompt
@@ -106,7 +117,7 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		response := scanFn()
 		norm := strings.ToLower(strings.TrimSpace(response))
 		if norm != "y" && norm != "yes" {
-			fmt.Println("  Canceled.")
+			_, _ = fmt.Fprintln(out, "  Canceled.")
 			return nil
 		}
 	}
