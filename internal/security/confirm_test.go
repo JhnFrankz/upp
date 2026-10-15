@@ -1,6 +1,7 @@
 package security
 
 import (
+	"io"
 	"strings"
 	"testing"
 )
@@ -311,5 +312,51 @@ func TestConfirmAction_WriterCapture(t *testing.T) {
 	}
 	if !strings.Contains(output, "Command: sudo mytool --update") {
 		t.Errorf("expected command details in Writer, got: %q", output)
+	}
+}
+
+func TestConfirmAction_PrivilegesElevateLowRisk(t *testing.T) {
+	t.Parallel()
+
+	// In CI, a custom tool with privileges must fail-closed with ConfirmError even if RiskLevel is RiskLow.
+	ciCfg := ConfirmConfig{
+		ToolName:   "privtool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskLow,
+		Command:    "su -c 'update'",
+		Privileges: []string{"su"},
+		CI:         true,
+	}
+	if got := ConfirmAction(ciCfg); got != ConfirmError {
+		t.Errorf("ConfirmAction(ci, privileges) = %v, want ConfirmError", got)
+	}
+
+	// Interactively, a custom tool with privileges must prompt (promptUser), requiring confirmation.
+	interactivePromptCfg := ConfirmConfig{
+		ToolName:   "privtool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskLow,
+		Command:    "su -c 'update'",
+		Privileges: []string{"su"},
+		CI:         false,
+		Reader:     strings.NewReader("y\n"),
+		Writer:     io.Discard,
+	}
+	if got := ConfirmAction(interactivePromptCfg); got != ConfirmProceed {
+		t.Errorf("ConfirmAction(interactive yes, privileges) = %v, want ConfirmProceed", got)
+	}
+
+	interactiveDenyCfg := ConfirmConfig{
+		ToolName:   "privtool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskLow,
+		Command:    "su -c 'update'",
+		Privileges: []string{"su"},
+		CI:         false,
+		Reader:     strings.NewReader("n\n"),
+		Writer:     io.Discard,
+	}
+	if got := ConfirmAction(interactiveDenyCfg); got != ConfirmDeny {
+		t.Errorf("ConfirmAction(interactive no, privileges) = %v, want ConfirmDeny", got)
 	}
 }
