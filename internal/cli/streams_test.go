@@ -9,6 +9,8 @@ import (
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/doctor"
+	"github.com/JhnFrankz/upp/internal/lock"
+	"github.com/JhnFrankz/upp/internal/security"
 	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
@@ -87,5 +89,104 @@ func TestCommandStreams_UninstallWritesToCobraOut(t *testing.T) {
 
 	if !strings.Contains(stdoutBuf.String(), "Dry run") {
 		t.Errorf("expected Cobra out buffer to contain uninstall dry run header, got: %q", stdoutBuf.String())
+	}
+}
+
+func TestCommandStreams_UpdateWritesToCobraOutAndReadsFromCobraIn(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	stdinBuf := strings.NewReader("y\n")
+	root.SetIn(stdinBuf)
+	root.SetOut(&stdoutBuf)
+	root.SetErr(&stderrBuf)
+	root.SetArgs([]string{"update"})
+
+	fakeTool := &fakeUpdateAdapter{
+		name:       "stream-tool",
+		trust:      security.TrustCustomUntrusted,
+		command:    "sudo stream-tool --update",
+		privileges: []string{"sudo"},
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{
+			Success: true,
+			Before:  "1.0.0",
+			After:   "2.0.0",
+		},
+	}
+
+	oldDeps := cliDeps.update
+	cliDeps.update = updateDeps{
+		acquireLock: func() (*lock.Lock, error) { return nil, nil },
+		buildAdapterList: func(cfg *config.Config, osName string) []adapters.Adapter {
+			return []adapters.Adapter{fakeTool}
+		},
+		stdinIsTTY: func() bool { return false },
+	}
+	defer func() { cliDeps.update = oldDeps }()
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("root.Execute(update) error: %v", err)
+	}
+
+	outStr := stdoutBuf.String()
+	if !strings.Contains(outStr, "Proceed? [y/N]") {
+		t.Errorf("expected Cobra out buffer to contain confirmation prompt, got: %q", outStr)
+	}
+	if !strings.Contains(outStr, "Command: sudo stream-tool --update") {
+		t.Errorf("expected Cobra out buffer to contain command detail, got: %q", outStr)
+	}
+	if !fakeTool.updated {
+		t.Error("expected tool to be updated after confirmation read from Cobra in")
+	}
+}
+
+func TestCommandStreams_UpdateQuietSuppressesPrintInfo(t *testing.T) {
+	root, gf := BuildRoot()
+	AddCommands(root, gf)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	root.SetOut(&stdoutBuf)
+	root.SetErr(&stderrBuf)
+	root.SetArgs([]string{"update", "--quiet"})
+
+	fakeTool := &fakeUpdateAdapter{
+		name:    "quiet-tool",
+		trust:   security.TrustCustomTrusted,
+		command: "quiet-tool --update",
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{
+			Success: true,
+			Before:  "1.0.0",
+			After:   "2.0.0",
+		},
+	}
+
+	oldDeps := cliDeps.update
+	cliDeps.update = updateDeps{
+		acquireLock: func() (*lock.Lock, error) { return nil, nil },
+		buildAdapterList: func(cfg *config.Config, osName string) []adapters.Adapter {
+			return []adapters.Adapter{fakeTool}
+		},
+		stdinIsTTY: func() bool { return false },
+	}
+	defer func() { cliDeps.update = oldDeps }()
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("root.Execute(update --quiet) error: %v", err)
+	}
+
+	outStr := stdoutBuf.String()
+	if strings.Contains(outStr, "Command: quiet-tool --update") {
+		t.Errorf("expected quiet mode to suppress printInfo in update, got: %q", outStr)
 	}
 }

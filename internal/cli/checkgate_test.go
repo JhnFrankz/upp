@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -186,7 +187,7 @@ func TestAuthorizeChecks_GatesByRisk(t *testing.T) {
 			var kept []adapters.Adapter
 			var err error
 			withStdin(t, tc.stdin, func() {
-				kept, err = authorizeChecks(gf, list, r)
+				kept, err = authorizeChecks(gf, list, r, strings.NewReader(tc.stdin), io.Discard)
 			})
 
 			if tc.wantErr {
