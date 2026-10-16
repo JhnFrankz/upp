@@ -115,6 +115,9 @@ func RenderPackageCommand(template, pkg string) string {
 	if strings.Contains(template, PackagePlaceholder) {
 		return strings.Replace(template, PackagePlaceholder, pkg, 1)
 	}
+	if strings.Contains(template, "{{.Package}}") {
+		return strings.Replace(template, "{{.Package}}", pkg, 1)
+	}
 	return template + " " + pkg
 }
 
@@ -148,4 +151,15 @@ type ToolInfo struct {
 	// managers (apt/brew/winget/pacman); self-only managers (scoop) and
 	// KindTool adapters leave it empty.
 	PackageUpdateCommand string
+}
+
+// SupportsPlatform reports whether the tool supports the given platform.
+func (t ToolInfo) SupportsPlatform(osName string) bool {
+	norm := strings.ToLower(strings.TrimSpace(osName))
+	for _, p := range t.Platforms {
+		if strings.EqualFold(p, norm) {
+			return true
+		}
+	}
+	return false
 }

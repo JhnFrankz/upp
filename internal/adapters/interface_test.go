@@ -37,6 +37,12 @@ func TestRenderPackageCommand(t *testing.T) {
 			want:     "mgr --flag gh --other <pkg>",
 		},
 		{
+			name:     "placeholder-curlies-replaced",
+			template: "scoop update {{.Package}}",
+			pkg:      "neovim",
+			want:     "scoop update neovim",
+		},
+		{
 			name:     "empty-template-appends-pkg",
 			template: "",
 			pkg:      "gh",
@@ -50,6 +56,28 @@ func TestRenderPackageCommand(t *testing.T) {
 				t.Errorf("RenderPackageCommand(%q, %q) = %q, want %q", tt.template, tt.pkg, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestToolInfo_SupportsPlatform(t *testing.T) {
+	info := ToolInfo{
+		Platforms: []string{"linux", "macos"},
+	}
+
+	if !info.SupportsPlatform("linux") {
+		t.Error("expected SupportsPlatform(linux) to be true")
+	}
+	if !info.SupportsPlatform("LINUX") {
+		t.Error("expected SupportsPlatform(LINUX) case-insensitive to be true")
+	}
+	if !info.SupportsPlatform("macos") {
+		t.Error("expected SupportsPlatform(macos) to be true")
+	}
+	if info.SupportsPlatform("windows") {
+		t.Error("expected SupportsPlatform(windows) to be false")
+	}
+	if info.SupportsPlatform("unknown") {
+		t.Error("expected SupportsPlatform(unknown) to be false")
 	}
 }
 

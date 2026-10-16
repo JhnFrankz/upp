@@ -58,7 +58,7 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 
 				var managerArgs []adapters.Adapter
 				if custom.Manager != "" {
-					if mgr := official.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == adapters.KindManager {
+					if mgr := official.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == adapters.KindManager && mgr.Info().SupportsPlatform(canonOS) {
 						managerArgs = append(managerArgs, mgr)
 					}
 				}

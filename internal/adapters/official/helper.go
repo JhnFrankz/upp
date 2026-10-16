@@ -379,7 +379,10 @@ func parseWingetUpgradeOutput(out string) (current, latest string, found bool) {
 // into stdout) is tolerated: the row is recognized ONLY when the "scoop"
 // token is followed by two version-like fields, so a banner like
 // "WARN Scoop is out of date." is skipped and the real table row is found.
-func parseScoopStatusOutput(out string) (current, latest string, found bool) {
+// parseScoopPackageStatusOutput scans `scoop status` output for a package row
+// and returns (current, latest, found). It is a PURE, fail-closed function:
+// an absent or unparseable row yields found=false and no error.
+func parseScoopPackageStatusOutput(out, pkg string) (current, latest string, found bool) {
 	for len(out) > 0 {
 		var line string
 		line, out, _ = strings.Cut(out, "\n")
@@ -390,7 +393,7 @@ func parseScoopStatusOutput(out string) (current, latest string, found bool) {
 			if field == "" {
 				break
 			}
-			if !strings.EqualFold(field, "scoop") {
+			if !strings.EqualFold(field, pkg) {
 				continue
 			}
 			c, restAfterCurrent := nextField(rest)
@@ -405,6 +408,10 @@ func parseScoopStatusOutput(out string) (current, latest string, found bool) {
 		}
 	}
 	return "", "", false
+}
+
+func parseScoopStatusOutput(out string) (current, latest string, found bool) {
+	return parseScoopPackageStatusOutput(out, "scoop")
 }
 
 // truncate shortens a string to maxLen characters, appending "..." if truncated.

@@ -191,14 +191,30 @@ func (a unconsentedCheckAdapter) Check(ctx context.Context) (adapters.UpdateInfo
 func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.Renderer, in io.Reader, out io.Writer) ([]adapters.Adapter, error) {
 	authorized := make([]adapters.Adapter, 0, len(adapterList))
 	for _, a := range adapterList {
+		inner := a
+		if u, ok := a.(interface{ Unwrap() adapters.Adapter }); ok {
+			inner = u.Unwrap()
+		}
+
 		// Official adapters never declare arbitrary custom check commands.
 		// Only custom adapters can carry a shell check command requiring user consent.
-		if _, isCustom := a.(*adapters.CustomAdapter); !isCustom {
-			if custom, ok := a.(interface{ IsCustom() bool }); !ok || !custom.IsCustom() {
+		if _, isCustom := inner.(*adapters.CustomAdapter); !isCustom {
+			if custom, ok := inner.(interface{ IsCustom() bool }); !ok || !custom.IsCustom() {
 				authorized = append(authorized, a)
 				continue
 			}
 		}
+
+		// If a custom adapter's manager implements PackageChecker, Check()
+		// delegates directly to the manager's CheckPackage without running
+		// the custom tool's checkCmd shell command. Consent is not needed.
+		if ca, ok := inner.(*adapters.CustomAdapter); ok {
+			if ca.ManagerChecker() != nil {
+				authorized = append(authorized, a)
+				continue
+			}
+		}
+
 		info := a.Info()
 		if !security.CheckNeedsConsent(info.CheckCommand) {
 			authorized = append(authorized, a)
@@ -423,18 +439,19 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 	}
 
 	grouped := engine.GroupOrder(filteredAdapters, osName, allAdapters...)
-	authorized, err := authorizeChecks(gf, grouped, r, in, out)
+	checkAdapters := engine.PrepareCheckAdapters(grouped, osName, allAdapters...)
+	authorized, err := authorizeChecks(gf, checkAdapters, r, in, out)
 	if err != nil {
 		return err
 	}
-	grouped = authorized
-	names := make([]string, len(grouped))
-	for i, a := range grouped {
+	checkAdapters = authorized
+	names := make([]string, len(checkAdapters))
+	for i, a := range checkAdapters {
 		names[i] = a.Info().Name
 	}
 	board := output.NewCheckBoard(out, r.Color(), names)
 	board.Start()
-	outcomes, _ := eng.Check(ctx, grouped, func(prog engine.CheckProgress) {
+	outcomes, _ := eng.Check(ctx, checkAdapters, func(prog engine.CheckProgress) {
 		board.Complete(prog.Index, outcomeToToolResult(&prog.Outcome))
 	})
 	board.Finish()
@@ -755,8 +772,9 @@ func outcomeSelectionID(oc *engine.CheckOutcome) string {
 	return oc.ToolName
 }
 
-// resolveOwnerByID looks up an owner adapter by ID directly from allAdapters (if provided)
-// or the official registry in O(1).
+// resolveOwnerByID looks up an owner adapter by ID directly from allAdapters (if provided).
+// When an explicit allAdapters slice is provided, it does not fall back to the official
+// registry, preventing resurrecting managers that the user disabled in config.
 func resolveOwnerByID(managerID string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
 	if len(allAdapters) > 0 && allAdapters[0] != nil {
 		for _, a := range allAdapters[0] {
@@ -764,6 +782,7 @@ func resolveOwnerByID(managerID string, allAdapters ...[]adapters.Adapter) adapt
 				return a
 			}
 		}
+		return nil
 	}
 	return official.AdapterByName(managerID)
 }

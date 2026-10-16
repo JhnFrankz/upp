@@ -345,3 +345,100 @@ func TestDefaultLinuxManager_OSGatingAndCaching(t *testing.T) {
 		}
 	})
 }
+
+func TestDynamicLinuxManager_Go(t *testing.T) {
+	t.Run("apt ownership when /usr/bin/go and apt present", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			goos:         "linux",
+			goBinaryPath: "/usr/bin/go",
+			lookPath:     map[string]bool{"go": true, "apt": true, "pacman": false},
+		})
+		adpt := &GoAdapter{}
+		info := adpt.Info()
+		if got := info.Manager["linux"]; got != "apt" {
+			t.Errorf("Manager[\"linux\"] = %q, want \"apt\"", got)
+		}
+		if got := info.ManagerPackage["linux"]; got != "golang-go" {
+			t.Errorf("ManagerPackage[\"linux\"] = %q, want \"golang-go\"", got)
+		}
+		if info.UpdatePolicy != adapters.PolicyGated {
+			t.Errorf("UpdatePolicy = %v, want PolicyGated", info.UpdatePolicy)
+		}
+		if info.Command != "" {
+			t.Errorf("Command = %q, want empty for owned tool", info.Command)
+		}
+		owner := ResolveOwner("go", "linux")
+		if owner == nil || owner.Name() != "apt" {
+			t.Errorf("ResolveOwner(\"go\", \"linux\") = %v, want apt", owner)
+		}
+	})
+
+	t.Run("pacman ownership when /usr/bin/go and pacman present", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			goos:         "linux",
+			goBinaryPath: "/usr/bin/go",
+			lookPath:     map[string]bool{"go": true, "apt": false, "pacman": true},
+		})
+		adpt := &GoAdapter{}
+		info := adpt.Info()
+		if got := info.Manager["linux"]; got != "pacman" {
+			t.Errorf("Manager[\"linux\"] = %q, want \"pacman\"", got)
+		}
+		if got := info.ManagerPackage["linux"]; got != "go" {
+			t.Errorf("ManagerPackage[\"linux\"] = %q, want \"go\"", got)
+		}
+		if info.UpdatePolicy != adapters.PolicyGated {
+			t.Errorf("UpdatePolicy = %v, want PolicyGated", info.UpdatePolicy)
+		}
+		if info.Command != "" {
+			t.Errorf("Command = %q, want empty for owned tool", info.Command)
+		}
+		owner := ResolveOwner("go", "linux")
+		if owner == nil || owner.Name() != "pacman" {
+			t.Errorf("ResolveOwner(\"go\", \"linux\") = %v, want pacman", owner)
+		}
+	})
+
+	t.Run("standalone when standard /usr/local/go", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			goos:         "linux",
+			goBinaryPath: "/usr/local/go/bin/go",
+			lookPath:     map[string]bool{"go": true, "apt": true},
+		})
+		adpt := &GoAdapter{}
+		info := adpt.Info()
+		if got := info.Manager["linux"]; got != "" {
+			t.Errorf("Manager[\"linux\"] = %q, want empty", got)
+		}
+		if info.UpdatePolicy != adapters.PolicyAlwaysUpdate {
+			t.Errorf("UpdatePolicy = %v, want PolicyAlwaysUpdate", info.UpdatePolicy)
+		}
+		if info.Command != goLinuxUpdateCmd {
+			t.Errorf("Command = %q, want %q", info.Command, goLinuxUpdateCmd)
+		}
+		if owner := ResolveOwner("go", "linux"); owner != nil {
+			t.Errorf("ResolveOwner(\"go\", \"linux\") = %v, want nil", owner)
+		}
+	})
+
+	t.Run("outside standard path with unsupported manager returns no update", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			goos:         "linux",
+			goBinaryPath: "/usr/bin/go",
+			lookPath:     map[string]bool{"go": true, "apt": false, "pacman": false},
+			cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+			goDevVersion: "go1.27.1\ntime 2026-08-28T16:20:06Z",
+		})
+		adpt := &GoAdapter{}
+		info, err := adpt.Check(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.UpdateAvailable {
+			t.Errorf("UpdateAvailable = true, want false for non-standard path with no supported manager")
+		}
+		if info.LatestVersion != "1.22.0" {
+			t.Errorf("LatestVersion = %q, want %q", info.LatestVersion, "1.22.0")
+		}
+	})
+}

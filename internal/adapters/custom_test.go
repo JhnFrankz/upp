@@ -440,6 +440,36 @@ func TestCustomAdapter_Info_ManagerAdapter(t *testing.T) {
 	}
 }
 
+type fakeCheckerManagerAdapter struct {
+	fakeManagerAdapter
+}
+
+func (f *fakeCheckerManagerAdapter) CheckPackage(ctx context.Context, packageName string) (UpdateInfo, error) {
+	return UpdateInfo{CurrentVersion: "1.0", LatestVersion: "1.0"}, nil
+}
+
+func TestCustomAdapter_ManagerChecker(t *testing.T) {
+	// Standalone custom tool
+	ca, _ := NewCustomAdapter("standalone", "standalone --update", "", false)
+	if ca.ManagerChecker() != nil {
+		t.Errorf("expected nil ManagerChecker for standalone custom tool, got %v", ca.ManagerChecker())
+	}
+
+	// Manager without PackageChecker
+	nonChecker := &fakeManagerAdapter{name: "simple"}
+	caSimple, _ := NewCustomAdapter("simpletool", "simpletool --update", "", false, nonChecker)
+	if caSimple.ManagerChecker() != nil {
+		t.Errorf("expected nil ManagerChecker for manager without PackageChecker, got %v", caSimple.ManagerChecker())
+	}
+
+	// Manager with PackageChecker
+	checkerMgr := &fakeCheckerManagerAdapter{fakeManagerAdapter{name: "checker"}}
+	caChecker, _ := NewCustomAdapter("checktool", "checktool --update", "", false, checkerMgr)
+	if caChecker.ManagerChecker() == nil {
+		t.Error("expected non-nil ManagerChecker for manager implementing PackageChecker")
+	}
+}
+
 func TestExtractBaseCommand(t *testing.T) {
 	tests := []struct {
 		cmd  string
