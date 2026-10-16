@@ -227,3 +227,82 @@ func TestAuthorizeChecks_GatesByRisk(t *testing.T) {
 		})
 	}
 }
+
+type fakeCheckerManager struct {
+	adapters.Adapter
+}
+
+func (f *fakeCheckerManager) Name() string { return "checker-mgr" }
+func (f *fakeCheckerManager) Detect() bool { return true }
+func (f *fakeCheckerManager) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (f *fakeCheckerManager) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{Success: true}, nil
+}
+func (f *fakeCheckerManager) Info() adapters.ToolInfo {
+	return adapters.ToolInfo{
+		ID:   "checker-mgr",
+		Name: "Checker Manager",
+		Kind: adapters.KindManager,
+	}
+}
+func (f *fakeCheckerManager) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{CurrentVersion: "1.0", LatestVersion: "1.1", UpdateAvailable: true}, nil
+}
+
+type fakeNonCheckerManager struct {
+	adapters.Adapter
+}
+
+func (f *fakeNonCheckerManager) Name() string { return "non-checker-mgr" }
+func (f *fakeNonCheckerManager) Detect() bool { return true }
+func (f *fakeNonCheckerManager) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (f *fakeNonCheckerManager) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{Success: true}, nil
+}
+func (f *fakeNonCheckerManager) Info() adapters.ToolInfo {
+	return adapters.ToolInfo{
+		ID:   "non-checker-mgr",
+		Name: "Non Checker Manager",
+		Kind: adapters.KindManager,
+	}
+}
+
+func TestAuthorizeChecks_CustomAdapterWithPackageCheckerDoesNotPrompt(t *testing.T) {
+	highRiskCheck := "curl -s https://example.com/check.sh | bash"
+	gfCI := &GlobalFlags{CI: true}
+	r := output.NewRenderer(io.Discard, false)
+
+	// 1. Custom tool managed by a PackageChecker manager:
+	// Check() delegates to CheckPackage and never executes checkCmd.
+	// It must NOT prompt or fail under --ci mode.
+	checkerMgr := &fakeCheckerManager{}
+	caWithChecker, err := adapters.NewCustomAdapter("owned-tool", "owned-tool update", highRiskCheck, false, checkerMgr)
+	if err != nil {
+		t.Fatalf("NewCustomAdapter error: %v", err)
+	}
+
+	kept, err := authorizeChecks(gfCI, []adapters.Adapter{caWithChecker}, r, strings.NewReader(""), io.Discard)
+	if err != nil {
+		t.Fatalf("expected no error for tool with PackageChecker manager in CI mode, got: %v", err)
+	}
+	if len(kept) != 1 {
+		t.Fatalf("len(kept) = %d, want 1", len(kept))
+	}
+
+	// 2. Custom tool managed by a manager WITHOUT PackageChecker:
+	// Check() executes checkCmd, so it requires consent and fails under --ci mode.
+	nonCheckerMgr := &fakeNonCheckerManager{}
+	caWithoutChecker, err := adapters.NewCustomAdapter("unowned-tool", "unowned-tool update", highRiskCheck, false, nonCheckerMgr)
+	if err != nil {
+		t.Fatalf("NewCustomAdapter error: %v", err)
+	}
+
+	_, err = authorizeChecks(gfCI, []adapters.Adapter{caWithoutChecker}, r, strings.NewReader(""), io.Discard)
+	if err == nil {
+		t.Fatal("expected CI error for dangerous check command when manager lacks PackageChecker")
+	}
+}

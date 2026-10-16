@@ -1896,9 +1896,57 @@ git        2.43.0     2.44.0
 		t.Fatalf("parseScoopStatusOutput got (%q, %q, %v), want (1.0.0, 1.2.0, true)", cur, lat, found)
 	}
 
+	gitCur, gitLat, gitFound := parseScoopPackageStatusOutput(fixture, "git")
+	if !gitFound || gitCur != "2.43.0" || gitLat != "2.44.0" {
+		t.Fatalf("parseScoopPackageStatusOutput got (%q, %q, %v), want (2.43.0, 2.44.0, true)", gitCur, gitLat, gitFound)
+	}
+
+	_, _, missingFound := parseScoopPackageStatusOutput(fixture, "nonexistent")
+	if missingFound {
+		t.Fatal("expected missing package to not be found")
+	}
+
 	_, _, notFound := parseScoopStatusOutput("WARN Scoop is out of date.\n")
 	if notFound {
 		t.Fatal("expected found=false for banner-only output")
+	}
+}
+
+func TestScoopCheckPackage_Execution(t *testing.T) {
+	scoop := &ScoopAdapter{}
+	fixture := "Name       Installed  Latest\n----       ---------  ------\nneovim     0.9.0      0.10.0\n"
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"scoop": true},
+		cmdArgs: map[string]fakeResult{
+			"scoop status": {stdout: fixture},
+		},
+	})
+
+	info, err := scoop.CheckPackage(context.Background(), "neovim")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !info.UpdateAvailable {
+		t.Error("expected UpdateAvailable to be true")
+	}
+	if info.CurrentVersion != "0.9.0" || info.LatestVersion != "0.10.0" {
+		t.Errorf("got versions (%q, %q), want (0.9.0, 0.10.0)", info.CurrentVersion, info.LatestVersion)
+	}
+
+	// Package up to date
+	fixtureUpToDate := "Name       Installed  Latest\n----       ---------  ------\nneovim     0.10.0     0.10.0\n"
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"scoop": true},
+		cmdArgs: map[string]fakeResult{
+			"scoop status": {stdout: fixtureUpToDate},
+		},
+	})
+	infoUpToDate, err := scoop.CheckPackage(context.Background(), "neovim")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if infoUpToDate.UpdateAvailable {
+		t.Error("expected UpdateAvailable to be false for up-to-date package")
 	}
 }
 

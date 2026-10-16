@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
@@ -100,7 +99,7 @@ func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
 }
 
 // resolvingOwnerIndex resolves the owning manager using the O(1) adapterIndex.
-func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS string, idx adapterIndex, hasExplicitAdapters bool) adapters.Adapter {
+func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS string, idx adapterIndex) adapters.Adapter {
 	if a == nil {
 		return nil
 	}
@@ -110,18 +109,11 @@ func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS str
 		}
 	}
 
-	if hasExplicitAdapters {
-		if info.Manager != nil {
-			ownerName := info.Manager[canonOS]
-			if ownerName != "" {
-				return idx.find(ownerName, ownerName)
-			}
+	if info.Manager != nil {
+		ownerName := info.Manager[canonOS]
+		if ownerName != "" {
+			return idx.find(ownerName, ownerName)
 		}
-		return nil
-	}
-
-	if owner := official.ResolveOwner(a.Name(), canonOS); owner != nil {
-		return owner
 	}
 	return nil
 }
@@ -163,11 +155,6 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		allAdapters, _ = e.Resolve(Filter{})
 	}
 	idx := buildAdapterIndex(allAdapters)
-	if e.adapters == nil {
-		for _, a := range official.AllAdapters() {
-			indexAdapter(idx, a, false)
-		}
-	}
 	canonOS := e.osName
 	if norm, err := platform.NormalizeOS(e.osName); err == nil {
 		canonOS = norm
@@ -210,7 +197,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 				info = a.Info()
 			}
 
-			owner := resolvingOwnerIndex(a, info, canonOS, idx, allAdapters != nil)
+			owner := resolvingOwnerIndex(a, info, canonOS, idx)
 			policy := adapters.PolicyGated
 			if a != nil {
 				policy = info.UpdatePolicy

@@ -241,6 +241,16 @@ func (c *CustomAdapter) ManagerAdapter() Adapter {
 	return c.manager
 }
 
+// ManagerChecker returns the PackageChecker implemented by the resolving owner manager, or nil.
+func (c *CustomAdapter) ManagerChecker() PackageChecker {
+	if c.manager != nil {
+		if chk, ok := c.manager.(PackageChecker); ok {
+			return chk
+		}
+	}
+	return nil
+}
+
 // IsTrusted returns whether the custom adapter is trusted via config.
 func (c *CustomAdapter) IsTrusted() bool {
 	return c.trusted

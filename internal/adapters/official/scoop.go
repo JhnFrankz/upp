@@ -13,9 +13,11 @@ import (
 type ScoopAdapter struct{}
 
 // scoopSelfUpdateCmd is scoop's real self-update command — declared by Info()
-// and executed by Update() (design D2 single source of truth). scoop is
-// self-only: it declares no PackageUpdateCommand.
-const scoopSelfUpdateCmd = "scoop update scoop"
+// and executed by Update() (design D2 single source of truth).
+const (
+	scoopSelfUpdateCmd         = "scoop update scoop"
+	scoopPackageUpdateTemplate = "scoop update {{.Package}}"
+)
 
 func (a *ScoopAdapter) Name() string { return "scoop" }
 
@@ -108,14 +110,83 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}, nil
 }
 
+// CheckPackage reports the installed vs available version of an owned package under scoop.
+func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
+	if !a.Detect() {
+		return adapters.UpdateInfo{}, fmt.Errorf("scoop is not installed")
+	}
+
+	current := "unknown"
+	latest := "unknown"
+	found := false
+	if out := commandOutput(ctx, "scoop", "status"); out != "" {
+		if cur, lat, ok := parseScoopPackageStatusOutput(out, pkg); ok {
+			current = cur
+			latest = lat
+			found = true
+		}
+	}
+
+	return adapters.UpdateInfo{
+		CurrentVersion:  current,
+		LatestVersion:   latest,
+		UpdateAvailable: found && current != "unknown" && latest != "unknown" && current != latest,
+	}, nil
+}
+
+// UpdatePackage runs the per-package update command for an owned tool under scoop.
+func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
+	if !a.Detect() {
+		return adapters.Result{Success: false}, fmt.Errorf("scoop is not installed")
+	}
+
+	before := "unknown"
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		before = info.CurrentVersion
+	}
+
+	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", pkg)
+	if err != nil {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("scoop update failed: %w", err),
+			Stderr:  stderr,
+		}, nil
+	}
+
+	if stderr != "" && strings.Contains(stderr, "ERROR") {
+		return adapters.Result{
+			Success: false,
+			Before:  before,
+			After:   before,
+			Error:   fmt.Errorf("scoop update error: %s", truncate(stderr, 200)),
+			Stderr:  stderr,
+		}, nil
+	}
+
+	after := before
+	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
+		after = info.CurrentVersion
+	}
+
+	return adapters.Result{
+		Success: true,
+		Before:  before,
+		After:   after,
+	}, nil
+}
+
 var scoopInfo = adapters.ToolInfo{
-	ID:                "scoop",
-	Name:              "Scoop",
-	Platforms:         platformsWindows,
-	Trust:             security.TrustOfficial,
-	UpdatePolicy:      adapters.PolicyAlwaysUpdate,
-	Kind:              adapters.KindManager,
-	SelfUpdateCommand: scoopSelfUpdateCmd,
+	ID:                   "scoop",
+	Name:                 "Scoop",
+	Platforms:            platformsWindows,
+	Trust:                security.TrustOfficial,
+	UpdatePolicy:         adapters.PolicyAlwaysUpdate,
+	Kind:                 adapters.KindManager,
+	SelfUpdateCommand:    scoopSelfUpdateCmd,
+	PackageUpdateCommand: scoopPackageUpdateTemplate,
 }
 
 func (a *ScoopAdapter) Info() adapters.ToolInfo {

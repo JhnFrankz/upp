@@ -2651,6 +2651,19 @@ func TestResolveOwnerByID_NilAdapter(t *testing.T) {
 	if gotNotFound != nil {
 		t.Errorf("expected nil, got %v", gotNotFound)
 	}
+
+	// When allAdapters slice is provided but does not contain official manager "apt",
+	// it must NOT fall back to official.AdapterByName("apt") (which would resurrect disabled managers).
+	gotDisabled := resolveOwnerByID("apt", list)
+	if gotDisabled != nil {
+		t.Errorf("expected nil when manager not in provided list, got %v", gotDisabled)
+	}
+
+	// When allAdapters is omitted, it falls back to official registry
+	gotFallback := resolveOwnerByID("apt")
+	if gotFallback == nil || gotFallback.Name() != "apt" {
+		t.Errorf("expected official apt fallback when no list provided, got %v", gotFallback)
+	}
 }
 
 func TestRunUpdate_SharedDisplayNameDoesNotCollideInUpdatesByTool(t *testing.T) {
@@ -2690,5 +2703,45 @@ func TestRunUpdate_SharedDisplayNameDoesNotCollideInUpdatesByTool(t *testing.T) 
 	}
 	if fakeB.updated {
 		t.Error("tool-beta (already current) must NOT have been updated")
+	}
+}
+
+func TestRunUpdate_Interactive_CallsPrepareCheckAdapters(t *testing.T) {
+	mgr := &fakeUpdateAdapter{
+		name: "apt",
+		kind: adapters.KindManager,
+		checkPackage: func(pkg string) (adapters.UpdateInfo, error) {
+			return adapters.UpdateInfo{
+				CurrentVersion:  "1.0.0",
+				LatestVersion:   "2.0.0",
+				UpdateAvailable: true,
+			}, nil
+		},
+	}
+	tool := &fakeUpdateAdapter{
+		name: "tool-owned",
+		manager: map[string]string{
+			"linux":   "apt",
+			"darwin":  "apt",
+			"macos":   "apt",
+			"windows": "apt",
+		},
+		managerPackage: map[string]string{
+			"linux":   "tool-owned-pkg",
+			"darwin":  "tool-owned-pkg",
+			"macos":   "tool-owned-pkg",
+			"windows": "tool-owned-pkg",
+		},
+	}
+
+	selector, _ := fakeSelector([]string{}, true)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{mgr, tool}, selector)
+
+	gf := &GlobalFlags{}
+	uf := &UpdateFlags{}
+	_ = runUpdate(gf, uf, deps)
+
+	if mgr.checkPkgCount == 0 {
+		t.Errorf("expected manager.CheckPackage to be called via ownedCheckerAdapter during interactive update, got 0")
 	}
 }

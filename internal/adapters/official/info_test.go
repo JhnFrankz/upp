@@ -39,7 +39,7 @@ func TestInfo(t *testing.T) {
 		{"go", func() adapters.Adapter { return &GoAdapter{} }, adapters.ToolInfo{ID: "go", Name: "Go", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Manager: map[string]string{"macos": "brew", "windows": "winget"}, ManagerPackage: map[string]string{"macos": "golang", "windows": "GoLang.Go"}, Command: goLinuxUpdateCmd}},
 		{"opencode", func() adapters.Adapter { return &OpenCodeAdapter{} }, adapters.ToolInfo{ID: "opencode", Name: "OpenCode", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindTool, Command: "opencode update"}},
 		{"winget", func() adapters.Adapter { return &WingetAdapter{} }, adapters.ToolInfo{ID: "winget", Name: "Windows Package Manager", Platforms: []string{"windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: wingetSelfUpdateCmd, PackageUpdateCommand: wingetPackageUpdateTemplate}},
-		{"scoop", func() adapters.Adapter { return &ScoopAdapter{} }, adapters.ToolInfo{ID: "scoop", Name: "Scoop", Platforms: []string{"windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: scoopSelfUpdateCmd}},
+		{"scoop", func() adapters.Adapter { return &ScoopAdapter{} }, adapters.ToolInfo{ID: "scoop", Name: "Scoop", Platforms: []string{"windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: scoopSelfUpdateCmd, PackageUpdateCommand: scoopPackageUpdateTemplate}},
 		{"nvm", func() adapters.Adapter { return &NVMAdapter{} }, adapters.ToolInfo{ID: "nvm", Name: "Node Version Manager", Platforms: []string{"linux", "macos"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindTool, Command: "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm install --lts'"}},
 		{"uv", func() adapters.Adapter { return &UvAdapter{} }, adapters.ToolInfo{ID: "uv", Name: "uv", Platforms: []string{"linux", "macos", "windows"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindTool, Command: "uv self update"}},
 	}
@@ -73,6 +73,7 @@ func TestManagerCommandDeclarations(t *testing.T) {
 		"brew":   "brew upgrade <pkg>",
 		"winget": "winget upgrade <pkg>",
 		"pacman": "sudo pacman -S --noconfirm <pkg>",
+		"scoop":  scoopPackageUpdateTemplate,
 	}
 
 	for _, a := range AllAdapters() {
@@ -91,9 +92,9 @@ func TestManagerCommandDeclarations(t *testing.T) {
 
 		wantPkg, isPackageManager := packageManagers[info.ID]
 		if isPackageManager {
-			if !strings.Contains(info.PackageUpdateCommand, adapters.PackagePlaceholder) {
-				t.Errorf("%s: PackageUpdateCommand = %q, want it to contain PackagePlaceholder %q",
-					info.ID, info.PackageUpdateCommand, adapters.PackagePlaceholder)
+			if !strings.Contains(info.PackageUpdateCommand, adapters.PackagePlaceholder) && !strings.Contains(info.PackageUpdateCommand, "{{.Package}}") {
+				t.Errorf("%s: PackageUpdateCommand = %q, want it to contain package placeholder",
+					info.ID, info.PackageUpdateCommand)
 			}
 			if info.PackageUpdateCommand != wantPkg {
 				t.Errorf("%s: PackageUpdateCommand = %q, want %q", info.ID, info.PackageUpdateCommand, wantPkg)

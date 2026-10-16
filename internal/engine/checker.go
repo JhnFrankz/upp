@@ -25,6 +25,10 @@ func (o *ownedCheckerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, e
 	return o.Adapter.Check(ctx)
 }
 
+func (o *ownedCheckerAdapter) Unwrap() adapters.Adapter {
+	return o.Adapter
+}
+
 // PrepareCheckAdapters wraps owned tools whose managers provide a PackageChecker.
 func PrepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) []adapters.Adapter {
 	var list []adapters.Adapter

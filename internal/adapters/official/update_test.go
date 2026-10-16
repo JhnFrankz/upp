@@ -1675,6 +1675,7 @@ func TestUpdateRunsDeclaredCommand(t *testing.T) {
 		{name: "winget/self", newAdpt: func() adapters.Adapter { return &WingetAdapter{} }},
 		{name: "winget/package", newAdpt: func() adapters.Adapter { return &WingetAdapter{} }, pkg: "gh"},
 		{name: "scoop/self", newAdpt: func() adapters.Adapter { return &ScoopAdapter{} }},
+		{name: "scoop/package", newAdpt: func() adapters.Adapter { return &ScoopAdapter{} }, pkg: "neovim"},
 		{name: "pacman/self", newAdpt: func() adapters.Adapter { return &PacmanAdapter{} }},
 		{name: "pacman/package", newAdpt: func() adapters.Adapter { return &PacmanAdapter{} }, pkg: "ripgrep"},
 	}

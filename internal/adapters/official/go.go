@@ -346,6 +346,14 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	latest := current
 	updateAvailable := false
 
+	if runtimeGOOSFn() == "linux" && !isStandardGoPath(goBinaryPathFn()) {
+		return adapters.UpdateInfo{
+			CurrentVersion:  current,
+			LatestVersion:   current,
+			UpdateAvailable: false,
+		}, nil
+	}
+
 	if raw, err := goDevVersionFn(ctx); err == nil && raw != "" {
 		if v := extractGoVersion(raw); v != "" {
 			latest = v
@@ -553,6 +561,28 @@ var (
 )
 
 func (a *GoAdapter) Info() adapters.ToolInfo {
+	if runtimeGOOSFn() == "linux" {
+		if owner, pkg := a.linuxOwner(); owner != nil {
+			info := goInfo
+			mgrMap := make(map[string]string, len(goManager)+1)
+			for k, v := range goManager {
+				mgrMap[k] = v
+			}
+			mgrMap["linux"] = owner.Name()
+			info.Manager = mgrMap
+
+			pkgMap := make(map[string]string, len(goManagerPackage)+1)
+			for k, v := range goManagerPackage {
+				pkgMap[k] = v
+			}
+			pkgMap["linux"] = pkg
+			info.ManagerPackage = pkgMap
+
+			info.UpdatePolicy = owner.Info().UpdatePolicy
+			info.Command = ""
+			return info
+		}
+	}
 	return goInfo
 }
 

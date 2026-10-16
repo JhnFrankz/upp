@@ -1151,12 +1151,12 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 			wantPrivs: []string{"sudo"},
 		},
 		{
-			name:      "custom manager-delegated row with self-only manager inherits manager self command",
+			name:      "custom manager-delegated row with scoop manager inherits scoop package command",
 			osName:    platform.OSWindows,
 			all:       []adapters.Adapter{scoop, customDelegatedScoop},
 			id:        "mytool-scoop",
 			toolName:  "mytool-scoop",
-			wantRisk:  "scoop update scoop",
+			wantRisk:  "scoop update mytool-scoop",
 			wantMgrID: "scoop",
 			wantPrivs: nil,
 		},
@@ -1437,5 +1437,91 @@ func TestPlan_WithAdaptersHermeticity(t *testing.T) {
 	upGhOnly := planGhOnly.Updates[0]
 	if upGhOnly.ManagerID != "" {
 		t.Errorf("expected empty ManagerID when manager is not in WithAdapters, got %q (bypassed injected adapters)", upGhOnly.ManagerID)
+	}
+
+	// Case 4: When WithAdapters is NOT provided, but a package manager is disabled in config.toml,
+	// Plan must not re-inject disabled managers into idx.
+	cfgDisabled := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			expectedMgr: {Enabled: false},
+		},
+	}
+	engDisabled := New(cfgDisabled, platform.OSLinux)
+	planDisabled, err := engDisabled.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("engDisabled.Plan error: %v", err)
+	}
+	if len(planDisabled.Updates) != 1 {
+		t.Fatalf("expected 1 update, got %d", len(planDisabled.Updates))
+	}
+	upDisabled := planDisabled.Updates[0]
+	if upDisabled.ManagerID != "" {
+		t.Errorf("expected empty ManagerID when manager %q is disabled in config, got %q (re-injected disabled manager)", expectedMgr, upDisabled.ManagerID)
+	}
+}
+
+type fakeGoAdapterWithInfo struct {
+	adapters.Adapter
+	info adapters.ToolInfo
+}
+
+func (f *fakeGoAdapterWithInfo) Name() string { return "go" }
+func (f *fakeGoAdapterWithInfo) Detect() bool { return true }
+func (f *fakeGoAdapterWithInfo) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{CurrentVersion: "1.22.0", LatestVersion: "1.23.0", UpdateAvailable: true}, nil
+}
+func (f *fakeGoAdapterWithInfo) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{Success: true}, nil
+}
+func (f *fakeGoAdapterWithInfo) Info() adapters.ToolInfo { return f.info }
+
+func TestPlan_GoLinuxOwnership(t *testing.T) {
+	apt := official.AdapterByName("apt")
+
+	// Go owned by apt on Linux
+	goApt := &fakeGoAdapterWithInfo{
+		info: adapters.ToolInfo{
+			ID:             "go",
+			Name:           "Go",
+			Platforms:      []string{"linux", "macos", "windows"},
+			Trust:          security.TrustOfficial,
+			UpdatePolicy:   adapters.PolicyGated,
+			Kind:           adapters.KindTool,
+			Manager:        map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"},
+			ManagerPackage: map[string]string{"linux": "golang-go", "macos": "golang", "windows": "GoLang.Go"},
+		},
+	}
+
+	eng := New(&config.Config{}, platform.OSLinux, WithAdapters([]adapters.Adapter{apt, goApt}))
+	outcomes := []CheckOutcome{
+		{
+			ToolID:          "go",
+			ToolName:        "Go",
+			Status:          StatusAvailable,
+			CurrentVersion:  "1.22.0",
+			LatestVersion:   "1.23.0",
+			UpdateAvailable: true,
+		},
+	}
+
+	plan, err := eng.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("Plan error: %v", err)
+	}
+	if len(plan.Updates) != 1 {
+		t.Fatalf("len(plan.Updates) = %d, want 1", len(plan.Updates))
+	}
+	up := plan.Updates[0]
+	if up.ManagerID != "apt" {
+		t.Errorf("ManagerID = %q, want \"apt\"", up.ManagerID)
+	}
+	if up.PackageName != "golang-go" {
+		t.Errorf("PackageName = %q, want \"golang-go\"", up.PackageName)
+	}
+	if up.UpdatePolicy != adapters.PolicyGated {
+		t.Errorf("UpdatePolicy = %v, want PolicyGated", up.UpdatePolicy)
+	}
+	if up.RiskCommand != "sudo apt install --only-upgrade golang-go" {
+		t.Errorf("RiskCommand = %q, want \"sudo apt install --only-upgrade golang-go\"", up.RiskCommand)
 	}
 }

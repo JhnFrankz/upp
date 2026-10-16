@@ -489,4 +489,49 @@ func TestResolve_EdgeCases(t *testing.T) {
 			t.Fatalf("resolved = %v, want gh", resolved)
 		}
 	})
+
+	t.Run("custom tool manager restricted by platform", func(t *testing.T) {
+		cfg := &config.Config{
+			Custom: map[string]config.CustomTool{
+				"tool-scoop": {
+					Command: "tool-scoop --update",
+					Manager: "scoop",
+				},
+			},
+		}
+
+		// On Linux, scoop is unsupported, so tool-scoop should NOT have scoop as manager
+		engLinux := New(cfg, "linux")
+		resolvedLinux, err := engLinux.Resolve(Filter{Only: []string{"tool-scoop"}})
+		if err != nil {
+			t.Fatalf("Resolve Linux error: %v", err)
+		}
+		if len(resolvedLinux) != 1 {
+			t.Fatalf("len(resolvedLinux) = %d, want 1", len(resolvedLinux))
+		}
+		caLinux, ok := resolvedLinux[0].(*adapters.CustomAdapter)
+		if !ok {
+			t.Fatalf("expected *adapters.CustomAdapter, got %T", resolvedLinux[0])
+		}
+		if caLinux.ManagerAdapter() != nil {
+			t.Errorf("expected nil ManagerAdapter on Linux for scoop, got %v", caLinux.ManagerAdapter())
+		}
+
+		// On Windows, scoop is supported, so tool-scoop SHOULD have scoop as manager
+		engWin := New(cfg, "windows")
+		resolvedWin, err := engWin.Resolve(Filter{Only: []string{"tool-scoop"}})
+		if err != nil {
+			t.Fatalf("Resolve Windows error: %v", err)
+		}
+		if len(resolvedWin) != 1 {
+			t.Fatalf("len(resolvedWin) = %d, want 1", len(resolvedWin))
+		}
+		caWin, ok := resolvedWin[0].(*adapters.CustomAdapter)
+		if !ok {
+			t.Fatalf("expected *adapters.CustomAdapter, got %T", resolvedWin[0])
+		}
+		if caWin.ManagerAdapter() == nil || caWin.ManagerAdapter().Name() != "scoop" {
+			t.Errorf("expected scoop ManagerAdapter on Windows, got %v", caWin.ManagerAdapter())
+		}
+	})
 }
