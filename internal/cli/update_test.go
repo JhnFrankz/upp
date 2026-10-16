@@ -1494,7 +1494,7 @@ func TestExecutePlannedUpdate_Coverage(t *testing.T) {
 
 			var got output.ToolResult
 			run := func() {
-				got = executePlannedUpdate(context.Background(), gf, tt.planned, tt.fake, 1, 1, r, "linux")
+				got = executePlannedUpdate(context.Background(), gf, tt.planned, tt.fake, 1, 1, r, "linux", strings.NewReader(tt.stdin), &buf)
 			}
 			if tt.stdin != "" {
 				withStdin(t, tt.stdin, run)
@@ -2468,7 +2468,7 @@ func TestExecutePlannedUpdate_PreservesStderr(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	r := output.NewRendererForced(&buf, false, false, false, false)
-	got := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fake, 1, 1, r, "linux")
+	got := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fake, 1, 1, r, "linux", nil, &buf)
 	if got.Status != output.StatusFailed {
 		t.Fatalf("executePlannedUpdate status = %v, want StatusFailed", got.Status)
 	}
@@ -2503,7 +2503,7 @@ func TestExecutePlannedUpdate_CanonicalOSDelegation(t *testing.T) {
 	r := output.NewRendererForced(&buf, false, false, true, false)
 
 	// Passing "darwin" (alias for "macos") must correctly delegate to the manager on macOS.
-	res := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fakeTool, 1, 1, r, "darwin", []adapters.Adapter{fakeMgr, fakeTool})
+	res := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fakeTool, 1, 1, r, "darwin", nil, &buf, []adapters.Adapter{fakeMgr, fakeTool})
 	if res.Status != output.StatusUpdated {
 		t.Fatalf("expected StatusUpdated, got %v", res.Status)
 	}
@@ -2540,7 +2540,7 @@ func TestExecutePlannedUpdate_FastPathWithManagerID(t *testing.T) {
 	var buf bytes.Buffer
 	r := output.NewRendererForced(&buf, false, false, true, false)
 
-	res := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fakeTool, 1, 1, r, "linux", []adapters.Adapter{fakeMgr, fakeTool})
+	res := executePlannedUpdate(context.Background(), &GlobalFlags{}, planned, fakeTool, 1, 1, r, "linux", nil, &buf, []adapters.Adapter{fakeMgr, fakeTool})
 	if res.Status != output.StatusUpdated {
 		t.Fatalf("expected StatusUpdated, got %v", res.Status)
 	}

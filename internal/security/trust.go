@@ -94,12 +94,10 @@ var MediumRiskKeywords = []string{
 var (
 	highRiskKeywordsLower   []string
 	mediumRiskKeywordsLower []string
-	pipeTargets             []string
 )
 
 func init() {
 	syncRiskKeywordsLower()
-	syncPipeTargets()
 }
 
 func syncRiskKeywordsLower() {
@@ -110,13 +108,6 @@ func syncRiskKeywordsLower() {
 	mediumRiskKeywordsLower = make([]string, len(MediumRiskKeywords))
 	for i, kw := range MediumRiskKeywords {
 		mediumRiskKeywordsLower[i] = strings.ToLower(kw)
-	}
-}
-
-func syncPipeTargets() {
-	pipeTargets = make([]string, 0, len(pipeInterpreters)*2)
-	for _, interp := range pipeInterpreters {
-		pipeTargets = append(pipeTargets, "| "+interp, "|"+interp)
 	}
 }
 
@@ -137,16 +128,19 @@ func ClassifyCommand(cmd string) RiskLevel {
 		}
 	}
 
-	// 2. Keyword matching — medium risk.
+	// 2. Pattern matching — pipe to shell is always high risk.
+	// Evaluated before medium-risk keywords so compound commands with medium-risk
+	// verbs that pipe into a shell (e.g., npm uninstall -g x && curl ... | bash)
+	// correctly evaluate to RiskHigh.
+	if hasPipeToShell(cmd) {
+		return RiskHigh
+	}
+
+	// 3. Keyword matching — medium risk.
 	for _, kw := range mediumRiskKeywordsLower {
 		if platform.ContainsFold(cmd, kw) {
 			return RiskMedium
 		}
-	}
-
-	// 3. Pattern matching — pipe to shell is always high risk.
-	if hasPipeToShell(cmd) {
-		return RiskHigh
 	}
 
 	// 4. Pattern matching — command chaining increases risk.
@@ -180,20 +174,37 @@ func hasCommandChaining(cmd string) bool {
 		(strings.Contains(cmd, "`") && strings.Count(cmd, "`") >= 2)
 }
 
-var pipeInterpreters = []string{
-	"sh", "bash", "zsh", "fish",
-	"powershell", "pwsh",
-	"python", "python3", "node", "ruby", "perl",
-}
+var rePipeShell = regexp.MustCompile(
+	`(?i)^(?:\s*(?:sudo|doas|pkexec)\s+)?` +
+		`(?:\s*['"]?(?:[\w./\\-]+[/\\])?env(?:\.exe)?['"]?(?:\s+-\S+)*\s+)?` +
+		`['"]?(?:[\w./\\-]+[/\\])?` +
+		`(?:sh|bash|zsh|fish|dash|ksh|ash|powershell|pwsh|cmd|python3|python|node|ruby|perl)` +
+		`(?:\.exe)?['"]?(?:$|[\s;&|<>'"])`,
+)
 
 // hasPipeToShell detects piping output to a shell or script interpreter,
-// both spaced ("| sh", "| python") and compact ("|sh", "|python") variants.
+// ensuring token/word boundaries after the interpreter name to avoid false
+// positives on tools sharing prefixes (sha256sum, node_exporter), and handling
+// multi-space pipes, path-qualified shells (/bin/sh, /usr/bin/env bash), and shells
+// like dash, ksh, ash, and cmd.
 func hasPipeToShell(cmd string) bool {
 	if !strings.ContainsRune(cmd, '|') {
 		return false
 	}
-	for _, target := range pipeTargets {
-		if platform.ContainsFold(cmd, target) {
+	n := len(cmd)
+	for i := 0; i < n; i++ {
+		if cmd[i] != '|' {
+			continue
+		}
+
+		start := i + 1
+		// Skip bash |& (pipe stderr)
+		if start < n && cmd[start] == '&' {
+			start++
+		}
+
+		right := strings.TrimLeft(cmd[start:], " \t")
+		if rePipeShell.MatchString(right) {
 			return true
 		}
 	}

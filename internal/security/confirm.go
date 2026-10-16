@@ -31,6 +31,7 @@ type ConfirmConfig struct {
 	Command    string
 	Privileges []string
 	CI         bool
+	Quiet      bool      // suppresses informational output from printInfo
 	Reader     io.Reader // injectable for testing
 	Writer     io.Writer // injectable for testing (defaults to os.Stdout)
 	// EnforceRisk bypasses the TrustOfficial → ConfirmAuto short-circuit so
@@ -66,9 +67,10 @@ func ConfirmAction(cfg ConfirmConfig) ConfirmDecision {
 	}
 
 	effectiveRisk := cfg.RiskLevel
-	if len(cfg.Privileges) > 0 {
+	if len(cfg.Privileges) > 0 || (effectiveRisk != RiskLow && effectiveRisk != RiskMedium) {
 		effectiveRisk = RiskHigh
 	}
+	cfg.RiskLevel = effectiveRisk
 
 	switch effectiveRisk {
 	case RiskLow:
@@ -116,6 +118,9 @@ func confirmWriter(cfg ConfirmConfig) io.Writer {
 
 // printInfo shows the command details without asking for confirmation.
 func printInfo(cfg ConfirmConfig) {
+	if cfg.Quiet {
+		return
+	}
 	_, _ = fmt.Fprintf(confirmWriter(cfg), "  %s (%s) — Command: %s — Risk: %s\n",
 		cfg.ToolName, cfg.TrustLevel, cfg.Command, cfg.RiskLevel)
 }

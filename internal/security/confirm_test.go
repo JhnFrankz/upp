@@ -360,3 +360,82 @@ func TestConfirmAction_PrivilegesElevateLowRisk(t *testing.T) {
 		t.Errorf("ConfirmAction(interactive no, privileges) = %v, want ConfirmDeny", got)
 	}
 }
+
+func TestConfirmAction_EffectiveRiskDisplayInPrompt(t *testing.T) {
+	t.Parallel()
+
+	// 1. Privileges escalate Low risk to High in prompt output.
+	var outPriv strings.Builder
+	privCfg := ConfirmConfig{
+		ToolName:   "privtool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskLow,
+		Command:    "sudo privtool --update",
+		Privileges: []string{"sudo"},
+		CI:         false,
+		Reader:     strings.NewReader("n\n"),
+		Writer:     &outPriv,
+	}
+	ConfirmAction(privCfg)
+	if !strings.Contains(outPriv.String(), "Risk: HIGH") {
+		t.Errorf("expected escalated 'Risk: HIGH' in prompt output, got: %q", outPriv.String())
+	}
+	if strings.Contains(outPriv.String(), "Risk: LOW") {
+		t.Errorf("expected unescalated 'Risk: LOW' NOT to be displayed, got: %q", outPriv.String())
+	}
+
+	// 2. Unrecognized RiskLevel escalates to High in prompt output.
+	var outUnknown strings.Builder
+	unknownCfg := ConfirmConfig{
+		ToolName:   "unknowntool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskLevel(99),
+		Command:    "unknowntool --update",
+		CI:         false,
+		Reader:     strings.NewReader("n\n"),
+		Writer:     &outUnknown,
+	}
+	ConfirmAction(unknownCfg)
+	if !strings.Contains(outUnknown.String(), "Risk: HIGH") {
+		t.Errorf("expected escalated 'Risk: HIGH' in prompt output for unrecognized risk, got: %q", outUnknown.String())
+	}
+	if strings.Contains(outUnknown.String(), "Risk: UNKNOWN") {
+		t.Errorf("expected unescalated 'Risk: UNKNOWN' NOT to be displayed, got: %q", outUnknown.String())
+	}
+}
+
+func TestConfirmAction_QuietSuppressesPrintInfo(t *testing.T) {
+	t.Parallel()
+
+	// Quiet=false prints info for low risk
+	var outVerbose strings.Builder
+	normalCfg := ConfirmConfig{
+		ToolName:   "lowtool",
+		TrustLevel: TrustCustomTrusted,
+		RiskLevel:  RiskLow,
+		Command:    "lowtool --check",
+		CI:         false,
+		Quiet:      false,
+		Writer:     &outVerbose,
+	}
+	ConfirmAction(normalCfg)
+	if !strings.Contains(outVerbose.String(), "Command: lowtool --check") {
+		t.Errorf("expected info output when Quiet=false, got: %q", outVerbose.String())
+	}
+
+	// Quiet=true suppresses info output
+	var outQuiet strings.Builder
+	quietCfg := ConfirmConfig{
+		ToolName:   "lowtool",
+		TrustLevel: TrustCustomTrusted,
+		RiskLevel:  RiskLow,
+		Command:    "lowtool --check",
+		CI:         false,
+		Quiet:      true,
+		Writer:     &outQuiet,
+	}
+	ConfirmAction(quietCfg)
+	if outQuiet.Len() != 0 {
+		t.Errorf("expected no output when Quiet=true, got: %q", outQuiet.String())
+	}
+}

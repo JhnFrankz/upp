@@ -28,6 +28,9 @@ func NewUpdateCommand(gf *GlobalFlags) *cobra.Command {
 		Long:  "Process each enabled tool: detect, check, confirm, and update.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			d := cliDeps.update
+			if d.in == nil {
+				d.in = cmd.InOrStdin()
+			}
 			if d.out == nil {
 				d.out = cmd.OutOrStdout()
 			}
@@ -58,6 +61,7 @@ type updateDeps struct {
 	// returns the selected tool IDs plus whether the user canceled. Zero
 	// value = production CheckboxSelector over os.Stdout/os.Stdin.
 	selector func(pending []output.SelectOption) ([]string, bool)
+	in       io.Reader
 	out      io.Writer
 	errOut   io.Writer
 }
@@ -113,6 +117,10 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		}
 	}
 
+	in := deps.in
+	if in == nil {
+		in = os.Stdin
+	}
 	out := deps.out
 	if out == nil {
 		out = os.Stdout
@@ -121,6 +129,9 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 	if errOut == nil {
 		errOut = os.Stderr
 	}
+	deps.in = in
+	deps.out = out
+	deps.errOut = errOut
 
 	onlyList := ParseFilter(gf.Only)
 	if len(onlyList) > 0 {
@@ -150,7 +161,7 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		return runUpdateInteractive(ctx, gf, uf, deps, filteredAdapters, r, p.OS, eng, allAdapters)
 	}
 
-	return runUpdateSequential(ctx, gf, uf, filteredAdapters, r, p.OS, eng, allAdapters)
+	return runUpdateSequential(ctx, gf, uf, deps, filteredAdapters, r, p.OS, eng, allAdapters)
 }
 
 // unconsentedCheckAdapter delegates every Adapter method to the wrapped adapter
@@ -177,7 +188,7 @@ func (a unconsentedCheckAdapter) Check(ctx context.Context) (adapters.UpdateInfo
 // gate). Interactive runs prompt through security.ConfirmAction; --ci denies
 // with a non-zero error. A denial neutralizes only that check: the tool still
 // reports as detected with an unknown version, and the run continues.
-func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.Renderer) ([]adapters.Adapter, error) {
+func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.Renderer, in io.Reader, out io.Writer) ([]adapters.Adapter, error) {
 	authorized := make([]adapters.Adapter, 0, len(adapterList))
 	for _, a := range adapterList {
 		// Official adapters never declare arbitrary custom check commands.
@@ -201,6 +212,9 @@ func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.
 			Command:    info.CheckCommand,
 			Privileges: info.Privileges,
 			CI:         gf.CI,
+			Quiet:      gf.Quiet,
+			Reader:     in,
+			Writer:     out,
 		})
 
 		switch decision {
@@ -224,7 +238,7 @@ func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.
 // runs standard Check and Update. Per-tool errors are isolated.
 //
 // osName is the canonical platform key (platform.OSLinux/OSMacOS/OSWindows).
-func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
+func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, deps updateDeps, filteredAdapters []adapters.Adapter, r *output.Renderer, osName string, eng *engine.Engine, allAdapters ...[]adapters.Adapter) error {
 	total := len(filteredAdapters)
 	if total == 0 {
 		r.UpdateSummary(output.Summary{Results: nil, DryRun: uf.DryRun})
@@ -233,6 +247,15 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	in := deps.in
+	if in == nil {
+		in = os.Stdin
+	}
+	out := deps.out
+	if out == nil {
+		out = os.Stdout
 	}
 
 	if eng == nil {
@@ -244,7 +267,7 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 	}
 
 	checkAdapters := engine.PrepareCheckAdapters(filteredAdapters, osName, allAdapters...)
-	checkAdapters, err := authorizeChecks(gf, checkAdapters, r)
+	checkAdapters, err := authorizeChecks(gf, checkAdapters, r, in, out)
 	if err != nil {
 		return err
 	}
@@ -346,7 +369,7 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 			// The shared executor owns confirm + risk + privilege parity with
 			// the interactive path (design D2/D3); the plan's PlannedUpdate is
 			// the source of policy, not a re-derivation here.
-			results[i] = executePlannedUpdate(ctx, gf, u, a, i+1, total, r, osName, allAdapters...)
+			results[i] = executePlannedUpdate(ctx, gf, u, a, i+1, total, r, osName, in, out, allAdapters...)
 			if results[i].Status == output.StatusFailed {
 				hasFailure = true
 			}
@@ -390,13 +413,17 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		return err
 	}
 
+	in := deps.in
+	if in == nil {
+		in = os.Stdin
+	}
 	out := deps.out
 	if out == nil {
 		out = os.Stdout
 	}
 
 	grouped := engine.GroupOrder(filteredAdapters, osName, allAdapters...)
-	authorized, err := authorizeChecks(gf, grouped, r)
+	authorized, err := authorizeChecks(gf, grouped, r, in, out)
 	if err != nil {
 		return err
 	}
@@ -479,7 +506,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 
 	if deps.selector == nil {
 		deps.selector = func(opts []output.SelectOption) ([]string, bool) {
-			res, err := output.NewCheckboxSelector(out, os.Stdin, opts).Run()
+			res, err := output.NewCheckboxSelector(out, in, opts).Run()
 			if err != nil {
 				return nil, true
 			}
@@ -541,7 +568,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 			return err
 		}
 		updateIndex++
-		res := executePlannedUpdate(ctx, gf, p, a, updateIndex, updateTotal, r, osName, allAdapters...)
+		res := executePlannedUpdate(ctx, gf, p, a, updateIndex, updateTotal, r, osName, in, out, allAdapters...)
 		if res.Status == output.StatusFailed {
 			hasFailure = true
 		}
@@ -604,7 +631,7 @@ func enforceRiskFor(trust security.TrustLevel, risk security.RiskLevel, ci bool)
 // Info() declares privileges (design D4 — plan sets ManagerID on a manager
 // self-row iff it declares privileges, so pacman prompts while apt/brew/winget
 // keep their byte-identical auto-proceed decision).
-func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Adapter, index, total int, r *output.Renderer, osName string, allAdapters ...[]adapters.Adapter) output.ToolResult {
+func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.PlannedUpdate, a adapters.Adapter, index, total int, r *output.Renderer, osName string, in io.Reader, out io.Writer, allAdapters ...[]adapters.Adapter) output.ToolResult {
 	info := a.Info()
 
 	if !gf.Quiet && total > 1 {
@@ -619,6 +646,9 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 		Command:     p.RiskCommand,
 		Privileges:  p.Privileges,
 		CI:          gf.CI,
+		Quiet:       gf.Quiet,
+		Reader:      in,
+		Writer:      out,
 		EnforceRisk: enforceRiskFor(p.Trust, riskLevel, gf.CI),
 	})
 
