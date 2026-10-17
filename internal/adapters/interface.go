@@ -6,6 +6,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -156,8 +157,15 @@ type ToolInfo struct {
 // SupportsPlatform reports whether the tool supports the given platform.
 func (t ToolInfo) SupportsPlatform(osName string) bool {
 	norm := strings.ToLower(strings.TrimSpace(osName))
+	if canonical, err := platform.NormalizeOS(norm); err == nil {
+		norm = canonical
+	}
 	for _, p := range t.Platforms {
-		if strings.EqualFold(p, norm) {
+		pNorm := strings.ToLower(strings.TrimSpace(p))
+		if canonical, err := platform.NormalizeOS(pNorm); err == nil {
+			pNorm = canonical
+		}
+		if pNorm == norm {
 			return true
 		}
 	}

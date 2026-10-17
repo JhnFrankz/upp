@@ -534,4 +534,34 @@ func TestResolve_EdgeCases(t *testing.T) {
 			t.Errorf("expected scoop ManagerAdapter on Windows, got %v", caWin.ManagerAdapter())
 		}
 	})
+
+	t.Run("custom tool manager disabled in config.toml", func(t *testing.T) {
+		cfg := &config.Config{
+			Tools: map[string]config.ToolConfig{
+				"scoop": {Enabled: false},
+			},
+			Custom: map[string]config.CustomTool{
+				"tool-scoop": {
+					Command: "tool-scoop --update",
+					Manager: "scoop",
+				},
+			},
+		}
+
+		engWin := New(cfg, "windows")
+		resolvedWin, err := engWin.Resolve(Filter{Only: []string{"tool-scoop"}})
+		if err != nil {
+			t.Fatalf("Resolve Windows error: %v", err)
+		}
+		if len(resolvedWin) != 1 {
+			t.Fatalf("len(resolvedWin) = %d, want 1", len(resolvedWin))
+		}
+		caWin, ok := resolvedWin[0].(*adapters.CustomAdapter)
+		if !ok {
+			t.Fatalf("expected *adapters.CustomAdapter, got %T", resolvedWin[0])
+		}
+		if caWin.ManagerAdapter() != nil {
+			t.Errorf("expected nil ManagerAdapter when manager is disabled in config, got %v", caWin.ManagerAdapter())
+		}
+	})
 }

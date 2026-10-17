@@ -73,6 +73,9 @@ func TestToolInfo_SupportsPlatform(t *testing.T) {
 	if !info.SupportsPlatform("macos") {
 		t.Error("expected SupportsPlatform(macos) to be true")
 	}
+	if !info.SupportsPlatform("darwin") {
+		t.Error("expected SupportsPlatform(darwin) to be true via normalization")
+	}
 	if info.SupportsPlatform("windows") {
 		t.Error("expected SupportsPlatform(windows) to be false")
 	}

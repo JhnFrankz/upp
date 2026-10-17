@@ -564,6 +564,23 @@ func (f *fakePackageCheckerUpdater) UpdatePackage(ctx context.Context, packageNa
 	return f.updateResult, nil
 }
 
+type fakePlatformsManager struct {
+	name      string
+	platforms []string
+}
+
+func (f *fakePlatformsManager) Name() string { return f.name }
+func (f *fakePlatformsManager) Detect() bool { return true }
+func (f *fakePlatformsManager) Check(ctx context.Context) (UpdateInfo, error) {
+	return UpdateInfo{}, nil
+}
+func (f *fakePlatformsManager) Update(ctx context.Context, dryRun bool) (Result, error) {
+	return Result{Success: true}, nil
+}
+func (f *fakePlatformsManager) Info() ToolInfo {
+	return ToolInfo{ID: f.name, Name: f.name, Kind: KindManager, Platforms: f.platforms}
+}
+
 func TestCustomAdapter_Package_GetterSetter(t *testing.T) {
 	ca, err := NewCustomAdapter("ripgrep", "rg --update", "", false)
 	if err != nil {
@@ -703,6 +720,20 @@ func TestCustomAdapter_Info_ManagerAndPackage(t *testing.T) {
 	}
 	if info.ManagerPackage["linux"] != "ripgrep" || info.ManagerPackage["macos"] != "ripgrep" || info.ManagerPackage["windows"] != "ripgrep" {
 		t.Errorf("ManagerPackage map = %v, want ripgrep for all platforms", info.ManagerPackage)
+	}
+
+	// Manager with restricted platforms (e.g. windows only)
+	winMgr := &fakePlatformsManager{name: "scoop", platforms: []string{"windows"}}
+	caWin, err := NewCustomAdapterWithPackage("my-scoop-tool", "my-scoop-tool update", "", "my-scoop-tool", false, winMgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	infoWin := caWin.Info()
+	if infoWin.Manager["windows"] != "scoop" {
+		t.Errorf("Manager[\"windows\"] = %q, want scoop", infoWin.Manager["windows"])
+	}
+	if infoWin.Manager["linux"] != "" || infoWin.Manager["macos"] != "" {
+		t.Errorf("Manager map falsely reported unsupported platforms: %v", infoWin.Manager)
 	}
 
 	// Standalone tool platforms
