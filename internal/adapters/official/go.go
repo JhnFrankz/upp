@@ -300,7 +300,7 @@ func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
 		return nil, ""
 	}
 	bin := goBinaryPathFn()
-	if bin == "/usr/bin/go" || strings.HasPrefix(bin, "/usr/bin/") {
+	if bin == "/usr/bin/go" || strings.HasPrefix(bin, "/usr/bin/") || bin == "/bin/go" || strings.HasPrefix(bin, "/bin/") {
 		if lookPath("apt") {
 			return AdapterByName("apt"), "golang-go"
 		}

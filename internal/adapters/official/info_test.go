@@ -26,7 +26,7 @@ type infoCase struct {
 // scoop) from owned/standalone tools; Manager is a platform→owner map that
 // is nil for standalone tools (spec Tool Ownership Declaration).
 func TestInfo(t *testing.T) {
-	setExecFakes(t, execFakes{lookPath: map[string]bool{"apt": true}})
+	setExecFakes(t, execFakes{goBinaryPath: "/usr/local/go/bin/go", lookPath: map[string]bool{"apt": true}})
 	tests := []infoCase{
 		{"apt", func() adapters.Adapter { return &AptAdapter{} }, adapters.ToolInfo{ID: "apt", Name: "APT Package Manager", Platforms: []string{"linux"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyGated, Kind: adapters.KindManager, SelfUpdateCommand: aptSelfUpdateCmd, PackageUpdateCommand: aptPackageUpdateTemplate}},
 		{"brew", func() adapters.Adapter { return &BrewAdapter{} }, adapters.ToolInfo{ID: "brew", Name: "Homebrew", Platforms: []string{"linux", "macos"}, Trust: security.TrustOfficial, UpdatePolicy: adapters.PolicyAlwaysUpdate, Kind: adapters.KindManager, SelfUpdateCommand: brewSelfUpdateCmd, PackageUpdateCommand: brewPackageUpdateTemplate}},

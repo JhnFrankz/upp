@@ -1525,3 +1525,72 @@ func TestPlan_GoLinuxOwnership(t *testing.T) {
 		t.Errorf("RiskCommand = %q, want \"sudo apt install --only-upgrade golang-go\"", up.RiskCommand)
 	}
 }
+
+func TestPlan_GoLinuxUnmanagedNonStandard(t *testing.T) {
+	// Go outside /usr/local/go on Linux with no supported package manager (e.g. Fedora /usr/bin/go)
+	goFedora := &fakeGoAdapterWithInfo{
+		info: adapters.ToolInfo{
+			ID:           "go",
+			Name:         "Go",
+			Platforms:    []string{"linux", "macos", "windows"},
+			Trust:        security.TrustOfficial,
+			UpdatePolicy: adapters.PolicyGated,
+			Kind:         adapters.KindTool,
+			Command:      "",
+		},
+	}
+
+	eng := New(&config.Config{}, platform.OSLinux, WithAdapters([]adapters.Adapter{goFedora}))
+	outcomes := []CheckOutcome{
+		{
+			ToolID:          "go",
+			ToolName:        "Go",
+			Status:          StatusCurrent,
+			CurrentVersion:  "1.22.0",
+			LatestVersion:   "1.22.0",
+			UpdateAvailable: false,
+		},
+	}
+
+	plan, err := eng.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("Plan error: %v", err)
+	}
+	if len(plan.Updates) != 0 {
+		t.Fatalf("len(plan.Updates) = %d, want 0 (unmanaged Go up-to-date must not be planned for update)", len(plan.Updates))
+	}
+	if len(plan.Current) != 1 {
+		t.Fatalf("len(plan.Current) = %d, want 1", len(plan.Current))
+	}
+}
+
+func TestPlan_CustomTool_DisabledManagerIsolation(t *testing.T) {
+	brew := official.AdapterByName("brew")
+	customBrew, err := adapters.NewCustomAdapterWithPackage("my-brew-tool", "my-brew-tool update", "", "my-brew-tool", true, brew)
+	if err != nil {
+		t.Fatalf("failed to create custom adapter: %v", err)
+	}
+
+	// Case A: manager is omitted in WithAdapters hermetic slice
+	engHermetic := New(&config.Config{}, platform.OSMacOS, WithAdapters([]adapters.Adapter{customBrew}))
+	outcomes := []CheckOutcome{
+		{
+			ToolID:          "my-brew-tool",
+			ToolName:        "my-brew-tool",
+			Status:          StatusAvailable,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+	}
+	planHermetic, err := engHermetic.Plan(outcomes, Filter{})
+	if err != nil {
+		t.Fatalf("Plan error: %v", err)
+	}
+	if len(planHermetic.Updates) != 1 {
+		t.Fatalf("len(planHermetic.Updates) = %d, want 1", len(planHermetic.Updates))
+	}
+	if planHermetic.Updates[0].ManagerID != "" {
+		t.Errorf("ManagerID = %q, want empty when manager is omitted from WithAdapters", planHermetic.Updates[0].ManagerID)
+	}
+}

@@ -58,8 +58,16 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 
 				var managerArgs []adapters.Adapter
 				if custom.Manager != "" {
-					if mgr := official.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == adapters.KindManager && mgr.Info().SupportsPlatform(canonOS) {
-						managerArgs = append(managerArgs, mgr)
+					managerDisabled := false
+					if e.cfg != nil && e.cfg.Tools != nil {
+						if toolCfg, exists := e.cfg.Tools[custom.Manager]; exists && !toolCfg.Enabled {
+							managerDisabled = true
+						}
+					}
+					if !managerDisabled {
+						if mgr := official.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == adapters.KindManager && mgr.Info().SupportsPlatform(canonOS) {
+							managerArgs = append(managerArgs, mgr)
+						}
 					}
 				}
 
@@ -144,6 +152,9 @@ func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapte
 	}
 	if custom, ok := a.(*adapters.CustomAdapter); ok {
 		if m := custom.ManagerAdapter(); m != nil {
+			if allAdapters != nil {
+				return adapterByName(allAdapters, m.Name())
+			}
 			return m
 		}
 	}

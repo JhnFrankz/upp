@@ -105,7 +105,7 @@ func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS str
 	}
 	if custom, ok := a.(*adapters.CustomAdapter); ok {
 		if m := custom.ManagerAdapter(); m != nil {
-			return m
+			return idx.find(m.Info().ID, m.Name())
 		}
 	}
 

@@ -441,4 +441,26 @@ func TestDynamicLinuxManager_Go(t *testing.T) {
 			t.Errorf("LatestVersion = %q, want %q", info.LatestVersion, "1.22.0")
 		}
 	})
+
+	t.Run("apt ownership when /bin/go and apt present", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			goos:         "linux",
+			goBinaryPath: "/bin/go",
+			lookPath:     map[string]bool{"go": true, "apt": true, "pacman": false},
+		})
+		adpt := &GoAdapter{}
+		info := adpt.Info()
+		if got := info.Manager["linux"]; got != "apt" {
+			t.Errorf("Manager[\"linux\"] = %q, want \"apt\"", got)
+		}
+		if got := info.ManagerPackage["linux"]; got != "golang-go" {
+			t.Errorf("ManagerPackage[\"linux\"] = %q, want \"golang-go\"", got)
+		}
+		if info.UpdatePolicy != adapters.PolicyGated {
+			t.Errorf("UpdatePolicy = %v, want PolicyGated", info.UpdatePolicy)
+		}
+		if info.Command != "" {
+			t.Errorf("Command = %q, want empty for owned tool", info.Command)
+		}
+	})
 }

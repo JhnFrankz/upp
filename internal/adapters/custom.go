@@ -220,8 +220,16 @@ func (c *CustomAdapter) buildInfo() ToolInfo {
 		info.Kind = KindTool
 		mgrID := c.manager.Name()
 		pkg := c.Package()
-		info.Manager = map[string]string{"linux": mgrID, "macos": mgrID, "windows": mgrID}
-		info.ManagerPackage = map[string]string{"linux": pkg, "macos": pkg, "windows": pkg}
+		mgrPlatforms := c.manager.Info().Platforms
+		if len(mgrPlatforms) == 0 {
+			mgrPlatforms = platformsAll
+		}
+		info.Manager = make(map[string]string, len(mgrPlatforms))
+		info.ManagerPackage = make(map[string]string, len(mgrPlatforms))
+		for _, p := range mgrPlatforms {
+			info.Manager[p] = mgrID
+			info.ManagerPackage[p] = pkg
+		}
 	}
 	return info
 }
