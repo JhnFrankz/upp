@@ -394,8 +394,8 @@ func TestResolvingOwner_Helpers(t *testing.T) {
 		if pkg := OwnedPackage(ghAdapter, "darwin"); pkg != "gh" {
 			t.Errorf("OwnedPackage(gh, darwin) = %q, want gh", pkg)
 		}
-		if pkg := OwnedPackage(ghAdapter, "windows"); pkg != "gh" {
-			t.Errorf("OwnedPackage(gh, windows) = %q, want gh", pkg)
+		if pkg := OwnedPackage(ghAdapter, "windows"); pkg != "GitHub.cli" {
+			t.Errorf("OwnedPackage(gh, windows) = %q, want GitHub.cli", pkg)
 		}
 
 		// docker package names

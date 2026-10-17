@@ -26,6 +26,11 @@ const (
 	// installed / confirm-deny) and from StatusCurrent, so a deselection is
 	// reported rather than silently dropped (design D4, PC2).
 	StatusDeselected
+	// StatusDenied marks a tool whose update was planned but denied at the
+	// confirmation prompt. It is distinct from StatusSkipped (not installed),
+	// ensuring an installed tool whose update is denied is not falsely reported
+	// as uninstalled.
+	StatusDenied
 )
 
 // ToolResult holds the result of processing a single tool.
@@ -129,6 +134,8 @@ func (r *Renderer) statusIcon(s Status) string {
 		return "✔️ "
 	case StatusDeselected:
 		return "☐ "
+	case StatusDenied:
+		return "🚫"
 	default:
 		return "?"
 	}
@@ -148,6 +155,8 @@ func (r *Renderer) statusIconPlain(s Status) string {
 		return "[current]"
 	case StatusDeselected:
 		return "[deselected]"
+	case StatusDenied:
+		return "[denied]"
 	default:
 		return "[?]"
 	}
@@ -167,6 +176,8 @@ func (r *Renderer) statusLabel(s Status) string {
 		return "current"
 	case StatusDeselected:
 		return "deselected"
+	case StatusDenied:
+		return "denied"
 	default:
 		return "unknown"
 	}
@@ -261,6 +272,12 @@ func (r *Renderer) verboseToolLine(result ToolResult) {
 		r.scratch.WriteByte(' ')
 		r.writeColor(&r.scratch, "36", result.Name)
 		r.scratch.WriteString(" (deselected)\n")
+	case StatusDenied:
+		r.scratch.WriteString("  ")
+		r.scratch.WriteString(icon)
+		r.scratch.WriteByte(' ')
+		r.writeColor(&r.scratch, "36", result.Name)
+		r.scratch.WriteString(" (denied)\n")
 	default:
 		return
 	}
@@ -280,8 +297,12 @@ func (r *Renderer) quietToolLine(result ToolResult) {
 			r.scratch.WriteString(": ")
 			r.scratch.WriteString(result.Error.Error())
 		}
-	case StatusSkipped:
+	case StatusSkipped, StatusDenied:
 	default:
+		if result.Version != "" {
+			r.scratch.WriteByte(' ')
+			r.scratch.WriteString(result.Version)
+		}
 	}
 	r.scratch.WriteByte('\n')
 	_, _ = io.WriteString(r.w, r.scratch.String())
@@ -320,13 +341,15 @@ type summaryIndices struct {
 	current    []int
 	skipped    []int
 	deselected []int
+	denied     []int
 	failed     []int
 
-	uBuf [16]int
-	cBuf [16]int
-	sBuf [16]int
-	dBuf [8]int
-	fBuf [16]int
+	uBuf  [16]int
+	cBuf  [16]int
+	sBuf  [16]int
+	dBuf  [8]int
+	dnBuf [8]int
+	fBuf  [16]int
 }
 
 // UpdateSummary renders the final summary of an update or check run.
@@ -336,6 +359,7 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	idx.current = idx.cBuf[:0]
 	idx.skipped = idx.sBuf[:0]
 	idx.deselected = idx.dBuf[:0]
+	idx.denied = idx.dnBuf[:0]
 	idx.failed = idx.fBuf[:0]
 
 	available := 0
@@ -353,6 +377,8 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 			idx.skipped = append(idx.skipped, i)
 		case StatusDeselected:
 			idx.deselected = append(idx.deselected, i)
+		case StatusDenied:
+			idx.denied = append(idx.denied, i)
 		case StatusFailed:
 			idx.failed = append(idx.failed, i)
 		}
@@ -362,15 +388,16 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	current := len(idx.current)
 	skipped := len(idx.skipped)
 	deselected := len(idx.deselected)
+	denied := len(idx.denied)
 	failed := len(idx.failed)
 
 	var sb strings.Builder
 	sb.Grow(len(summary.Results)*48 + 128)
 	sb.WriteByte('\n')
 
-	// All skipped (or empty) → special message. Current and deselected tools
+	// All skipped (or empty) → special message. Current, deselected, and denied tools
 	// ARE installed/pending, so they keep this branch from firing (D6, PC2).
-	if updated == 0 && available == 0 && failed == 0 && current == 0 && deselected == 0 {
+	if updated == 0 && available == 0 && failed == 0 && current == 0 && deselected == 0 && denied == 0 {
 		sb.WriteString(r.statusIcon(StatusSkipped))
 		sb.WriteString(" All tools not installed. Nothing to do.\n")
 		_, _ = io.WriteString(r.w, sb.String())
@@ -378,10 +405,10 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	}
 
 	// A run is only "clean" when it really updated something, nothing is
-	// pending, nothing failed, and nothing was skipped or deselected. A
+	// pending, nothing failed, and nothing was skipped, deselected, or denied. A
 	// --dry-run with pending updates reports "N would update" and never claims
-	// "All clean!" (D3); a deselected pending tool is outstanding work too.
-	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0 && deselected == 0
+	// "All clean!" (D3); a deselected or denied tool is outstanding work too.
+	allClean := !summary.DryRun && updated > 0 && available == 0 && failed == 0 && skipped == 0 && deselected == 0 && denied == 0
 
 	var icon string
 	var suffix string
@@ -400,6 +427,9 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		// All pending work was deselected: report it under the deselected icon,
 		// never as current.
 		icon = r.statusIcon(StatusDeselected)
+		suffix = "\n"
+	} else if denied > 0 {
+		icon = r.statusIcon(StatusDenied)
 		suffix = "\n"
 	} else {
 		icon = r.statusIcon(StatusCurrent)
@@ -446,6 +476,9 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 	if deselected > 0 {
 		writeCountPart(deselected, "deselected", "")
 	}
+	if denied > 0 {
+		writeCountPart(denied, "denied", "")
+	}
 	if failed > 0 {
 		writeCountPart(failed, "failed", "31")
 	}
@@ -489,6 +522,7 @@ func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary, idx *summ
 	r.writeIndexSection(sb, summary.Results, idx.current, "Up to date:", "32")
 	r.writeIndexSection(sb, summary.Results, idx.skipped, "Skipped:", "")
 	r.writeIndexSection(sb, summary.Results, idx.deselected, "Deselected:", "")
+	r.writeIndexSection(sb, summary.Results, idx.denied, "Denied:", "")
 	if r.writeIndexSection(sb, summary.Results, idx.failed, "Failed:", "31") {
 		if r.verbose && !r.quiet {
 			for _, i := range idx.failed {

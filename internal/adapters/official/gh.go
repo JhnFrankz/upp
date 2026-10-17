@@ -90,8 +90,8 @@ func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 var (
 	ghManagerApt    = map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}
 	ghManagerPacman = map[string]string{"linux": "pacman", "macos": "brew", "windows": "winget"}
-	ghPkgApt        = map[string]string{"linux": "gh", "macos": "gh", "windows": "gh"}
-	ghPkgPacman     = map[string]string{"linux": "github-cli", "macos": "gh", "windows": "gh"}
+	ghPkgApt        = map[string]string{"linux": "gh", "macos": "gh", "windows": "GitHub.cli"}
+	ghPkgPacman     = map[string]string{"linux": "github-cli", "macos": "gh", "windows": "GitHub.cli"}
 
 	ghInfoApt = adapters.ToolInfo{
 		ID:             "gh",
