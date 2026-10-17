@@ -349,10 +349,10 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 				(strings.EqualFold(pkgID, "GitHub.cli") && strings.EqualFold(field, "gh")) {
 				c, restAfterCurrent := nextField(rest)
 				l, _ := nextField(restAfterCurrent)
-				if c != "" && l != "" {
+				if c != "" && l != "" && isVersionLike(c) && isVersionLike(l) {
 					return c, l, true
 				}
-				break
+				continue
 			}
 		}
 	}

@@ -1817,6 +1817,20 @@ GitHub CLI                    GitHub.cli                     2.40.0         2.45
 	if !foundB || curB != "2.40.0" || latB != "2.45.0" {
 		t.Fatalf("parseWingetPackageUpgradeOutput with banner got (%q, %q, %v), want (2.40.0, 2.45.0, true)", curB, latB, foundB)
 	}
+
+	identicalNameFixture := `Name                          Id                             Version        Available      Source
+-------------------------------------------------------------------------------------------------
+GitHub.cli                    GitHub.cli                     2.40.0         2.45.0         winget
+`
+	curI, latI, foundI := parseWingetPackageUpgradeOutput(identicalNameFixture, "GitHub.cli")
+	if !foundI || curI != "2.40.0" || latI != "2.45.0" {
+		t.Fatalf("parseWingetPackageUpgradeOutput with identical Name/Id got (%q, %q, %v), want (2.40.0, 2.45.0, true)", curI, latI, foundI)
+	}
+
+	curIAlias, latIAlias, foundIAlias := parseWingetPackageUpgradeOutput(identicalNameFixture, "gh")
+	if !foundIAlias || curIAlias != "2.40.0" || latIAlias != "2.45.0" {
+		t.Fatalf("parseWingetPackageUpgradeOutput with alias on identical Name/Id got (%q, %q, %v), want (2.40.0, 2.45.0, true)", curIAlias, latIAlias, foundIAlias)
+	}
 }
 
 func TestParseBrewOutdatedJSON(t *testing.T) {

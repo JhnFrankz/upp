@@ -2839,3 +2839,59 @@ func TestRunUpdate_Interactive_WiresToolLine(t *testing.T) {
 		t.Errorf("interactive update must render version delta on completion; got:\n%s", out)
 	}
 }
+
+func TestRunUpdate_VersionDeltaFromBefore(t *testing.T) {
+	probeHome(t)
+	fake := &fakeUpdateAdapter{
+		name:   "tool-before",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "", // empty current version in pre-check
+			LatestVersion:   "2.0.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "2.0.0"},
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(fake),
+		stdinIsTTY:       func() bool { return false },
+	}
+
+	out := withCapturedStdout(func() {
+		gf := &GlobalFlags{Quiet: true}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+
+	if !strings.Contains(out, "1.0.0 → 2.0.0") {
+		t.Errorf("expected version delta from Result.Before; got:\n%s", out)
+	}
+}
+
+func TestRunUpdate_ResultErrorTimeoutWrapped(t *testing.T) {
+	probeHome(t)
+	fake := &fakeUpdateAdapter{
+		name:   "tool-timeout",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		result: adapters.Result{
+			Success: false,
+			Error:   context.DeadlineExceeded,
+			Stderr:  "context deadline exceeded",
+		},
+		updateErr: context.DeadlineExceeded,
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(fake),
+		stdinIsTTY:       func() bool { return false },
+	}
+
+	out := withCapturedStdout(func() {
+		gf := &GlobalFlags{Verbose: true}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+
+	if !strings.Contains(out, "timed out after") {
+		t.Errorf("expected timeout error wrapping in verbose output; got:\n%s", out)
+	}
+}
