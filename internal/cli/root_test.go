@@ -113,6 +113,9 @@ func TestRunDashboard_CustomToolDisabledAndNoDoubleCount(t *testing.T) {
 			cfg.Tools["custom-disabled"] = config.ToolConfig{Enabled: false}
 			// Custom tool 3: no entry in cfg.Tools (enabled by default)
 			cfg.Custom["custom-default"] = config.CustomTool{Command: "echo 3"}
+			// Custom tool 4: restricted to macos only (must not count as available or enabled on linux)
+			cfg.Custom["custom-macos"] = config.CustomTool{Command: "echo 4"}
+			cfg.Tools["custom-macos"] = config.ToolConfig{Enabled: true, Platforms: []string{"darwin"}}
 			return cfg, nil
 		},
 		detectPlatform: func() (platform.Platform, error) {
@@ -125,7 +128,7 @@ func TestRunDashboard_CustomToolDisabledAndNoDoubleCount(t *testing.T) {
 	}
 
 	out := buf.String()
-	// 12 official linux tools + 3 custom tools = 15 available
+	// 12 official linux tools + 3 linux-applicable custom tools = 15 available
 	// 1 enabled official (apt) + 2 enabled custom (custom-enabled, custom-default) = 3 enabled
 	if !strings.Contains(out, "Tools: 3 enabled (15 configured for platform)") {
 		t.Errorf("expected 'Tools: 3 enabled (15 configured for platform)', got:\n%s", out)

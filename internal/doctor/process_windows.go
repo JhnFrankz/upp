@@ -3,6 +3,8 @@
 package doctor
 
 import (
+	"os"
+
 	"golang.org/x/sys/windows"
 )
 
@@ -24,4 +26,32 @@ func defaultProcessAlive(pid int) bool {
 	}
 	const stillActive = 259
 	return exitCode == stillActive
+}
+
+func probeDirWrite(dir string) error {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if fi.Mode().Perm()&0o200 == 0 {
+		return os.ErrPermission
+	}
+	pathp, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return err
+	}
+	h, err := windows.CreateFile(
+		pathp,
+		windows.FILE_WRITE_DATA|windows.FILE_APPEND_DATA,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS,
+		0,
+	)
+	if err != nil {
+		return err
+	}
+	_ = windows.CloseHandle(h)
+	return nil
 }

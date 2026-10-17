@@ -222,11 +222,11 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 	if deps.TryLock == nil {
 		deps.TryLock = lock.TryLock
 	}
+	if deps.FindAllPaths == nil && deps.LookPath == nil {
+		deps.FindAllPaths = defaultFindAllPaths
+	}
 	if deps.LookPath == nil {
 		deps.LookPath = exec.LookPath
-	}
-	if deps.FindAllPaths == nil {
-		deps.FindAllPaths = defaultFindAllPaths
 	}
 	if deps.HTTPGet == nil {
 		deps.HTTPGet = defaultHTTPGet
@@ -463,17 +463,6 @@ func checkDirWritable(targetDir string) (bool, error) {
 	}
 }
 
-func probeDirWrite(dir string) error {
-	tmpFile, err := os.CreateTemp(dir, ".upp-doctor-test-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmpFile.Name()
-	_ = tmpFile.Close()
-	_ = os.Remove(tmpName)
-	return nil
-}
-
 func checkProcessLock(results []CheckResult, deps DoctorDeps) []CheckResult {
 	lockPath, err := deps.LockPath()
 	if err != nil {
@@ -674,18 +663,29 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 
 	if cfgErr == nil && cfg != nil {
 		for name, tCfg := range cfg.Tools {
-			if tCfg.Enabled && !tCfg.Defaulted {
-				toolsToCheck[name] = true
-				configuredTools[name] = true
+			if !tCfg.Enabled || tCfg.Defaulted {
+				continue
 			}
+			_, isCustom := cfg.Custom[name]
+			if !isToolSupportedOnPlatform(name, tCfg, isCustom, deps.Platform.OS) {
+				continue
+			}
+			toolsToCheck[name] = true
+			configuredTools[name] = true
 		}
 		if len(cfg.Custom) > 0 {
 			customBinaries = make(map[string]string, len(cfg.Custom))
 			for name, custom := range cfg.Custom {
+				var tCfg config.ToolConfig
 				if cfg.Tools != nil {
-					if tCfg, exists := cfg.Tools[name]; exists && !tCfg.Enabled {
+					var exists bool
+					tCfg, exists = cfg.Tools[name]
+					if exists && !tCfg.Enabled {
 						continue
 					}
+				}
+				if !isToolSupportedOnPlatform(name, tCfg, true, deps.Platform.OS) {
+					continue
 				}
 				toolsToCheck[name] = true
 				configuredTools[name] = true
@@ -726,11 +726,8 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 
 		paths := lookupToolPaths(deps, probeName)
 		if len(paths) == 0 && strings.ContainsAny(probeName, `/\`) {
-			if base := filepath.Base(probeName); base != "" && base != "." && base != probeName {
-				paths = lookupToolPaths(deps, base)
-			}
-			if len(paths) == 0 && filepath.IsAbs(probeName) {
-				if fi, err := os.Stat(probeName); err == nil && !fi.IsDir() {
+			if fi, err := os.Stat(probeName); err == nil && !fi.IsDir() {
+				if runtimeGOOSFn() == "windows" || (fi.Mode().Perm()&0o111) != 0 {
 					paths = []string{probeName}
 				}
 			}
@@ -783,6 +780,33 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 	return results
 }
 
+func isToolSupportedOnPlatform(name string, tCfg config.ToolConfig, isCustom bool, currentOS string) bool {
+	if currentOS == "" {
+		return true
+	}
+	canonOS := currentOS
+	if norm, err := platform.NormalizeOS(currentOS); err == nil {
+		canonOS = norm
+	}
+
+	toolPlatforms := tCfg.Platforms
+	if len(toolPlatforms) == 0 && !isCustom {
+		toolPlatforms = official.PlatformsFor(name)
+	}
+	if len(toolPlatforms) == 0 {
+		return true
+	}
+	for _, p := range toolPlatforms {
+		if p == canonOS || p == currentOS {
+			return true
+		}
+		if norm, err := platform.NormalizeOS(p); err == nil && norm == canonOS {
+			return true
+		}
+	}
+	return false
+}
+
 func lookupToolPaths(deps DoctorDeps, name string) []string {
 	if deps.FindAllPaths != nil {
 		return deps.FindAllPaths(name)
@@ -796,30 +820,35 @@ func lookupToolPaths(deps DoctorDeps, name string) []string {
 }
 
 func extractCustomBinary(command, fallbackName string) string {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
+	tokens := tokenizeShellCommand(command)
+	if len(tokens) == 0 {
 		return fallbackName
 	}
 
-	for i := 0; i < len(fields); i++ {
-		tok := strings.Trim(fields[i], `"'`)
-		tok = strings.TrimRight(tok, ";|&")
-		if tok == "" {
-			continue
-		}
-		if isEnvVarAssignment(tok) {
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		if tok == "" || isEnvVarAssignment(tok) {
 			continue
 		}
 
-		baseLower := strings.ToLower(filepath.Base(tok))
+		baseLower := normalizedWrapperName(tok)
 		if baseLower == "env" {
-			for i+1 < len(fields) {
-				next := strings.Trim(fields[i+1], `"'`)
+			for i+1 < len(tokens) {
+				next := tokens[i+1]
 				if next == "--" {
 					i++
 					break
 				}
-				if next == "-u" || next == "--unset" || next == "-C" || next == "--chdir" || next == "-S" || next == "--split-string" {
+				if next == "-u" || next == "--unset" || next == "-C" || next == "--chdir" {
+					i += 2
+					continue
+				}
+				if next == "-S" || next == "--split-string" {
+					if i+2 < len(tokens) && i+3 >= len(tokens) {
+						if inner := extractCustomBinary(tokens[i+2], ""); inner != "" {
+							return inner
+						}
+					}
 					i += 2
 					continue
 				}
@@ -832,9 +861,45 @@ func extractCustomBinary(command, fallbackName string) string {
 			continue
 		}
 
+		if baseLower == "su" {
+			for i+1 < len(tokens) {
+				next := tokens[i+1]
+				if next == "--" {
+					i++
+					break
+				}
+				if next == "-c" || next == "--command" || (strings.HasPrefix(next, "-") && !strings.HasPrefix(next, "--") && strings.HasSuffix(next, "c")) {
+					if i+2 < len(tokens) {
+						if inner := extractCustomBinary(tokens[i+2], ""); inner != "" {
+							return inner
+						}
+					}
+					i += 2
+					continue
+				}
+				if strings.HasPrefix(next, "--command=") {
+					if inner := extractCustomBinary(strings.TrimPrefix(next, "--command="), ""); inner != "" {
+						return inner
+					}
+					i++
+					continue
+				}
+				if isPrivilegeFlagWithArg(baseLower, next) {
+					i += 2
+					continue
+				}
+				if strings.HasPrefix(next, "-") || hasSuCommandFlagAhead(tokens[i+2:]) {
+					i++
+					continue
+				}
+				break
+			}
+			continue
+		}
+
 		if isPrivilegeWrapper(baseLower) {
-			for i+1 < len(fields) {
-				next := strings.Trim(fields[i+1], `"'`)
+			for i+1 < len(tokens) {
+				next := tokens[i+1]
 				if next == "--" {
 					i++
 					break
@@ -852,10 +917,165 @@ func extractCustomBinary(command, fallbackName string) string {
 			continue
 		}
 
+		if isShellWrapper(baseLower) {
+			if inner := extractShellCommandTarget(baseLower, tokens[i+1:]); inner != "" {
+				return inner
+			}
+		}
+
 		return tok
 	}
 
 	return fallbackName
+}
+
+func tokenizeShellCommand(command string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inToken := false
+	var quote byte
+
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+				continue
+			}
+			if quote == '"' && ch == '\\' && i+1 < len(command) {
+				next := command[i+1]
+				if next == '"' || next == '\\' || next == '$' || next == '`' {
+					cur.WriteByte(next)
+					i++
+					continue
+				}
+			}
+			cur.WriteByte(ch)
+			continue
+		}
+
+		if ch == '\'' || ch == '"' {
+			quote = ch
+			inToken = true
+			continue
+		}
+
+		if ch == '\\' && i+1 < len(command) {
+			next := command[i+1]
+			if next == ' ' || next == '\t' || next == '"' || next == '\'' || next == ';' || next == '|' || next == '&' {
+				cur.WriteByte(next)
+				inToken = true
+				i++
+				continue
+			}
+		}
+
+		if ch == ' ' || ch == '\t' || ch == '\r' {
+			if inToken {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+				inToken = false
+			}
+			continue
+		}
+
+		if ch == ';' || ch == '|' || ch == '&' || ch == '\n' {
+			if inToken {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+				inToken = false
+			}
+			if len(tokens) > 0 {
+				break
+			}
+			continue
+		}
+
+		cur.WriteByte(ch)
+		inToken = true
+	}
+
+	if inToken {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
+}
+
+func normalizedWrapperName(tok string) string {
+	base := tok
+	if idx := strings.LastIndexAny(base, `/\`); idx >= 0 {
+		base = base[idx+1:]
+	}
+	baseLower := strings.ToLower(base)
+	return strings.TrimSuffix(baseLower, ".exe")
+}
+
+func hasSuCommandFlagAhead(rest []string) bool {
+	for _, t := range rest {
+		if t == "-c" || t == "--command" || strings.HasPrefix(t, "--command=") ||
+			(strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "--") && strings.HasSuffix(t, "c")) {
+			return true
+		}
+	}
+	return false
+}
+
+func isShellWrapper(baseLower string) bool {
+	switch baseLower {
+	case "sh", "bash", "zsh", "dash", "ksh", "cmd", "powershell", "pwsh":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractShellCommandTarget(shell string, args []string) string {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch shell {
+		case "cmd":
+			lower := strings.ToLower(arg)
+			if (lower == "/c" || lower == "/k") && i+1 < len(args) {
+				inner := extractCustomBinary(args[i+1], "")
+				if inner != "" && !isShellBuiltin(normalizedWrapperName(inner)) {
+					return inner
+				}
+				return ""
+			}
+		case "powershell", "pwsh":
+			lower := strings.ToLower(arg)
+			if (lower == "-c" || lower == "-command") && i+1 < len(args) {
+				inner := extractCustomBinary(args[i+1], "")
+				if inner != "" && !isShellBuiltin(normalizedWrapperName(inner)) {
+					return inner
+				}
+				return ""
+			}
+		default:
+			if arg == "-c" || (strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.ContainsRune(arg[1:], 'c')) {
+				if i+1 < len(args) {
+					inner := extractCustomBinary(args[i+1], "")
+					if inner != "" && !isShellBuiltin(normalizedWrapperName(inner)) {
+						return inner
+					}
+				}
+				return ""
+			}
+			if !strings.HasPrefix(arg, "-") {
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
+func isShellBuiltin(name string) bool {
+	switch name {
+	case "echo", "printf", "true", "false", "cd", "pwd", "export", "unset", "set", "exit", "return", "test", "[", ":", "eval", "exec", "source", ".":
+		return true
+	default:
+		return false
+	}
 }
 
 func isEnvVarAssignment(tok string) bool {
@@ -889,16 +1109,31 @@ func isPrivilegeWrapper(baseLower string) bool {
 }
 
 func isPrivilegeFlagWithArg(wrapper, flag string) bool {
+	if strings.ContainsRune(flag, '=') {
+		return false
+	}
 	switch wrapper {
 	case "sudo":
 		switch flag {
 		case "-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir", "-R", "--chroot", "-T", "--command-timeout", "-h", "--host", "-p", "--prompt", "-r", "--role", "-t", "--type", "-U", "--other-user":
 			return true
 		}
+		if strings.HasPrefix(flag, "-") && !strings.HasPrefix(flag, "--") && len(flag) > 2 {
+			switch flag[len(flag)-1] {
+			case 'u', 'g', 'C', 'D', 'R', 'T', 'h', 'p', 'r', 't', 'U':
+				return true
+			}
+		}
 	case "doas":
 		switch flag {
 		case "-u", "-C", "-a":
 			return true
+		}
+		if strings.HasPrefix(flag, "-") && !strings.HasPrefix(flag, "--") && len(flag) > 2 {
+			switch flag[len(flag)-1] {
+			case 'u', 'C', 'a':
+				return true
+			}
 		}
 	case "pkexec":
 		if flag == "--user" {

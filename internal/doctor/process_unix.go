@@ -25,3 +25,11 @@ func defaultProcessAlive(pid int) bool {
 	}
 	return false
 }
+
+func probeDirWrite(dir string) error {
+	const (
+		wOK = 0x2
+		xOK = 0x1
+	)
+	return syscall.Access(dir, wOK|xOK)
+}

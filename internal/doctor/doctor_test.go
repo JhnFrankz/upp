@@ -1189,6 +1189,90 @@ func TestExtractCustomBinary(t *testing.T) {
 			fallback: "fallback-bin",
 			want:     "fallback-bin",
 		},
+		{
+			name:     "double-quoted path with spaces",
+			command:  `"/Program Files/My Tool/updater.exe" --silent`,
+			fallback: "custom",
+			want:     "/Program Files/My Tool/updater.exe",
+		},
+		{
+			name:     "single-quoted path with spaces",
+			command:  `'/opt/My App/bin/tool' update`,
+			fallback: "custom",
+			want:     "/opt/My App/bin/tool",
+		},
+		{
+			name:     "quoted env var value with spaces",
+			command:  `FOO="bar baz" BAZ='hello world' mybin --update`,
+			fallback: "custom",
+			want:     "mybin",
+		},
+		{
+			name:     "su with login flag username and -c command",
+			command:  "su - root -c 'fwupdmgr update'",
+			fallback: "custom",
+			want:     "fwupdmgr",
+		},
+		{
+			name:     "su with --command equals syntax",
+			command:  `su root --command="FOO=1 fwupdmgr update"`,
+			fallback: "custom",
+			want:     "fwupdmgr",
+		},
+		{
+			name:     "sudo combined short flags ending in -u",
+			command:  "sudo -Eu root apt-get update",
+			fallback: "custom",
+			want:     "apt-get",
+		},
+		{
+			name:     "chained privilege and env wrappers",
+			command:  "sudo env -u VAR doas -nu user my-binary --flag",
+			fallback: "custom",
+			want:     "my-binary",
+		},
+		{
+			name:     "sh -c wrapper extracts inner binary",
+			command:  "sh -c 'rustup update'",
+			fallback: "custom",
+			want:     "rustup",
+		},
+		{
+			name:     "sudo sh -c compound command extracts first inner binary",
+			command:  "sudo sh -c 'apt-get update && apt-get upgrade -y'",
+			fallback: "custom",
+			want:     "apt-get",
+		},
+		{
+			name:     "bash -lc wrapper with env var extracts inner binary",
+			command:  "bash -lc 'FOO=1 my-custom-bin --upgrade'",
+			fallback: "custom",
+			want:     "my-custom-bin",
+		},
+		{
+			name:     "cmd.exe /c wrapper on windows",
+			command:  `cmd.exe /c "winget upgrade --all"`,
+			fallback: "custom",
+			want:     "winget",
+		},
+		{
+			name:     "unquoted semicolon without space",
+			command:  "mytool;echo done",
+			fallback: "custom",
+			want:     "mytool",
+		},
+		{
+			name:     "unquoted and-and without space",
+			command:  "mytool&&echo done",
+			fallback: "custom",
+			want:     "mytool",
+		},
+		{
+			name:     "windows backslash path and .exe privilege wrapper",
+			command:  `C:\Windows\System32\runas.exe /user:Admin updater.exe /silent`,
+			fallback: "custom",
+			want:     "updater.exe",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1217,6 +1301,31 @@ func TestCheckDirWritable_EdgeCases(t *testing.T) {
 		exists, err := checkDirWritable(f)
 		if exists || err == nil {
 			t.Errorf("expected (false, err) when target is a file, got (%v, %v)", exists, err)
+		}
+	})
+
+	t.Run("does not create temp files or mutate directory mtime", func(t *testing.T) {
+		tmp := t.TempDir()
+		past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+		if err := os.Chtimes(tmp, past, past); err != nil {
+			t.Fatal(err)
+		}
+		beforeFi, err := os.Stat(tmp)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		exists, writeErr := checkDirWritable(tmp)
+		if !exists || writeErr != nil {
+			t.Fatalf("expected (true, nil) for writable temp dir, got (%v, %v)", exists, writeErr)
+		}
+
+		afterFi, err := os.Stat(tmp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !afterFi.ModTime().Equal(beforeFi.ModTime()) {
+			t.Errorf("checkDirWritable mutated directory mtime: before=%v, after=%v", beforeFi.ModTime(), afterFi.ModTime())
 		}
 	})
 
@@ -1270,5 +1379,82 @@ func TestDiagnose_AptDetectFallbackWithoutAptGetInLookPath(t *testing.T) {
 	}
 	if res.Status != SeverityOK {
 		t.Errorf("expected SeverityOK when apt Detect() succeeds, got %v: %s", res.Status, res.Message)
+	}
+}
+
+func TestDiagnose_ToolPaths_ExplicitMissingPathDoesNotFallbackToBasename(t *testing.T) {
+	deps := baseTestDeps(t)
+	deps.Adapters = []adapters.Adapter{}
+	missingGit := filepath.Join(t.TempDir(), "nonexistent", "bin", "git")
+	deps.LoadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			Version: 1,
+			Custom: map[string]config.CustomTool{
+				"custom-git": {Command: missingGit + " pull"},
+			},
+		}, nil
+	}
+	deps.FindAllPaths = func(name string) []string {
+		if name == "git" {
+			return []string{"/usr/bin/git"}
+		}
+		return nil
+	}
+	deps.LookPath = func(name string) (string, error) {
+		if name == "git" {
+			return "/usr/bin/git", nil
+		}
+		return "", os.ErrNotExist
+	}
+
+	results := Diagnose(context.Background(), deps)
+	res := findResult(results, "Tool Paths", "custom-git")
+	if res == nil {
+		t.Fatal("expected Tool Paths result for custom-git")
+	}
+	if res.Status != SeverityWarn {
+		t.Errorf("expected SeverityWarn for missing explicit binary path %s, got %v: %s", missingGit, res.Status, res.Message)
+	}
+}
+
+func TestDiagnose_ToolPaths_SkipsOtherPlatformToolsAndRespectsLookPathOnly(t *testing.T) {
+	deps := baseTestDeps(t)
+	deps.Platform = platform.Platform{OS: platform.OSLinux, Arch: "x86_64"}
+	deps.Adapters = []adapters.Adapter{}
+	deps.FindAllPaths = nil
+	deps.LookPath = func(name string) (string, error) {
+		if name == "rustup" {
+			return "/home/user/.cargo/bin/rustup", nil
+		}
+		return "", os.ErrNotExist
+	}
+	deps.LoadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			Version: 1,
+			Tools: map[string]config.ToolConfig{
+				"winget":   {Enabled: true},
+				"brew":     {Enabled: true, Platforms: []string{"macos"}},
+				"mac-tool": {Enabled: true, Platforms: []string{"darwin"}},
+			},
+			Custom: map[string]config.CustomTool{
+				"mac-tool":   {Command: "mac-only-bin --update"},
+				"linux-rust": {Command: "sh -c 'rustup update'"},
+			},
+		}, nil
+	}
+
+	results := Diagnose(context.Background(), deps)
+	if res := findResult(results, "Tool Paths", "winget"); res != nil {
+		t.Errorf("expected Windows-only official tool winget to be skipped on Linux, got %+v", res)
+	}
+	if res := findResult(results, "Tool Paths", "brew"); res != nil {
+		t.Errorf("expected macOS-restricted brew to be skipped on Linux, got %+v", res)
+	}
+	if res := findResult(results, "Tool Paths", "mac-tool"); res != nil {
+		t.Errorf("expected darwin-restricted custom tool mac-tool to be skipped on Linux, got %+v", res)
+	}
+	rustRes := findResult(results, "Tool Paths", "linux-rust")
+	if rustRes == nil || rustRes.Status != SeverityOK {
+		t.Errorf("expected linux-rust to resolve rustup via LookPath when FindAllPaths is nil, got %+v", rustRes)
 	}
 }
