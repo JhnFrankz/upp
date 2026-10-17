@@ -22,6 +22,7 @@ func TestStatusIcons_ColorMode(t *testing.T) {
 		{StatusAvailable, "⬆️ "},
 		{StatusCurrent, "✔️ "},
 		{StatusDeselected, "☐ "},
+		{StatusDenied, "🚫"},
 	}
 
 	for _, tt := range tests {
@@ -45,6 +46,7 @@ func TestStatusIcons_PlainMode(t *testing.T) {
 		{StatusAvailable, "[available]"},
 		{StatusCurrent, "[current]"},
 		{StatusDeselected, "[deselected]"},
+		{StatusDenied, "[denied]"},
 	}
 
 	for _, tt := range tests {
@@ -402,6 +404,122 @@ func TestUpdateSummary_DeselectedDistinctFromSkipped(t *testing.T) {
 	}
 	if !strings.Contains(output, "Skipped: missing") || !strings.Contains(output, "Deselected: bun") {
 		t.Errorf("detail summary must list the skipped and deselected tools distinctly; got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_Denied pins confirmation denial reporting: a denied tool
+// gets a distinct count and detail line, is never counted as skipped or updated,
+// and keeps the run from claiming "All clean!".
+func TestUpdateSummary_Denied(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.UpdateSummary(Summary{Results: []ToolResult{
+		{Name: "brew", Status: StatusUpdated, Version: "4.2.0"},
+		{Name: "docker", Status: StatusDenied},
+	}})
+
+	output := buf.String()
+	if !strings.Contains(output, "1 updated") {
+		t.Errorf("summary must count the executed update; got:\n%s", output)
+	}
+	if !strings.Contains(output, "1 denied") {
+		t.Errorf("summary must count the denied tool distinctly; got:\n%s", output)
+	}
+	if strings.Contains(output, "skipped") {
+		t.Errorf("a denied tool must never be counted as skipped; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Denied: docker") {
+		t.Errorf("detail summary must name the denied tool; got:\n%s", output)
+	}
+	if strings.Contains(output, "All clean!") {
+		t.Errorf("a denied tool must keep the run from claiming 'All clean!'; got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_OnlyDenied proves that when all tools are denied confirmation,
+// the summary reports the denied count and must NOT fall into "All tools not installed".
+func TestUpdateSummary_OnlyDenied(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.UpdateSummary(Summary{Results: []ToolResult{
+		{Name: "brew", Status: StatusDenied},
+		{Name: "docker", Status: StatusDenied},
+	}})
+
+	output := buf.String()
+	if !strings.Contains(output, "2 denied") {
+		t.Errorf("summary must report '2 denied'; got:\n%s", output)
+	}
+	if strings.Contains(output, "All tools not installed") {
+		t.Errorf("denied tools are installed — 'not installed' claim is wrong; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Denied: brew, docker") {
+		t.Errorf("detail summary must name every denied tool; got:\n%s", output)
+	}
+}
+
+// TestUpdateSummary_DeniedDistinctFromSkipped proves that not-installed (skipped)
+// and denied tools are counted in separate buckets and listed separately.
+func TestUpdateSummary_DeniedDistinctFromSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.UpdateSummary(Summary{Results: []ToolResult{
+		{Name: "missing", Status: StatusSkipped},
+		{Name: "docker", Status: StatusDenied},
+	}})
+
+	output := buf.String()
+	if !strings.Contains(output, "1 skipped, 1 denied") {
+		t.Errorf("summary must count skipped and denied separately; got:\n%s", output)
+	}
+	if strings.Contains(output, "2 skipped") {
+		t.Errorf("a denied tool must not inflate the skipped count; got:\n%s", output)
+	}
+	if !strings.Contains(output, "Skipped: missing") || !strings.Contains(output, "Denied: docker") {
+		t.Errorf("detail summary must list skipped and denied tools distinctly; got:\n%s", output)
+	}
+}
+
+func TestToolLine_Denied(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, false, false)
+
+	r.ToolLine(ToolResult{
+		Name:   "docker",
+		Status: StatusDenied,
+	})
+
+	output := buf.String()
+	if !strings.Contains(output, "docker") {
+		t.Error("output should contain tool name")
+	}
+	if !strings.Contains(output, "(denied)") {
+		t.Error("output should contain (denied)")
+	}
+	if !strings.Contains(output, "🚫") {
+		t.Error("output should contain denied icon")
+	}
+}
+
+func TestToolLine_QuietVersion(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, true, true, false)
+
+	r.ToolLine(ToolResult{
+		Name:    "brew",
+		Status:  StatusUpdated,
+		Version: "4.1.0 → 4.2.0",
+	})
+
+	output := buf.String()
+	if !strings.Contains(output, "brew") {
+		t.Error("output should contain tool name")
+	}
+	if !strings.Contains(output, "4.1.0 → 4.2.0") {
+		t.Errorf("quiet mode must include version delta if present; got: %q", output)
 	}
 }
 

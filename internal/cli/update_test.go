@@ -1478,8 +1478,8 @@ func TestExecutePlannedUpdate_Coverage(t *testing.T) {
 				Trust:       security.TrustCustomUntrusted,
 			},
 			gf:         &GlobalFlags{}, // non-CI interactive → promptUser
-			stdin:      "n\n",          // prompt answer → ConfirmDeny → StatusSkipped
-			wantStatus: output.StatusSkipped,
+			stdin:      "n\n",          // prompt answer → ConfirmDeny → StatusDenied
+			wantStatus: output.StatusDenied,
 		},
 	}
 
@@ -2146,8 +2146,8 @@ func TestRunUpdate_DefaultGroupSummarySkipsDeselected(t *testing.T) {
 	if !strings.Contains(out, "Updated: gh") {
 		t.Errorf("flat summary must report gh updated; got:\n%s", out)
 	}
-	if !strings.Contains(out, "Skipped: docker") {
-		t.Errorf("flat summary must report prompt-denied docker as skipped; got:\n%s", out)
+	if !strings.Contains(out, "Denied: docker") {
+		t.Errorf("flat summary must report prompt-denied docker as denied; got:\n%s", out)
 	}
 	if docker.updatePackageOn || docker.updated {
 		t.Error("prompt-denied docker must NOT be updated")
@@ -2743,5 +2743,99 @@ func TestRunUpdate_Interactive_CallsPrepareCheckAdapters(t *testing.T) {
 
 	if mgr.checkPkgCount == 0 {
 		t.Errorf("expected manager.CheckPackage to be called via ownedCheckerAdapter during interactive update, got 0")
+	}
+}
+
+func TestRunUpdate_QuietEmitsPerToolLinesAndSummary(t *testing.T) {
+	probeHome(t)
+	fake := &fakeUpdateAdapter{
+		name:   "tool-quiet",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.1.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "1.1.0"},
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(fake),
+		stdinIsTTY:       func() bool { return false },
+	}
+
+	out := withCapturedStdout(func() {
+		gf := &GlobalFlags{Quiet: true}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+
+	if !strings.Contains(out, "tool-quiet") {
+		t.Errorf("quiet mode must emit per-tool status line; got:\n%s", out)
+	}
+	if !strings.Contains(out, "1.0.0 → 1.1.0") {
+		t.Errorf("quiet mode must include version delta in per-tool status line; got:\n%s", out)
+	}
+	if !strings.Contains(out, "1 updated") {
+		t.Errorf("quiet mode must include summary; got:\n%s", out)
+	}
+}
+
+func TestRunUpdate_ConfirmDenyReportsDeniedNotSkipped(t *testing.T) {
+	probeHome(t)
+	fake := &fakeUpdateAdapter{
+		name:       "risky-tool",
+		policy:     adapters.PolicyAlwaysUpdate,
+		trust:      security.TrustCustomUntrusted,
+		command:    "curl -fsSL https://example.com/x.sh | sh",
+		privileges: []string{"sudo"},
+	}
+	deps := updateDeps{
+		buildAdapterList: fakeAdapterList(fake),
+		stdinIsTTY:       func() bool { return false },
+	}
+
+	out := withCapturedStdout(func() {
+		withStdin(t, "n\n", func() {
+			gf := &GlobalFlags{}
+			_ = runUpdate(gf, &UpdateFlags{}, deps)
+		})
+	})
+
+	if strings.Contains(out, "All tools not installed") {
+		t.Errorf("denied confirmation must NOT claim all tools not installed; got:\n%s", out)
+	}
+	if !strings.Contains(out, "1 denied") {
+		t.Errorf("denied confirmation must be counted as denied; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Denied: risky-tool") {
+		t.Errorf("detail summary must list denied tool; got:\n%s", out)
+	}
+}
+
+func TestRunUpdate_Interactive_WiresToolLine(t *testing.T) {
+	fake := &fakeUpdateAdapter{
+		name:   "tool-interactive",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.2.0",
+			UpdateAvailable: true,
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "1.2.0"},
+	}
+	selector, _ := fakeSelector([]string{"tool-interactive"}, false)
+	deps := interactiveUpdateDeps([]*fakeUpdateAdapter{fake}, selector)
+
+	out := withCapturedStdout(func() {
+		gf := &GlobalFlags{}
+		_ = runUpdate(gf, &UpdateFlags{}, deps)
+	})
+
+	if !strings.Contains(out, "tool-interactive") {
+		t.Errorf("interactive update must render per-tool line on completion; got:\n%s", out)
+	}
+	if !strings.Contains(out, "1.0.0 → 1.2.0") {
+		t.Errorf("interactive update must render version delta on completion; got:\n%s", out)
 	}
 }

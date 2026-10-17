@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -385,7 +387,9 @@ func runUpdateSequential(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, 
 			// The shared executor owns confirm + risk + privilege parity with
 			// the interactive path (design D2/D3); the plan's PlannedUpdate is
 			// the source of policy, not a re-derivation here.
-			results[i] = executePlannedUpdate(ctx, gf, u, a, i+1, total, r, osName, in, out, allAdapters...)
+			res := executePlannedUpdate(ctx, gf, u, a, i+1, total, r, osName, in, out, allAdapters...)
+			r.ToolLine(res)
+			results[i] = res
 			if results[i].Status == output.StatusFailed {
 				hasFailure = true
 			}
@@ -586,6 +590,7 @@ func runUpdateInteractive(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags,
 		}
 		updateIndex++
 		res := executePlannedUpdate(ctx, gf, p, a, updateIndex, updateTotal, r, osName, in, out, allAdapters...)
+		r.ToolLine(res)
 		if res.Status == output.StatusFailed {
 			hasFailure = true
 		}
@@ -673,7 +678,7 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 	case security.ConfirmDeny:
 		return output.ToolResult{
 			Name:   p.ToolName,
-			Status: output.StatusSkipped,
+			Status: output.StatusDenied,
 		}
 	case security.ConfirmError:
 		return output.ToolResult{
@@ -726,19 +731,34 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 		if errStderr == "" {
 			errStderr = updateErr.Error()
 		}
+		errMsg := result.Error
+		if errMsg == nil {
+			if errors.Is(updateErr, context.DeadlineExceeded) {
+				errMsg = engine.TimeoutErr(p.ToolName, "update", updateErr)
+			} else {
+				errMsg = fmt.Errorf("update failed")
+			}
+		}
 		return output.ToolResult{
 			Name:   p.ToolName,
 			Status: output.StatusFailed,
-			Error:  engine.TimeoutErr(p.ToolName, "update", updateErr),
+			Error:  errMsg,
 			Stderr: errStderr,
 		}
 	}
 
 	if result.Success {
+		ver := result.After
+		if ver == "" && p.LatestVersion != "" {
+			ver = p.LatestVersion
+		}
+		if p.CurrentVersion != "" && ver != "" && p.CurrentVersion != ver && !strings.Contains(ver, "→") {
+			ver = fmt.Sprintf("%s → %s", p.CurrentVersion, ver)
+		}
 		return output.ToolResult{
 			Name:    p.ToolName,
 			Status:  output.StatusUpdated,
-			Version: result.After,
+			Version: ver,
 		}
 	}
 

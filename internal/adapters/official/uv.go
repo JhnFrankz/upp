@@ -28,7 +28,7 @@ var uvInfo = adapters.ToolInfo{
 	Trust:        security.TrustOfficial,
 	UpdatePolicy: adapters.PolicyGated,
 	Kind:         adapters.KindTool,
-	Command:      "uv self update",
+	Command:      "uv self update && uv tool upgrade --all",
 }
 
 func (a *UvAdapter) Info() adapters.ToolInfo {

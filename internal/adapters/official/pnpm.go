@@ -67,6 +67,13 @@ func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	}, nil
 }
 
+// isCorruptPnpmStore reports whether pnpm's stderr indicates a corrupt global
+// store that should be pruned. Permission errors (EACCES) do not indicate store
+// corruption and must not trigger store prune.
+func isCorruptPnpmStore(stderr string) bool {
+	return stderr != "" && (strings.Contains(stderr, "corrupt") || strings.Contains(stderr, "ENOENT"))
+}
+
 func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("pnpm is not installed")
@@ -96,7 +103,7 @@ func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	}
 
 	// Corruption recovery: remove global store and retry.
-	if stderr != "" && (strings.Contains(stderr, "corrupt") || strings.Contains(stderr, "ENOENT") || strings.Contains(stderr, "EACCES")) {
+	if isCorruptPnpmStore(stderr) {
 		_, _, _ = runCmdArgsUpdate(ctx, "pnpm", "store", "prune")
 		_, stderr2, err2 := runCmdArgsUpdate(ctx, "pnpm", "update", "-g")
 		if err2 == nil {

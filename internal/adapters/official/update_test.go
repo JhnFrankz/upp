@@ -509,9 +509,9 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"gh": true, "winget": true},
 				cmdArgs: map[string]fakeResult{
 					"gh":             {stdout: "gh version 2.45.0 (2024-05-30)"},
-					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  GitHub.cli  2.45.0  2.46.0  winget\n"},
 				},
-				shell: map[string]fakeResult{"winget upgrade gh": {}},
+				shell: map[string]fakeResult{"winget upgrade GitHub.cli": {}},
 			},
 			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0"},
 		},
@@ -1997,6 +1997,72 @@ func TestUpdate_MigratedStructuredExecution(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("pnpm/eacces-does-not-prune", func(t *testing.T) {
+		var recordedCalls [][]string
+
+		origRunCmd := runCmdFn
+		origRunCmdArgsUpdate := runCmdArgsUpdateFn
+		origRunCmdArgs := runCmdArgsFn
+		origLookPath := lookPathFn
+
+		runCmdFn = func(ctx context.Context, command string) (string, string, error) {
+			t.Fatalf("runCmd should NOT be called; evaluated via shell: %q", command)
+			return "", "", nil
+		}
+		runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			call := append([]string{name}, args...)
+			recordedCalls = append(recordedCalls, call)
+			return "", "EACCES: permission denied, open /usr/local/share/pnpm", errors.New("exit 1")
+		}
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			return "", "", nil
+		}
+		lookPathFn = func(string) bool { return true }
+
+		t.Cleanup(func() {
+			runCmdFn = origRunCmd
+			runCmdArgsUpdateFn = origRunCmdArgsUpdate
+			runCmdArgsFn = origRunCmdArgs
+			lookPathFn = origLookPath
+		})
+
+		adpt := &PnpmAdapter{}
+		res, err := adpt.Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Success {
+			t.Fatalf("expected failure on EACCES, got success")
+		}
+
+		wantCalls := [][]string{
+			{"pnpm", "update", "-g"},
+		}
+		if len(recordedCalls) != len(wantCalls) {
+			t.Fatalf("recorded calls = %v, want %v (store prune must NOT be called on EACCES)", recordedCalls, wantCalls)
+		}
+	})
+}
+
+func TestIsCorruptPnpmStore(t *testing.T) {
+	tests := []struct {
+		stderr string
+		want   bool
+	}{
+		{"", false},
+		{"corrupt store detected", true},
+		{"ERR_PNPM_STORE_BROKEN: corrupt", true},
+		{"ENOENT: no such file or directory", true},
+		{"EACCES: permission denied, open /path", false},
+		{"fatal: repository not found", false},
+	}
+	for _, tt := range tests {
+		got := isCorruptPnpmStore(tt.stderr)
+		if got != tt.want {
+			t.Errorf("isCorruptPnpmStore(%q) = %v, want %v", tt.stderr, got, tt.want)
+		}
+	}
 }
 
 func TestGo_LinuxAtomicSwapAndRollback(t *testing.T) {

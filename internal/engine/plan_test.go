@@ -1206,7 +1206,7 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 			all:       []adapters.Adapter{official.AdapterByName("uv")},
 			id:        "uv",
 			toolName:  "uv",
-			wantRisk:  "uv self update",
+			wantRisk:  "uv self update && uv tool upgrade --all",
 			wantMgrID: "",
 			wantPrivs: nil,
 		},
@@ -1327,8 +1327,8 @@ func TestPlan_RiskCommandEqualsExecutedDeclaration(t *testing.T) {
 		{
 			name: "winget owned gh", osName: platform.OSWindows,
 			all: []adapters.Adapter{gh, official.AdapterByName("winget")},
-			id:  "gh", toolName: "GitHub CLI", mgrID: "winget", pkg: "gh",
-			wantLiteral: "winget upgrade gh",
+			id:  "gh", toolName: "GitHub CLI", mgrID: "winget", pkg: "GitHub.cli",
+			wantLiteral: "winget upgrade GitHub.cli",
 		},
 		{
 			name: "pacman owned ripgrep (synthetic owned fixture)", osName: platform.OSLinux,

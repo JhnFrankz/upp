@@ -615,7 +615,7 @@ func TestCheck(t *testing.T) {
 			fakes: execFakes{
 				lookPath: map[string]bool{"gh": true, "winget": true},
 				cmdArgs: map[string]fakeResult{
-					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n"},
+					"winget upgrade": {stdout: "Name  Id  Version  Available  Source\n------\ngithub-cli  GitHub.cli  2.45.0  2.46.0  winget\n"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "2.45.0", LatestVersion: "2.46.0", UpdateAvailable: true},
@@ -1796,6 +1796,11 @@ Docker Desktop                Docker.DockerDesktop           4.28.0         4.29
 	cur, lat, found := parseWingetPackageUpgradeOutput(fixture, "github.cli")
 	if !found || cur != "2.40.0" || lat != "2.45.0" {
 		t.Fatalf("parseWingetPackageUpgradeOutput got (%q, %q, %v), want (2.40.0, 2.45.0, true)", cur, lat, found)
+	}
+
+	curGH, latGH, foundGH := parseWingetPackageUpgradeOutput(fixture, "gh")
+	if !foundGH || curGH != "2.40.0" || latGH != "2.45.0" {
+		t.Fatalf("parseWingetPackageUpgradeOutput with alias 'gh' got (%q, %q, %v), want (2.40.0, 2.45.0, true)", curGH, latGH, foundGH)
 	}
 
 	_, _, notFound := parseWingetPackageUpgradeOutput(fixture, "Missing.Package")
