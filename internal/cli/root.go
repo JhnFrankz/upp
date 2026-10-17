@@ -43,6 +43,9 @@ func runDashboard(gf *GlobalFlags, version string, w io.Writer, deps dashboardDe
 	if err != nil {
 		return fmt.Errorf("cannot load config: %w", err)
 	}
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
 
 	// Count enabled tools vs available platform catalog tools + custom tools
 	names := official.ToolNamesForPlatform(p.OS)
@@ -51,7 +54,8 @@ func runDashboard(gf *GlobalFlags, version string, w io.Writer, deps dashboardDe
 	enabledCount := 0
 	for _, name := range names {
 		officialSet[name] = true
-		if tCfg, ok := cfg.Tools[name]; !ok || tCfg.Enabled {
+		tCfg, ok := cfg.Tools[name]
+		if !ok || (tCfg.Enabled && dashboardSupportsPlatform(tCfg.Platforms, p.OS)) {
 			enabledCount++
 		}
 	}
@@ -61,8 +65,12 @@ func runDashboard(gf *GlobalFlags, version string, w io.Writer, deps dashboardDe
 		if officialSet[name] {
 			continue
 		}
+		tCfg, ok := cfg.Tools[name]
+		if ok && !dashboardSupportsPlatform(tCfg.Platforms, p.OS) {
+			continue
+		}
 		totalAvailable++
-		if tCfg, ok := cfg.Tools[name]; !ok || tCfg.Enabled {
+		if !ok || tCfg.Enabled {
 			enabledCount++
 		}
 	}
@@ -75,4 +83,23 @@ func runDashboard(gf *GlobalFlags, version string, w io.Writer, deps dashboardDe
 	})
 
 	return nil
+}
+
+func dashboardSupportsPlatform(platforms []string, currentOS string) bool {
+	if len(platforms) == 0 || currentOS == "" || currentOS == "unknown" {
+		return true
+	}
+	canonOS := currentOS
+	if norm, err := platform.NormalizeOS(currentOS); err == nil {
+		canonOS = norm
+	}
+	for _, p := range platforms {
+		if p == canonOS || p == currentOS {
+			return true
+		}
+		if norm, err := platform.NormalizeOS(p); err == nil && norm == canonOS {
+			return true
+		}
+	}
+	return false
 }
