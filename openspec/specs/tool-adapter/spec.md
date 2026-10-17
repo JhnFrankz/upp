@@ -93,7 +93,7 @@ Every owned tool adapter (gh, docker, go) MUST declare, per platform, the packag
 
 | Tool | Linux | macOS | Windows |
 |------|-------|-------|---------|
-| gh | `gh` | `gh` | `gh` |
+| gh | `gh` | `gh` | `GitHub.cli` |
 | docker | `docker-ce` | `docker` | `Docker.Docker` |
 | go | `golang` | `golang` | `GoLang.Go` |
 
@@ -103,6 +103,7 @@ Every owned tool adapter (gh, docker, go) MUST declare, per platform, the packag
 | docker on winget | Platform Windows, docker owned by winget | package resolved | Package = `Docker.Docker` |
 | go on brew | Platform macOS, go owned by brew | package resolved | Package = `golang` |
 | gh on apt | Platform Linux, gh owned by apt | package resolved | Package = `gh` |
+| gh on winget | Platform Windows, gh owned by winget | package resolved | Package = `GitHub.cli` |
 
 (Previously: owned tools had no per-manager package-name concept; delegated update ran the manager's self-only command, so the owned tool's package was never named.)
 

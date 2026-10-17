@@ -738,6 +738,8 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 			} else {
 				errMsg = fmt.Errorf("update failed")
 			}
+		} else {
+			errMsg = engine.TimeoutErr(p.ToolName, "update", errMsg)
 		}
 		return output.ToolResult{
 			Name:   p.ToolName,
@@ -752,8 +754,12 @@ func executePlannedUpdate(ctx context.Context, gf *GlobalFlags, p engine.Planned
 		if ver == "" && p.LatestVersion != "" {
 			ver = p.LatestVersion
 		}
-		if p.CurrentVersion != "" && ver != "" && p.CurrentVersion != ver && !strings.Contains(ver, "→") {
-			ver = fmt.Sprintf("%s → %s", p.CurrentVersion, ver)
+		fromVer := p.CurrentVersion
+		if fromVer == "" {
+			fromVer = result.Before
+		}
+		if fromVer != "" && ver != "" && fromVer != ver && !strings.Contains(ver, "→") {
+			ver = fmt.Sprintf("%s → %s", fromVer, ver)
 		}
 		return output.ToolResult{
 			Name:    p.ToolName,
