@@ -46,16 +46,25 @@ func runDashboard(gf *GlobalFlags, version string, w io.Writer, deps dashboardDe
 
 	// Count enabled tools vs available platform catalog tools + custom tools
 	names := official.ToolNamesForPlatform(p.OS)
-	totalAvailable := len(names) + len(cfg.Custom)
+	officialSet := make(map[string]bool, len(names))
 
 	enabledCount := 0
 	for _, name := range names {
+		officialSet[name] = true
 		if tCfg, ok := cfg.Tools[name]; !ok || tCfg.Enabled {
 			enabledCount++
 		}
 	}
-	for range cfg.Custom {
-		enabledCount++
+
+	totalAvailable := len(names)
+	for name := range cfg.Custom {
+		if officialSet[name] {
+			continue
+		}
+		totalAvailable++
+		if tCfg, ok := cfg.Tools[name]; !ok || tCfg.Enabled {
+			enabledCount++
+		}
 	}
 
 	r.Dashboard(output.DashboardData{

@@ -25,7 +25,7 @@ func ApplyDefaults(cfg *Config) {
 
 	for _, name := range names {
 		if _, exists := cfg.Tools[name]; !exists {
-			cfg.Tools[name] = ToolConfig{Enabled: true}
+			cfg.Tools[name] = ToolConfig{Enabled: true, Defaulted: true}
 		}
 	}
 }

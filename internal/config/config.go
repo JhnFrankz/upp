@@ -39,6 +39,7 @@ type Settings struct{}
 type ToolConfig struct {
 	Enabled   bool     `toml:"enabled"`
 	Platforms []string `toml:"platforms,omitempty"`
+	Defaulted bool     `toml:"-"`
 }
 
 // CustomTool holds a user-defined tool configuration.
