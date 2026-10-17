@@ -357,38 +357,30 @@ func checkStorageAndConfig(results []CheckResult, deps DoctorDeps) []CheckResult
 			Message:  fmt.Sprintf("Failed to resolve config directory: %v", err),
 		})
 	} else {
-		if mkErr := os.MkdirAll(cfgDir, 0o755); mkErr != nil {
+		exists, writeErr := checkDirWritable(cfgDir)
+		if writeErr != nil {
+			msg := "Config directory is not writable"
+			hint := fmt.Sprintf("Ensure %s has write permissions.", cfgDir)
+			if !exists {
+				msg = "Config directory cannot be created or is not writable"
+				hint = fmt.Sprintf("Ensure %s exists and has write permissions.", cfgDir)
+			}
 			results = append(results, CheckResult{
 				Category: "Configuration & Storage",
 				Name:     "Config Directory",
 				Status:   SeverityError,
-				Message:  "Config directory cannot be created or is not writable",
-				Detail:   mkErr.Error(),
-				FixHint:  fmt.Sprintf("Ensure %s exists and has write permissions.", cfgDir),
+				Message:  msg,
+				Detail:   writeErr.Error(),
+				FixHint:  hint,
 			})
 		} else {
-			tmpFile, writeErr := os.CreateTemp(cfgDir, ".upp-doctor-test-*")
-			if writeErr != nil {
-				results = append(results, CheckResult{
-					Category: "Configuration & Storage",
-					Name:     "Config Directory",
-					Status:   SeverityError,
-					Message:  "Config directory is not writable",
-					Detail:   writeErr.Error(),
-					FixHint:  fmt.Sprintf("Ensure %s has write permissions.", cfgDir),
-				})
-			} else {
-				tmpName := tmpFile.Name()
-				_ = tmpFile.Close()
-				_ = os.Remove(tmpName)
-				results = append(results, CheckResult{
-					Category: "Configuration & Storage",
-					Name:     "Config Directory",
-					Status:   SeverityOK,
-					Message:  "Config directory is writable",
-					Detail:   cfgDir,
-				})
-			}
+			results = append(results, CheckResult{
+				Category: "Configuration & Storage",
+				Name:     "Config Directory",
+				Status:   SeverityOK,
+				Message:  "Config directory is writable",
+				Detail:   cfgDir,
+			})
 		}
 	}
 
@@ -402,42 +394,84 @@ func checkStorageAndConfig(results []CheckResult, deps DoctorDeps) []CheckResult
 			Message:  fmt.Sprintf("Failed to resolve cache directory: %v", err),
 		})
 	} else {
-		if mkErr := os.MkdirAll(cacheDir, 0o755); mkErr != nil {
+		exists, writeErr := checkDirWritable(cacheDir)
+		if writeErr != nil {
+			msg := "Cache directory is not writable"
+			hint := fmt.Sprintf("Ensure %s has write permissions.", cacheDir)
+			if !exists {
+				msg = "Cache directory cannot be created or is not writable"
+				hint = fmt.Sprintf("Ensure %s exists and has write permissions.", cacheDir)
+			}
 			results = append(results, CheckResult{
 				Category: "Configuration & Storage",
 				Name:     "Cache Directory",
 				Status:   SeverityWarn,
-				Message:  "Cache directory cannot be created or is not writable",
-				Detail:   mkErr.Error(),
-				FixHint:  fmt.Sprintf("Ensure %s exists and has write permissions.", cacheDir),
+				Message:  msg,
+				Detail:   writeErr.Error(),
+				FixHint:  hint,
 			})
 		} else {
-			tmpFile, writeErr := os.CreateTemp(cacheDir, ".upp-doctor-test-*")
-			if writeErr != nil {
-				results = append(results, CheckResult{
-					Category: "Configuration & Storage",
-					Name:     "Cache Directory",
-					Status:   SeverityWarn,
-					Message:  "Cache directory is not writable",
-					Detail:   writeErr.Error(),
-					FixHint:  fmt.Sprintf("Ensure %s has write permissions.", cacheDir),
-				})
-			} else {
-				tmpName := tmpFile.Name()
-				_ = tmpFile.Close()
-				_ = os.Remove(tmpName)
-				results = append(results, CheckResult{
-					Category: "Configuration & Storage",
-					Name:     "Cache Directory",
-					Status:   SeverityOK,
-					Message:  "Cache directory is writable",
-					Detail:   cacheDir,
-				})
-			}
+			results = append(results, CheckResult{
+				Category: "Configuration & Storage",
+				Name:     "Cache Directory",
+				Status:   SeverityOK,
+				Message:  "Cache directory is writable",
+				Detail:   cacheDir,
+			})
 		}
 	}
 
 	return results
+}
+
+func checkDirWritable(targetDir string) (bool, error) {
+	trimmed := strings.TrimSpace(targetDir)
+	if trimmed == "" {
+		return false, errors.New("empty directory path")
+	}
+	fi, statErr := os.Stat(trimmed)
+	if statErr == nil {
+		if !fi.IsDir() {
+			return false, fmt.Errorf("%s is not a directory", trimmed)
+		}
+		return true, probeDirWrite(trimmed)
+	}
+	if !os.IsNotExist(statErr) {
+		return false, statErr
+	}
+
+	cur := filepath.Clean(trimmed)
+	if abs, absErr := filepath.Abs(cur); absErr == nil {
+		cur = abs
+	}
+	for {
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return false, statErr
+		}
+		cur = parent
+		pfi, perr := os.Stat(cur)
+		if perr == nil {
+			if !pfi.IsDir() {
+				return false, fmt.Errorf("%s is not a directory", cur)
+			}
+			return false, probeDirWrite(cur)
+		}
+		if !os.IsNotExist(perr) {
+			return false, perr
+		}
+	}
+}
+
+func probeDirWrite(dir string) error {
+	tmpFile, err := os.CreateTemp(dir, ".upp-doctor-test-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmpFile.Name()
+	_ = tmpFile.Close()
+	_ = os.Remove(tmpName)
+	return nil
 }
 
 func checkProcessLock(results []CheckResult, deps DoctorDeps) []CheckResult {
@@ -636,17 +670,27 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 
 	toolsToCheck := make(map[string]bool, initCap)
 	configuredTools := make(map[string]bool, initCap)
+	var customBinaries map[string]string
 
 	if cfgErr == nil && cfg != nil {
 		for name, tCfg := range cfg.Tools {
-			if tCfg.Enabled {
+			if tCfg.Enabled && !tCfg.Defaulted {
 				toolsToCheck[name] = true
 				configuredTools[name] = true
 			}
 		}
-		for name := range cfg.Custom {
-			toolsToCheck[name] = true
-			configuredTools[name] = true
+		if len(cfg.Custom) > 0 {
+			customBinaries = make(map[string]string, len(cfg.Custom))
+			for name, custom := range cfg.Custom {
+				if cfg.Tools != nil {
+					if tCfg, exists := cfg.Tools[name]; exists && !tCfg.Enabled {
+						continue
+					}
+				}
+				toolsToCheck[name] = true
+				configuredTools[name] = true
+				customBinaries[name] = extractCustomBinary(custom.Command, name)
+			}
 		}
 	}
 
@@ -675,13 +719,34 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 			}
 		}
 
-		var paths []string
-		if deps.FindAllPaths != nil {
-			paths = deps.FindAllPaths(name)
-		} else {
-			p, err := deps.LookPath(name)
-			if err == nil && p != "" {
-				paths = []string{p}
+		probeName := name
+		if bin, ok := customBinaries[name]; ok && bin != "" {
+			probeName = bin
+		}
+
+		paths := lookupToolPaths(deps, probeName)
+		if len(paths) == 0 && strings.ContainsAny(probeName, `/\`) {
+			if base := filepath.Base(probeName); base != "" && base != "." && base != probeName {
+				paths = lookupToolPaths(deps, base)
+			}
+			if len(paths) == 0 && filepath.IsAbs(probeName) {
+				if fi, err := os.Stat(probeName); err == nil && !fi.IsDir() {
+					paths = []string{probeName}
+				}
+			}
+		}
+		if len(paths) == 0 && name == "apt" {
+			paths = lookupToolPaths(deps, "apt-get")
+			if len(paths) == 0 {
+				if a := findAdapter(deps.Adapters, name); a != nil && a.Detect() {
+					results = append(results, CheckResult{
+						Category: "Tool Paths",
+						Name:     name,
+						Status:   SeverityOK,
+						Message:  fmt.Sprintf("%s detected via environment", name),
+					})
+					continue
+				}
 			}
 		}
 
@@ -709,13 +774,143 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 					Name:     name,
 					Status:   SeverityWarn,
 					Message:  fmt.Sprintf("Tool %q is configured but not found in PATH", name),
-					FixHint:  fmt.Sprintf("Ensure %s is installed and added to PATH.", name),
+					FixHint:  fmt.Sprintf("Ensure %s is installed and added to PATH.", probeName),
 				})
 			}
 		}
 	}
 
 	return results
+}
+
+func lookupToolPaths(deps DoctorDeps, name string) []string {
+	if deps.FindAllPaths != nil {
+		return deps.FindAllPaths(name)
+	}
+	if deps.LookPath != nil {
+		if p, err := deps.LookPath(name); err == nil && p != "" {
+			return []string{p}
+		}
+	}
+	return nil
+}
+
+func extractCustomBinary(command, fallbackName string) string {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return fallbackName
+	}
+
+	for i := 0; i < len(fields); i++ {
+		tok := strings.Trim(fields[i], `"'`)
+		tok = strings.TrimRight(tok, ";|&")
+		if tok == "" {
+			continue
+		}
+		if isEnvVarAssignment(tok) {
+			continue
+		}
+
+		baseLower := strings.ToLower(filepath.Base(tok))
+		if baseLower == "env" {
+			for i+1 < len(fields) {
+				next := strings.Trim(fields[i+1], `"'`)
+				if next == "--" {
+					i++
+					break
+				}
+				if next == "-u" || next == "--unset" || next == "-C" || next == "--chdir" || next == "-S" || next == "--split-string" {
+					i += 2
+					continue
+				}
+				if strings.HasPrefix(next, "-") {
+					i++
+					continue
+				}
+				break
+			}
+			continue
+		}
+
+		if isPrivilegeWrapper(baseLower) {
+			for i+1 < len(fields) {
+				next := strings.Trim(fields[i+1], `"'`)
+				if next == "--" {
+					i++
+					break
+				}
+				if isPrivilegeFlagWithArg(baseLower, next) {
+					i += 2
+					continue
+				}
+				if strings.HasPrefix(next, "-") || (baseLower == "runas" && strings.HasPrefix(next, "/")) {
+					i++
+					continue
+				}
+				break
+			}
+			continue
+		}
+
+		return tok
+	}
+
+	return fallbackName
+}
+
+func isEnvVarAssignment(tok string) bool {
+	idx := strings.IndexByte(tok, '=')
+	if idx <= 0 {
+		return false
+	}
+	key := tok[:idx]
+	for i := 0; i < len(key); i++ {
+		if !isEnvKeyChar(key[i], i == 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func isEnvKeyChar(c byte, first bool) bool {
+	if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' {
+		return true
+	}
+	return !first && c >= '0' && c <= '9'
+}
+
+func isPrivilegeWrapper(baseLower string) bool {
+	switch baseLower {
+	case "sudo", "doas", "pkexec", "su", "runas":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPrivilegeFlagWithArg(wrapper, flag string) bool {
+	switch wrapper {
+	case "sudo":
+		switch flag {
+		case "-u", "--user", "-g", "--group", "-C", "--close-from", "-D", "--chdir", "-R", "--chroot", "-T", "--command-timeout", "-h", "--host", "-p", "--prompt", "-r", "--role", "-t", "--type", "-U", "--other-user":
+			return true
+		}
+	case "doas":
+		switch flag {
+		case "-u", "-C", "-a":
+			return true
+		}
+	case "pkexec":
+		if flag == "--user" {
+			return true
+		}
+	case "su":
+		switch flag {
+		case "-s", "--shell", "-g", "--group", "-G", "--supp-group":
+			return true
+		}
+	}
+	return false
 }
 
 func isShellFunctionTool(name string) bool {

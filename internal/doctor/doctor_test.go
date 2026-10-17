@@ -235,6 +235,30 @@ func TestDiagnose_StorageAndConfig(t *testing.T) {
 			t.Errorf("expected SeverityError for unwritable config dir, got %v", cfgDirRes.Status)
 		}
 	})
+
+	t.Run("non-existent config and cache directories are not created on disk (read-only)", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		tmp := t.TempDir()
+		missingCfgDir := filepath.Join(tmp, "nested", "config", "upp")
+		missingCacheDir := filepath.Join(tmp, "nested", "cache", "upp")
+		deps.ConfigDir = func() (string, error) { return missingCfgDir, nil }
+		deps.CacheDir = func() (string, error) { return missingCacheDir, nil }
+
+		results := Diagnose(context.Background(), deps)
+
+		cfgDirRes := findResult(results, "Configuration & Storage", "Config Directory")
+		if cfgDirRes == nil || cfgDirRes.Status != SeverityOK {
+			t.Errorf("expected SeverityOK when ancestor of missing config dir is writable, got %+v", cfgDirRes)
+		}
+		cacheDirRes := findResult(results, "Configuration & Storage", "Cache Directory")
+		if cacheDirRes == nil || cacheDirRes.Status != SeverityOK {
+			t.Errorf("expected SeverityOK when ancestor of missing cache dir is writable, got %+v", cacheDirRes)
+		}
+
+		if _, err := os.Stat(filepath.Join(tmp, "nested")); !os.IsNotExist(err) {
+			t.Errorf("Diagnose must not create missing directories on disk; stat err = %v", err)
+		}
+	})
 }
 
 func TestDiagnose_ProcessLock(t *testing.T) {
@@ -575,6 +599,124 @@ func TestDiagnose_ToolPaths(t *testing.T) {
 		}
 		if toolRes.Status != SeverityWarn {
 			t.Errorf("expected SeverityWarn for missing tool, got %v", toolRes.Status)
+		}
+	})
+
+	t.Run("defaulted catalog tools from ApplyDefaults do not warn when uninstalled", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		deps.Adapters = []adapters.Adapter{
+			&mockAdapter{name: "uv", installed: false},
+			&mockAdapter{name: "bun", installed: false},
+		}
+		deps.LoadConfig = func() (*config.Config, error) {
+			cfg := config.DefaultConfig()
+			cfg.Tools["uv"] = config.ToolConfig{Enabled: true}
+			config.ApplyDefaults(cfg)
+			return cfg, nil
+		}
+		deps.FindAllPaths = func(name string) []string { return nil }
+		deps.LookPath = func(name string) (string, error) { return "", os.ErrNotExist }
+
+		results := Diagnose(context.Background(), deps)
+		if uvRes := findResult(results, "Tool Paths", "uv"); uvRes == nil || uvRes.Status != SeverityWarn {
+			t.Errorf("expected explicit tool uv to warn when missing, got %+v", uvRes)
+		}
+		if bunRes := findResult(results, "Tool Paths", "bun"); bunRes != nil {
+			t.Errorf("expected ApplyDefaults-injected uninstalled tool bun not to warn, got %+v", bunRes)
+		}
+	})
+
+	t.Run("disabled custom tool via tools section is skipped", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		deps.Adapters = []adapters.Adapter{}
+		deps.LoadConfig = func() (*config.Config, error) {
+			return &config.Config{
+				Version: 1,
+				Tools: map[string]config.ToolConfig{
+					"disabled-custom": {Enabled: false},
+				},
+				Custom: map[string]config.CustomTool{
+					"disabled-custom": {Command: "nonexistent-bin --update"},
+				},
+			}, nil
+		}
+		deps.FindAllPaths = func(name string) []string { return nil }
+		deps.LookPath = func(name string) (string, error) { return "", os.ErrNotExist }
+
+		results := Diagnose(context.Background(), deps)
+		if res := findResult(results, "Tool Paths", "disabled-custom"); res != nil {
+			t.Errorf("expected disabled custom tool not to be checked or warned, got %+v", res)
+		}
+	})
+
+	t.Run("custom tool probes executable extracted from command", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		deps.Adapters = []adapters.Adapter{}
+		deps.LoadConfig = func() (*config.Config, error) {
+			return &config.Config{
+				Version: 1,
+				Tools:   map[string]config.ToolConfig{},
+				Custom: map[string]config.CustomTool{
+					"my-rust-updater": {Command: "FOO=1 sudo -u root rustup update"},
+				},
+			}, nil
+		}
+		deps.FindAllPaths = func(name string) []string {
+			if name == "rustup" {
+				return []string{"/home/user/.cargo/bin/rustup"}
+			}
+			return nil
+		}
+		deps.LookPath = func(name string) (string, error) {
+			if name == "rustup" {
+				return "/home/user/.cargo/bin/rustup", nil
+			}
+			return "", os.ErrNotExist
+		}
+
+		results := Diagnose(context.Background(), deps)
+		res := findResult(results, "Tool Paths", "my-rust-updater")
+		if res == nil {
+			t.Fatal("missing Tool Paths result for my-rust-updater")
+		}
+		if res.Status != SeverityOK {
+			t.Errorf("expected SeverityOK when custom command binary 'rustup' is in PATH, got %v: %s", res.Status, res.Message)
+		}
+	})
+
+	t.Run("apt avoids false-positive missing warning when apt-get present or Detect succeeds", func(t *testing.T) {
+		deps := baseTestDeps(t)
+		deps.Adapters = []adapters.Adapter{
+			&mockAdapter{name: "apt", installed: true},
+		}
+		deps.LoadConfig = func() (*config.Config, error) {
+			return &config.Config{
+				Version: 1,
+				Tools: map[string]config.ToolConfig{
+					"apt": {Enabled: true},
+				},
+			}, nil
+		}
+		deps.FindAllPaths = func(name string) []string {
+			if name == "apt-get" {
+				return []string{"/usr/bin/apt-get"}
+			}
+			return nil
+		}
+		deps.LookPath = func(name string) (string, error) {
+			if name == "apt-get" {
+				return "/usr/bin/apt-get", nil
+			}
+			return "", os.ErrNotExist
+		}
+
+		results := Diagnose(context.Background(), deps)
+		res := findResult(results, "Tool Paths", "apt")
+		if res == nil {
+			t.Fatal("missing Tool Paths result for apt")
+		}
+		if res.Status != SeverityOK {
+			t.Errorf("expected SeverityOK for apt when apt-get/Detect succeeds, got %v: %s", res.Status, res.Message)
 		}
 	})
 }
@@ -977,5 +1119,156 @@ func TestDiagnose_ShellFunctionEnvironmentTool(t *testing.T) {
 	}
 	if !strings.Contains(res.Message, "detected via environment") {
 		t.Errorf("expected message to mention detected via environment, got %q", res.Message)
+	}
+}
+
+func TestExtractCustomBinary(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		fallback string
+		want     string
+	}{
+		{
+			name:     "empty command uses fallback",
+			command:  "   ",
+			fallback: "my-tool",
+			want:     "my-tool",
+		},
+		{
+			name:     "simple binary and args",
+			command:  "rustup update",
+			fallback: "my-rust",
+			want:     "rustup",
+		},
+		{
+			name:     "leading env var assignments",
+			command:  "FOO=bar BAZ_1=qux mybin --update",
+			fallback: "custom",
+			want:     "mybin",
+		},
+		{
+			name:     "env wrapper with flags and assignments",
+			command:  "/usr/bin/env -i -u OLD_VAR FOO=1 target-bin upgrade",
+			fallback: "custom",
+			want:     "target-bin",
+		},
+		{
+			name:     "sudo with user and preserve-env flags",
+			command:  "sudo -u root -E apt-get update",
+			fallback: "custom",
+			want:     "apt-get",
+		},
+		{
+			name:     "doas with user flag",
+			command:  "doas -u admin pkg-tool upgrade",
+			fallback: "custom",
+			want:     "pkg-tool",
+		},
+		{
+			name:     "pkexec with user flag",
+			command:  "pkexec --user root fwupdmgr update",
+			fallback: "custom",
+			want:     "fwupdmgr",
+		},
+		{
+			name:     "runas on windows",
+			command:  "runas /user:Administrator updater.exe /silent",
+			fallback: "custom",
+			want:     "updater.exe",
+		},
+		{
+			name:     "compound command with trailing semicolon",
+			command:  "mytool; echo done",
+			fallback: "custom",
+			want:     "mytool",
+		},
+		{
+			name:     "only env vars falls back to name",
+			command:  "FOO=bar BAZ=1",
+			fallback: "fallback-bin",
+			want:     "fallback-bin",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractCustomBinary(tt.command, tt.fallback); got != tt.want {
+				t.Errorf("extractCustomBinary(%q, %q) = %q, want %q", tt.command, tt.fallback, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckDirWritable_EdgeCases(t *testing.T) {
+	t.Run("empty directory path fails", func(t *testing.T) {
+		exists, err := checkDirWritable("   ")
+		if exists || err == nil {
+			t.Errorf("expected (false, err) for empty path, got (%v, %v)", exists, err)
+		}
+	})
+
+	t.Run("target path is regular file", func(t *testing.T) {
+		tmp := t.TempDir()
+		f := filepath.Join(tmp, "file")
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		exists, err := checkDirWritable(f)
+		if exists || err == nil {
+			t.Errorf("expected (false, err) when target is a file, got (%v, %v)", exists, err)
+		}
+	})
+
+	t.Run("read-only existing directory on unix", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("chmod 0555 writability test applies to non-root unix")
+		}
+		tmp := t.TempDir()
+		roDir := filepath.Join(tmp, "ro")
+		if err := os.MkdirAll(roDir, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(roDir, 0o755) })
+
+		exists, err := checkDirWritable(roDir)
+		if !exists || err == nil {
+			t.Errorf("expected (true, err) for existing read-only dir, got (%v, %v)", exists, err)
+		}
+
+		missingChild := filepath.Join(roDir, "upp", "nested")
+		existsChild, errChild := checkDirWritable(missingChild)
+		if existsChild || errChild == nil {
+			t.Errorf("expected (false, err) for missing child under read-only ancestor, got (%v, %v)", existsChild, errChild)
+		}
+		if _, statErr := os.Stat(filepath.Join(roDir, "upp")); !os.IsNotExist(statErr) {
+			t.Errorf("checkDirWritable must not create child directory, statErr = %v", statErr)
+		}
+	})
+}
+
+func TestDiagnose_AptDetectFallbackWithoutAptGetInLookPath(t *testing.T) {
+	deps := baseTestDeps(t)
+	deps.Adapters = []adapters.Adapter{
+		&mockAdapter{name: "apt", installed: true},
+	}
+	deps.LoadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			Version: 1,
+			Tools: map[string]config.ToolConfig{
+				"apt": {Enabled: true},
+			},
+		}, nil
+	}
+	deps.FindAllPaths = func(string) []string { return nil }
+	deps.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
+
+	results := Diagnose(context.Background(), deps)
+	res := findResult(results, "Tool Paths", "apt")
+	if res == nil {
+		t.Fatal("expected Tool Paths result for apt")
+	}
+	if res.Status != SeverityOK {
+		t.Errorf("expected SeverityOK when apt Detect() succeeds, got %v: %s", res.Status, res.Message)
 	}
 }
