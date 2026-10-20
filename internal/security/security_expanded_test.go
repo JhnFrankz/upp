@@ -147,7 +147,7 @@ func TestHasPipeToShell_EdgeCases(t *testing.T) {
 		{"pipe at start", "| sh", true},
 		{"multiple pipes", "cat file | grep sh | head", false},
 		{"pipe to fish", "echo test | fish", true},
-		{"pipe to zsh with or-or", "echo test || zsh", true}, // || zsh contains | zsh
+		{"pipe to zsh with or-or", "echo test || zsh", false}, // || is logical OR, not a pipe to shell
 	}
 
 	for _, tt := range tests {

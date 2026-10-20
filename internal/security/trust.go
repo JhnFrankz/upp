@@ -162,7 +162,7 @@ func CheckNeedsConsent(checkCmd string) bool {
 	return checkCmd != "" && ClassifyCommand(checkCmd) != RiskLow
 }
 
-// hasCommandChaining detects command chaining operators.
+// hasCommandChaining detects command chaining operators and generic shell pipelines.
 func hasCommandChaining(cmd string) bool {
 	if !strings.ContainsAny(cmd, "&|;$`") {
 		return false
@@ -171,22 +171,40 @@ func hasCommandChaining(cmd string) bool {
 		strings.Contains(cmd, "||") ||
 		strings.Contains(cmd, ";") ||
 		strings.Contains(cmd, "$(") ||
+		hasPipe(cmd) ||
 		(strings.Contains(cmd, "`") && strings.Count(cmd, "`") >= 2)
+}
+
+// hasPipe detects whether a command contains a pipe operator (|),
+// ignoring the logical OR operator (||).
+func hasPipe(cmd string) bool {
+	n := len(cmd)
+	for i := 0; i < n; i++ {
+		if cmd[i] != '|' {
+			continue
+		}
+		if i+1 < n && cmd[i+1] == '|' {
+			i++
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 var rePipeShell = regexp.MustCompile(
 	`(?i)^(?:\s*(?:sudo|doas|pkexec)\s+)?` +
 		`(?:\s*['"]?(?:[\w./\\-]+[/\\])?env(?:\.exe)?['"]?(?:\s+-\S+)*\s+)?` +
 		`['"]?(?:[\w./\\-]+[/\\])?` +
-		`(?:sh|bash|zsh|fish|dash|ksh|ash|powershell|pwsh|cmd|python3|python|node|ruby|perl)` +
+		`(?:sh|bash|zsh|fish|dash|ksh|ash|powershell|pwsh|cmd|python3|python|node|ruby|perl|xargs)` +
 		`(?:\.exe)?['"]?(?:$|[\s;&|<>'"])`,
 )
 
 // hasPipeToShell detects piping output to a shell or script interpreter,
 // ensuring token/word boundaries after the interpreter name to avoid false
 // positives on tools sharing prefixes (sha256sum, node_exporter), and handling
-// multi-space pipes, path-qualified shells (/bin/sh, /usr/bin/env bash), and shells
-// like dash, ksh, ash, and cmd.
+// multi-space pipes, path-qualified shells (/bin/sh, /usr/bin/env bash), execution
+// targets like xargs, and shells like dash, ksh, ash, and cmd.
 func hasPipeToShell(cmd string) bool {
 	if !strings.ContainsRune(cmd, '|') {
 		return false
@@ -194,6 +212,12 @@ func hasPipeToShell(cmd string) bool {
 	n := len(cmd)
 	for i := 0; i < n; i++ {
 		if cmd[i] != '|' {
+			continue
+		}
+
+		// Skip logical OR (||)
+		if i+1 < n && cmd[i+1] == '|' {
+			i++
 			continue
 		}
 
