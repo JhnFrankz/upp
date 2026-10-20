@@ -68,29 +68,27 @@ Applied out-of-band at apply time via `gh api` — NOT workflow behavior. `main`
 The repository MUST maintain a canonical `.golangci.yml` configuration file at the repository root. All Go linting in CI and local developer environments (`make lint` or direct `golangci-lint run`) MUST execute against this configuration to guarantee deterministic, reproducible results.
 
 Configuration invariants:
+- **Configuration schema**: `version` MUST be set to `"2"` (v2 configuration format).
 - **Execution bounds**: `run.timeout` MUST be set to `5m`. `run.modules-download-mode` MUST be set to `readonly`. `run.tests` MUST be set to `true` (ensuring test code is checked).
-- **Linter set**: `linters.disable-all` MUST be set to `true` with an explicit list of enabled linters:
+- **Linter set**: `linters.default` MUST be set to `none` with an explicit list of enabled linters:
   - `govet` (standard Go vet analyzers)
   - `errcheck` (unchecked error returns and type assertions)
   - `staticcheck` (advanced Go static analysis)
   - `unused` (unused constants, variables, functions, and types)
-  - `gosimple` (simplification suggestions)
   - `ineffassign` (ineffectual variable assignments)
-  - `gofmt` (formatting and simplification checks)
   - `unconvert` (unnecessary type conversions)
   - `misspell` (typo and spelling detection in comments and strings)
 - **Linter settings**:
-  - `errcheck.check-type-assertions`: MUST be `true`.
+  - `errcheck.check-type-assertions`: MUST be `true` (`check-blank: false`).
   - `govet.disable`: MUST include `fieldalignment` to avoid non-critical struct layout churn.
   - `misspell.locale`: MUST be `US`.
-  - `gofmt.simplify`: MUST be `true`.
 - **Issue reporting**: `issues.max-issues-per-linter` and `issues.max-same-issues` MUST be `0` (unlimited reporting).
 
 Any linter violation MUST fail the CI `lint` job and local `make lint`.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| CI and local parity | `.golangci.yml` exists at root | `golangci-lint run ./...` executed in CI or locally | Runner uses `.golangci.yml`, enforces 5m timeout, scans production and test code, and checks 9 enabled analyzers |
+| CI and local parity | `.golangci.yml` exists at root | `golangci-lint run ./...` executed in CI or locally | Runner uses `.golangci.yml`, enforces 5m timeout, scans production and test code, and checks 7 enabled analyzers |
 | Unchecked type assertion | Go code contains unchecked type assertion `val := x.(string)` | Linter executes | `errcheck` flags unchecked assertion; linter exits non-zero |
 | Unnecessary type conversion | Go code contains redundant type conversion `int(x)` where `x` is `int` | Linter executes | `unconvert` flags redundant conversion; linter exits non-zero |
 | Spelling typo in comments | Go source or comment contains spelling mistake (e.g. `recieve`) | Linter executes | `misspell` flags typo under US locale; linter exits non-zero |

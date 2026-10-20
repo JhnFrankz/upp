@@ -45,6 +45,7 @@ The engine MUST define the following domain types:
   - `Outcome CheckOutcome`
 - `Filter`: query criteria struct:
   - `Only []string`
+  - `All bool`
 - `PlannedUpdate`: action item struct for pending updates:
   - `ToolID string`
   - `ToolName string`
@@ -54,8 +55,8 @@ The engine MUST define the following domain types:
   - `CurrentVersion string`
   - `LatestVersion string`
   - `RiskCommand string`
-  - `Privileges adapters.PrivilegeLevel`
-  - `Trust adapters.TrustLevel`
+  - `Privileges []string`
+  - `Trust security.TrustLevel`
 - `UpdatePlan`: composite execution plan struct:
   - `Updates []PlannedUpdate`
   - `Skipped []CheckOutcome`

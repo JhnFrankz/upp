@@ -33,12 +33,13 @@ The system MUST query `https://api.github.com/repos/JhnFrankz/upp/releases/lates
 
 ### Requirement: Asset Mapping
 
-The system MUST map detected OS/arch to release asset names through a dedicated table: `macos`→`darwin`, `x86_64`→`amd64`, `aarch64`→`arm64` (identity for `linux`, `darwin`, `amd64`, `arm64`), producing `upp-{os}-{arch}.tar.gz`. Unknown OS/arch MUST fail closed with a clear message and non-zero exit. The mapping MUST be table-driven and covered by table-driven tests.
+The system MUST map detected OS/arch to release asset names through a dedicated table: `macos`→`darwin`, `x86_64`→`amd64`, `aarch64`→`arm64` (identity for `linux`, `darwin`, `amd64`, `arm64`, `windows`), producing `upp-{os}-{arch}.zip` on Windows and `upp-{os}-{arch}.tar.gz` on Linux/macOS. Unknown OS/arch MUST fail closed with a clear message and non-zero exit. The mapping MUST be table-driven and covered by table-driven tests.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | macOS x86_64 | Detected macos/x86_64 | Map | `upp-darwin-amd64.tar.gz` |
 | Linux arm64 | Detected linux/aarch64 | Map | `upp-linux-arm64.tar.gz` |
+| Windows amd64 | Detected windows/x86_64 | Map | `upp-windows-amd64.zip` |
 | Unknown OS | Detected freebsd | Map | Clear error, exit non-zero, no download |
 
 ### Requirement: Download and Checksum Verification
@@ -54,20 +55,22 @@ The system MUST download the asset and `checksums.txt` from the SAME release ove
 
 ### Requirement: Extraction Safety
 
-The system MUST extract only `tar.gz` archives, MUST write only the known binary path (`upp`) from the archive, and MUST NOT execute downloaded bytes. Extraction MUST target a temp location outside the install path.
+The system MUST extract only `tar.gz` (Linux/macOS) and `.zip` (Windows) archives, MUST write only the known binary path (`upp` or `upp.exe`) from the archive, and MUST NOT execute downloaded bytes. Extraction MUST target a temp location outside the install path and validate all archive entries against directory traversal and link attacks before writing.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Normal | Archive contains `upp` | Extract | Binary written to temp location only |
-| Extra entries | Archive contains other paths | Extract | Extra paths ignored, only `upp` written |
+| Windows zip | Archive contains `upp.exe` | Extract | Executable written to temp location only |
+| Extra entries | Archive contains other paths | Extract | Extra paths ignored, only known binary written |
 
 ### Requirement: Atomic Replacement
 
-On Linux/macOS amd64/arm64, the system MUST resolve `os.Executable()` via `EvalSymlinks`, preflight target writability, write the verified binary to a temp file (mode 0755), create backup `{binary}.backup.<ts>`, then `os.Rename` over the binary. Any failure MUST restore the backup and exit non-zero. An unwritable target MUST produce an actionable error WITHOUT attempting sudo.
+On Linux/macOS and Windows (amd64/arm64), the system MUST resolve `os.Executable()` via `EvalSymlinks`, preflight target writability, stage the verified binary to a temporary file (pattern `.upp-*` or `.upp-*.exe`, mode 0755) in the target directory, create backup `{binary}.backup.<ts>` (or `{base}.backup.<ts>.exe` on Windows), then `os.Rename` over the binary. Any failure MUST restore the backup and exit non-zero. An unwritable target MUST produce an actionable error WITHOUT attempting sudo.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Writable target | `~/.local/bin` writable | Replace | New binary in place, backup exists |
+| Windows target | Running on Windows, binary `upp.exe` | Replace | Staged `.upp-*.exe`, backup `.backup.<ts>.exe`, new binary in place |
 | Unwritable target | `/usr/local/bin` not writable | Preflight | Actionable error, exit non-zero, nothing changed |
 | Rename failure | Rename fails mid-replace | Replace | Backup restored, exit non-zero |
 | Symlinked binary | `upp` is a symlink | Resolve | Symlink target replaced, symlink intact |
@@ -85,9 +88,10 @@ On Linux/macOS amd64/arm64, the system MUST resolve `os.Executable()` via `EvalS
 
 ### Requirement: Platform Support
 
-`upp self-update` MUST support Linux and macOS on amd64/arm64. On Windows it MUST print a clear "not supported yet" error and exit non-zero — never silently skip.
+`upp self-update` MUST support Linux, macOS, and Windows on amd64/arm64. Unsupported platforms MUST fail closed with a clear error and non-zero exit — never silently skip.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Linux/macOS | amd64 or arm64 | `upp self-update` | Full update flow available |
-| Windows | Running on Windows | `upp self-update` | "not supported yet" error, exit non-zero |
+| Linux/macOS | amd64 or arm64 | `upp self-update` | Full update flow available (.tar.gz asset) |
+| Windows | amd64 or arm64 | `upp self-update` | Full update flow available (.zip asset, .backup.exe staging) |
+| Unsupported OS | Detected freebsd | `upp self-update` | Unsupported platform error, exit non-zero |
