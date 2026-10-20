@@ -97,8 +97,8 @@ The system MUST classify command risk levels (`RiskLow`, `RiskMedium`, `RiskHigh
 
 - Single-token privilege escalators and elevation verbs (`sudo`, `doas`, `pkexec`, `su`, `runas`, `admin`/`administrator`) MUST be evaluated using case-insensitive word-boundary matching (`\b`). Benign identifiers containing these substrings (e.g. `pseudocode`, `consudo`, `sysadmin`, `pkexecution`, `prunas`, `supertool`) MUST NOT trigger privilege detection.
 - High-risk single-token command keywords (`eval`, `sudo`, `doas`, `pkexec`, `runas`) MUST use case-insensitive word-boundary matching (`\b`), preventing benign command names (e.g. `evaluate-benchmark`, `pseudocode-linter`) from being classified as `RiskHigh`.
-- Command chaining and subshell execution vectors MUST elevate command risk to at least `RiskMedium`. Chaining detection MUST recognize sequential/conditional operators (`&&`, `||`, `;`) and command substitution vectors (`$(...)` and subshells enclosed with paired backticks `` `...` ``).
-- Multi-word phrases (`rm -rf`, `rm -r /`, `curl -fsSL`, `rm -rf /`) and pipe-to-shell patterns (`| sh`, `| bash`, `| python`, etc.) remain classified as `RiskHigh`.
+- Command chaining and subshell execution vectors MUST elevate command risk to at least `RiskMedium`. Chaining detection MUST recognize sequential/conditional operators (`&&`, `||`, `;`), generic shell pipelines (`|`, `|&`), and command substitution vectors (`$(...)` and subshells enclosed with paired backticks `` `...` ``).
+- Multi-word phrases (`rm -rf`, `rm -r /`, `curl -fsSL`, `rm -rf /`) and pipe-to-shell patterns (`| sh`, `| bash`, `| python`, etc., including execution targets like `| xargs`) remain classified as `RiskHigh`. Pipe-to-shell detection MUST ignore logical OR operators (`||`) to prevent conditional shell executions from falsely escalating to `RiskHigh`.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
@@ -107,8 +107,11 @@ The system MUST classify command risk levels (`RiskLow`, `RiskMedium`, `RiskHigh
 | Command substitution dollar | Command contains `echo $(whoami)` | `ClassifyCommand` evaluated | Detected as command chaining, returns `RiskMedium` |
 | Command substitution backtick | Command contains `echo `id`` | `ClassifyCommand` evaluated | Detected as command chaining, returns `RiskMedium` |
 | Privilege escalation detection | Command is `sudo apt upgrade` or `runas /user:Administrator cmd` | `DetectPrivileges` evaluated | Returns detected privilege tokens (`sudo`, `runas`, `admin`) |
+| Generic pipeline | Command contains `cat file | grep foo` | `ClassifyCommand` evaluated | Detected as command chaining / generic pipe, returns `RiskMedium` |
+| Pipe to xargs execution target | Command contains `cat commands.txt | xargs bash` | `ClassifyCommand` evaluated | Detected as pipe to execution target, returns `RiskHigh` |
+| Logical OR conditional shell | Command contains `cmdA || bash script.sh` | `ClassifyCommand` evaluated | Logical OR is skipped in pipe-to-shell, evaluated as command chaining, returns `RiskMedium` |
 
-(Previously: `DetectPrivileges` and `ClassifyCommand` used raw substring matching via `strings.Contains`, causing benign commands like `pseudocode` or `evaluate-models` to trigger false-positive privilege detection or high-risk classification; `hasCommandChaining` only checked `&&`, `||`, and `;`, omitting subshell command substitutions.)
+(Previously: `DetectPrivileges` and `ClassifyCommand` used raw substring matching via `strings.Contains`, causing benign commands like `pseudocode` or `evaluate-models` to trigger false-positive privilege detection or high-risk classification; `hasCommandChaining` only checked `&&`, `||`, and `;`, omitting subshell command substitutions and generic pipelines; `hasPipeToShell` misclassified the second `|` in `||` as a shell pipe and omitted `xargs` execution targets.)
 
 ### Requirement: Official Command Versus Custom Command Under `--ci`
 

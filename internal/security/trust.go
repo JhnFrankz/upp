@@ -194,8 +194,8 @@ func hasPipe(cmd string) bool {
 
 var rePipeShell = regexp.MustCompile(
 	`(?i)^(?:\s*(?:sudo|doas|pkexec)\s+)?` +
-		`(?:\s*['"]?(?:[\w./\\-]+[/\\])?env(?:\.exe)?['"]?(?:\s+-\S+)*\s+)?` +
-		`['"]?(?:[\w./\\-]+[/\\])?` +
+		`(?:\s*['"]?(?:[\w.:/\\ -]+[/\\])?env(?:\.exe)?['"]?(?:\s+-\S+)*\s+)?` +
+		`['"]?(?:[\w.:/\\ -]+[/\\])?` +
 		`(?:sh|bash|zsh|fish|dash|ksh|ash|powershell|pwsh|cmd|python3|python|node|ruby|perl|xargs)` +
 		`(?:\.exe)?['"]?(?:$|[\s;&|<>'"])`,
 )
