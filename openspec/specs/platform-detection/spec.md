@@ -8,14 +8,14 @@ Detect the runtime platform (OS + architecture) and provide the official tool ca
 
 ### Requirement: Platform Detection
 
-The system MUST detect the current OS (Linux, macOS, Windows) and CPU architecture (x86_64, aarch64, arm64) at startup.
+The system MUST detect the current OS (Linux, macOS, Windows) and CPU architecture (`x86_64`, `arm64`, normalizing raw variants such as `amd64` and `aarch64`) at startup.
 
 The system MUST store detected platform as a structured value accessible by all adapters.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Linux x86_64 | Running on Linux x86_64 | Platform detected | OS=`linux`, arch=`x86_64` |
-| macOS ARM | Running on Apple Silicon Mac | Platform detected | OS=`macos`, arch=`aarch64` |
+| macOS ARM | Running on Apple Silicon Mac | Platform detected | OS=`macos`, arch=`arm64` |
 | Windows | Running on Windows x86_64 | Platform detected | OS=`windows`, arch=`x86_64` |
 | Unknown platform | Running on unsupported OS | Platform detected | Error with platform info, exit non-zero |
 

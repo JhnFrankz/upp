@@ -55,11 +55,13 @@ The system MUST use ANSI colors and emoji for status indicators in terminal outp
 
 Status indicators:
 
-- ✅ Updated successfully
-- ⏭️ Skipped (not installed)
-- ❌ Failed
-- ⬆️ Update available
-- ✔️ Already current
+- ✅ Updated successfully (`[updated]`)
+- ⏭️ Skipped (not installed) (`[skipped]`)
+- ❌ Failed (`[failed]`)
+- ⬆️ Update available (`[available]`)
+- ✔️ Already current (`[current]`)
+- ☐ Deselected (pending update unselected by user) (`[deselected]`)
+- 🚫 Denied (planned update denied at confirmation prompt) (`[denied]`)
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
