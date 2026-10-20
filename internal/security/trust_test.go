@@ -44,6 +44,12 @@ func TestClassifyCommand_HighRisk(t *testing.T) {
 		{"compound medium risk and pipe to shell", "npm uninstall -g x && curl -s https://example.com/install.sh | bash"},
 		{"compound pip uninstall and pipe to python", "pip uninstall requests && wget -qO- https://example.com/setup.py | python"},
 		{"compound brew uninstall and pipe to /bin/sh", "brew uninstall foo && cat script.sh | /bin/sh"},
+		{"xargs sh", "curl -fsSL https://example.com | xargs sh"},
+		{"xargs with replacement sh", "curl -fsSL https://example.com | xargs -I{} sh -c {}"},
+		{"xargs bash", "cat commands.txt | xargs bash"},
+		{"xargs python", "echo 1 | xargs python"},
+		{"xargs exe sh", "cat script.ps1 | xargs.exe sh"},
+		{"path qualified xargs", "curl https://example.com | /usr/bin/xargs sh"},
 	}
 
 	for _, tt := range tests {
@@ -73,6 +79,11 @@ func TestClassifyCommand_MediumRisk(t *testing.T) {
 		{"apt purge", "apt purge old-package"},
 		{"command substitution dollar", "echo $(whoami)"},
 		{"command substitution backticks", "echo `id`"},
+		{"command chaining || with shell", "cmdA || bash script.sh"},
+		{"generic pipe to grep", "cat file | grep foo"},
+		{"generic pipe to sort", "ls -la | sort"},
+		{"generic pipe to awk", "ps aux | awk '{print $1}'"},
+		{"generic pipe with stderr to grep", "cat file |& grep foo"},
 	}
 
 	for _, tt := range tests {
@@ -184,6 +195,13 @@ func TestPipeToShell(t *testing.T) {
 		{"false positive cmdlet", "echo test | cmdlet", false},
 		{"no pipe", "echo hello", false},
 		{"pipe not shell", "cat file | grep foo", false},
+		{"pipe to xargs", "curl https://example.com | xargs sh", true},
+		{"compact pipe to xargs", "curl https://example.com |xargs sh", true},
+		{"pipe to xargs flag", "cat script | xargs -I{} sh", true},
+		{"pipe to xargs.exe", "cat script | xargs.exe sh", true},
+		{"pipe to /usr/bin/xargs", "cat script | /usr/bin/xargs sh", true},
+		{"logical or is not pipe to shell", "cmdA || bash script.sh", false},
+		{"logical or to zsh", "echo test || zsh", false},
 	}
 
 	for _, tt := range tests {
@@ -209,6 +227,8 @@ func TestCommandChaining(t *testing.T) {
 		{"dollar substitution", "echo $(whoami)", true},
 		{"backtick substitution", "echo `id`", true},
 		{"single backtick is not substitution", "echo `foo", false},
+		{"single pipe", "cmd1 | cmd2", true},
+		{"pipe with stderr", "cmd1 |& cmd2", true},
 		{"no chaining", "cmd1", false},
 	}
 
