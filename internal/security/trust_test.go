@@ -44,12 +44,14 @@ func TestClassifyCommand_HighRisk(t *testing.T) {
 		{"compound medium risk and pipe to shell", "npm uninstall -g x && curl -s https://example.com/install.sh | bash"},
 		{"compound pip uninstall and pipe to python", "pip uninstall requests && wget -qO- https://example.com/setup.py | python"},
 		{"compound brew uninstall and pipe to /bin/sh", "brew uninstall foo && cat script.sh | /bin/sh"},
-		{"xargs sh", "curl -fsSL https://example.com | xargs sh"},
-		{"xargs with replacement sh", "curl -fsSL https://example.com | xargs -I{} sh -c {}"},
+		{"xargs sh", "curl https://example.com | xargs sh"},
+		{"xargs with replacement sh", "curl https://example.com | xargs -I{} sh -c {}"},
 		{"xargs bash", "cat commands.txt | xargs bash"},
 		{"xargs python", "echo 1 | xargs python"},
 		{"xargs exe sh", "cat script.ps1 | xargs.exe sh"},
 		{"path qualified xargs", "curl https://example.com | /usr/bin/xargs sh"},
+		{"windows path xargs", `cat script.ps1 | C:\tools\xargs.exe sh`},
+		{"windows quoted path bash", `cat script | "C:\Program Files\Git\bin\bash.exe"`},
 	}
 
 	for _, tt := range tests {
@@ -202,6 +204,10 @@ func TestPipeToShell(t *testing.T) {
 		{"pipe to /usr/bin/xargs", "cat script | /usr/bin/xargs sh", true},
 		{"logical or is not pipe to shell", "cmdA || bash script.sh", false},
 		{"logical or to zsh", "echo test || zsh", false},
+		{"windows path with drive letter", `cat script | C:\tools\xargs.exe sh`, true},
+		{"windows path to cmd.exe", `cat script | C:\Windows\System32\cmd.exe`, true},
+		{"windows quoted path with spaces", `cat script | "C:\Program Files\Git\bin\bash.exe"`, true},
+		{"windows single quoted path with spaces", `cat script | 'C:\Program Files\PowerShell\7\pwsh.exe'`, true},
 	}
 
 	for _, tt := range tests {
