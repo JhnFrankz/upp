@@ -320,7 +320,7 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	current = extractGoVersion(current)
 
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
-	if owner := ResolveOwner("go", plat); owner != nil {
+	if owner := resolveOwnerForAdapter(a, plat); owner != nil {
 		return DelegatedCheck(ctx, a, current)
 	}
 
@@ -372,7 +372,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	}
 
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
-	if owner := ResolveOwner("go", plat); owner != nil {
+	if owner := resolveOwnerForAdapter(a, plat); owner != nil {
 		return DelegatedUpdate(ctx, a, dryRun)
 	}
 
