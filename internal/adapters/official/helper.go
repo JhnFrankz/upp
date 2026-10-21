@@ -438,11 +438,34 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
+// resolveOwnerForAdapter resolves the manager adapter that owns the given tool
+// on the given OS. It queries resolveOwnerFn(a.Name(), os), and falls back to looking up
+// the manager ID declared in a.Info().Manager[os] via AdapterByName (e.g. for dynamic,
+// unregistered, or mock adapters).
+func resolveOwnerForAdapter(a adapters.Adapter, os string) adapters.Adapter {
+	if a == nil {
+		return nil
+	}
+	if owner := resolveOwnerFn(a.Name(), os); owner != nil {
+		return owner
+	}
+	if mgrID := a.Info().Manager[os]; mgrID != "" {
+		return AdapterByName(mgrID)
+	}
+	return nil
+}
+
 // DelegatedCheck checks for updates of an owned tool by delegating to its
 // resolving package manager's PackageChecker interface.
 func DelegatedCheck(ctx context.Context, a adapters.Adapter, current string) (adapters.UpdateInfo, error) {
+	if a == nil {
+		return adapters.UpdateInfo{}, fmt.Errorf("adapter is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
-	if owner := resolveOwnerFn(a.Name(), plat); owner != nil {
+	if owner := resolveOwnerForAdapter(a, plat); owner != nil {
 		if !owner.Detect() {
 			return adapters.UpdateInfo{
 				CurrentVersion:  current,
@@ -466,8 +489,17 @@ func DelegatedCheck(ctx context.Context, a adapters.Adapter, current string) (ad
 // DelegatedUpdate updates an owned tool by delegating to its resolving package
 // manager's PackageUpdater interface.
 func DelegatedUpdate(ctx context.Context, a adapters.Adapter, dryRun bool) (adapters.Result, error) {
+	if a == nil {
+		return adapters.Result{
+			Success: false,
+			Error:   fmt.Errorf("adapter is nil"),
+		}, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
-	if owner := resolveOwnerFn(a.Name(), plat); owner != nil {
+	if owner := resolveOwnerForAdapter(a, plat); owner != nil {
 		if dryRun {
 			return adapters.Result{Success: true}, nil
 		}

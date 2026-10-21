@@ -27,7 +27,7 @@ func (d *dummyNonCheckerManager) Info() adapters.ToolInfo {
 
 type dummyToolNoPkg struct{}
 
-func (d *dummyToolNoPkg) Name() string { return "gh" }
+func (d *dummyToolNoPkg) Name() string { return "custom-pkgless" }
 func (d *dummyToolNoPkg) Detect() bool { return true }
 func (d *dummyToolNoPkg) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	return adapters.UpdateInfo{}, nil
@@ -37,13 +37,35 @@ func (d *dummyToolNoPkg) Update(ctx context.Context, dryRun bool) (adapters.Resu
 }
 func (d *dummyToolNoPkg) Info() adapters.ToolInfo {
 	return adapters.ToolInfo{
-		ID:             "gh",
-		Name:           "GitHub CLI",
+		ID:             "custom-pkgless",
+		Name:           "Custom Tool",
 		Platforms:      platformsLinuxMacOSWindows,
 		Trust:          security.TrustOfficial,
 		Kind:           adapters.KindTool,
 		Manager:        map[string]string{"linux": "apt"},
 		ManagerPackage: map[string]string{"linux": ""}, // empty package!
+	}
+}
+
+type dummyCustomTool struct{}
+
+func (d *dummyCustomTool) Name() string { return "custom-tool" }
+func (d *dummyCustomTool) Detect() bool { return true }
+func (d *dummyCustomTool) Check(ctx context.Context) (adapters.UpdateInfo, error) {
+	return adapters.UpdateInfo{}, nil
+}
+func (d *dummyCustomTool) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
+	return adapters.Result{Success: true}, nil
+}
+func (d *dummyCustomTool) Info() adapters.ToolInfo {
+	return adapters.ToolInfo{
+		ID:             "custom-tool",
+		Name:           "Custom Tool",
+		Platforms:      platformsLinuxMacOSWindows,
+		Trust:          security.TrustOfficial,
+		Kind:           adapters.KindTool,
+		Manager:        map[string]string{"linux": "apt"},
+		ManagerPackage: map[string]string{"linux": "custom-package"},
 	}
 }
 
@@ -133,15 +155,15 @@ func TestDelegatedCheck_ManagerNotPackageChecker(t *testing.T) {
 func TestDelegatedCheck_NoManagerPackage(t *testing.T) {
 	setExecFakes(t, execFakes{
 		goos:     "linux",
-		lookPath: map[string]bool{"gh": true, "apt": true},
+		lookPath: map[string]bool{"apt": true},
 	})
 
 	_, err := DelegatedCheck(context.Background(), &dummyToolNoPkg{}, "2.45.0")
 	if err == nil {
 		t.Fatal("DelegatedCheck() expected error when ManagerPackage is empty, got nil")
 	}
-	if !strings.Contains(err.Error(), "gh has no manager package on linux") {
-		t.Errorf("DelegatedCheck() error = %q, want contains %q", err.Error(), "gh has no manager package on linux")
+	if !strings.Contains(err.Error(), "custom-pkgless has no manager package on linux") {
+		t.Errorf("DelegatedCheck() error = %q, want contains %q", err.Error(), "custom-pkgless has no manager package on linux")
 	}
 }
 
@@ -224,7 +246,7 @@ func TestDelegatedUpdate_ManagerNotPackageUpdater(t *testing.T) {
 func TestDelegatedUpdate_NoManagerPackage(t *testing.T) {
 	setExecFakes(t, execFakes{
 		goos:     "linux",
-		lookPath: map[string]bool{"gh": true, "apt": true},
+		lookPath: map[string]bool{"apt": true},
 	})
 
 	res, err := DelegatedUpdate(context.Background(), &dummyToolNoPkg{}, false)
@@ -234,7 +256,123 @@ func TestDelegatedUpdate_NoManagerPackage(t *testing.T) {
 	if res.Success {
 		t.Errorf("DelegatedUpdate() Success = true, want false")
 	}
-	if !strings.Contains(err.Error(), "gh has no manager package on linux") {
-		t.Errorf("DelegatedUpdate() error = %q, want contains %q", err.Error(), "gh has no manager package on linux")
+	if !strings.Contains(err.Error(), "custom-pkgless has no manager package on linux") {
+		t.Errorf("DelegatedUpdate() error = %q, want contains %q", err.Error(), "custom-pkgless has no manager package on linux")
+	}
+}
+
+func TestDelegated_NilAdapter(t *testing.T) {
+	_, err := DelegatedCheck(context.Background(), nil, "1.0.0")
+	if err == nil || !strings.Contains(err.Error(), "adapter is nil") {
+		t.Fatalf("DelegatedCheck(nil) error = %v, want contains 'adapter is nil'", err)
+	}
+
+	res, err := DelegatedUpdate(context.Background(), nil, false)
+	if err != nil {
+		t.Fatalf("DelegatedUpdate(nil) unexpected err: %v", err)
+	}
+	if res.Success || res.Error == nil || !strings.Contains(res.Error.Error(), "adapter is nil") {
+		t.Fatalf("DelegatedUpdate(nil) res = %+v, want Failure with 'adapter is nil'", res)
+	}
+}
+
+func TestDelegated_NilContext(t *testing.T) {
+	setExecFakes(t, execFakes{
+		goos:     "linux",
+		lookPath: map[string]bool{"gh": true, "apt": true},
+		shell: map[string]fakeResult{
+			aptPolicyCmd("gh", "Installed"): {stdout: "2.45.0"},
+			aptPolicyCmd("gh", "Candidate"): {stdout: "2.46.0"},
+		},
+	})
+
+	var nilCtx context.Context
+	info, err := DelegatedCheck(nilCtx, &GhAdapter{}, "2.45.0")
+	if err != nil {
+		t.Fatalf("DelegatedCheck(nil ctx) error = %v, want nil", err)
+	}
+	if !info.UpdateAvailable {
+		t.Errorf("DelegatedCheck(nil ctx) UpdateAvailable = false, want true")
+	}
+
+	res, err := DelegatedUpdate(nilCtx, &GhAdapter{}, true)
+	if err != nil || !res.Success {
+		t.Fatalf("DelegatedUpdate(nil ctx) = %+v, %v, want Success=true", res, err)
+	}
+}
+
+func TestDelegatedCheck_UnregisteredAdapterWithDeclaredManager(t *testing.T) {
+	setExecFakes(t, execFakes{
+		goos:     "linux",
+		lookPath: map[string]bool{"apt": true},
+		shell: map[string]fakeResult{
+			aptPolicyCmd("custom-package", "Installed"): {stdout: "1.0.0"},
+			aptPolicyCmd("custom-package", "Candidate"): {stdout: "1.1.0"},
+		},
+	})
+
+	info, err := DelegatedCheck(context.Background(), &dummyCustomTool{}, "1.0.0")
+	if err != nil {
+		t.Fatalf("DelegatedCheck() unexpected error: %v", err)
+	}
+	want := adapters.UpdateInfo{
+		CurrentVersion:  "1.0.0",
+		LatestVersion:   "1.1.0",
+		UpdateAvailable: true,
+	}
+	if info != want {
+		t.Errorf("DelegatedCheck() = %+v, want %+v", info, want)
+	}
+}
+
+func TestDelegatedUpdate_UnregisteredAdapterWithDeclaredManager(t *testing.T) {
+	setExecFakes(t, execFakes{
+		goos:     "linux",
+		lookPath: map[string]bool{"apt": true},
+		shell:    map[string]fakeResult{"sudo apt install --only-upgrade custom-package": {}},
+	})
+
+	res, err := DelegatedUpdate(context.Background(), &dummyCustomTool{}, false)
+	if err != nil {
+		t.Fatalf("DelegatedUpdate() unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Errorf("DelegatedUpdate() Success = false, want true")
+	}
+}
+
+func TestGoAdapter_HonorsResolveOwnerSeam(t *testing.T) {
+	setExecFakes(t, execFakes{
+		goos:         "linux",
+		goBinaryPath: "/usr/local/go/bin/go",
+		lookPath:     map[string]bool{"go": true},
+		cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+	})
+
+	origResolveOwner := resolveOwnerFn
+	resolveOwnerFn = func(tool, os string) adapters.Adapter {
+		return &dummyNonCheckerManager{}
+	}
+	t.Cleanup(func() {
+		resolveOwnerFn = origResolveOwner
+	})
+
+	_, err := (&GoAdapter{}).Check(context.Background())
+	if err == nil {
+		t.Fatal("GoAdapter.Check() expected error when seam returns non-checker manager, got nil")
+	}
+	if !strings.Contains(err.Error(), "go's manager dummy-mgr does not support per-package checks") {
+		t.Errorf("GoAdapter.Check() error = %q, want contains expected message", err.Error())
+	}
+
+	res, err := (&GoAdapter{}).Update(context.Background(), false)
+	if err == nil {
+		t.Fatal("GoAdapter.Update() expected error when seam returns non-updater manager, got nil")
+	}
+	if !strings.Contains(err.Error(), "go's manager dummy-mgr does not support per-package updates") {
+		t.Errorf("GoAdapter.Update() error = %q, want contains expected message", err.Error())
+	}
+	if res.Success {
+		t.Errorf("GoAdapter.Update() Success = true, want false")
 	}
 }
