@@ -642,11 +642,17 @@ func isShellFunctionTool(name string) bool {
 	return name == "nvm"
 }
 
-func findAdapter(adapters []adapters.Adapter, name string) adapters.Adapter {
-	for _, a := range adapters {
+func findAdapter(toolAdapters []adapters.Adapter, name string) adapters.Adapter {
+	var firstMatch adapters.Adapter
+	for _, a := range toolAdapters {
 		if a.Name() == name {
-			return a
+			if a.Detect() {
+				return a
+			}
+			if firstMatch == nil {
+				firstMatch = a
+			}
 		}
 	}
-	return nil
+	return firstMatch
 }
