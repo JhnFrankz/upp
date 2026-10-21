@@ -2,7 +2,6 @@ package engine
 
 import (
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -203,7 +202,7 @@ func managerDisplayName(ownerID string, allAdapters ...[]adapters.Adapter) strin
 			return owner.Info().Name
 		}
 	}
-	if owner := official.AdapterByName(ownerID); owner != nil {
+	if owner := adapters.AdapterByName(ownerID); owner != nil {
 		return owner.Info().Name
 	}
 	return ownerID
