@@ -565,3 +565,28 @@ func TestResolve_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestAdapters_UnnormalizedOSResolution(t *testing.T) {
+	darwinAdapters := adapters.AdaptersForPlatform("darwin")
+	if len(darwinAdapters) == 0 {
+		t.Error("expected non-empty adapters for unnormalized OS 'darwin'")
+	}
+	darwinUpper := adapters.AdaptersForPlatform("DARWIN")
+	if len(darwinUpper) == 0 {
+		t.Error("expected non-empty adapters for unnormalized OS 'DARWIN'")
+	}
+	linuxUpper := adapters.AdaptersForPlatform("Linux")
+	if len(linuxUpper) == 0 {
+		t.Error("expected non-empty adapters for unnormalized OS 'Linux'")
+	}
+
+	ghDarwin := adapters.ResolveOwner("gh", "darwin")
+	if ghDarwin == nil || ghDarwin.Name() != "brew" {
+		t.Errorf("ResolveOwner(gh, darwin) = %v, want brew", ghDarwin)
+	}
+
+	ghDarwinUpper := adapters.ResolveOwner("gh", "DARWIN")
+	if ghDarwinUpper == nil || ghDarwinUpper.Name() != "brew" {
+		t.Errorf("ResolveOwner(gh, DARWIN) = %v, want brew", ghDarwinUpper)
+	}
+}
