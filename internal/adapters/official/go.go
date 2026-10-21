@@ -320,27 +320,8 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	current = extractGoVersion(current)
 
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
-	owner := ResolveOwner("go", plat)
-	pkg := a.Info().ManagerPackage[plat]
-	if owner == nil && runtimeGOOSFn() == "linux" {
-		owner, pkg = a.linuxOwner()
-	}
-
-	if owner != nil {
-		if !owner.Detect() {
-			return adapters.UpdateInfo{
-				CurrentVersion:  current,
-				LatestVersion:   current,
-				UpdateAvailable: false,
-			}, nil
-		}
-		if checker, ok := owner.(adapters.PackageChecker); ok {
-			if pkg == "" {
-				return adapters.UpdateInfo{}, fmt.Errorf("go has no manager package on %s", runtimeGOOSFn())
-			}
-			return checker.CheckPackage(ctx, pkg)
-		}
-		return adapters.UpdateInfo{}, fmt.Errorf("go's manager %s does not support per-package checks", owner.Name())
+	if owner := ResolveOwner("go", plat); owner != nil {
+		return DelegatedCheck(ctx, a, current)
 	}
 
 	latest := current
@@ -391,23 +372,8 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	}
 
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
-	owner := ResolveOwner("go", plat)
-	pkg := a.Info().ManagerPackage[plat]
-	if owner == nil && runtimeGOOSFn() == "linux" {
-		owner, pkg = a.linuxOwner()
-	}
-
-	if owner != nil {
-		if dryRun {
-			return adapters.Result{Success: true}, nil
-		}
-		if updater, ok := owner.(adapters.PackageUpdater); ok {
-			if pkg == "" {
-				return adapters.Result{Success: false}, fmt.Errorf("go has no manager package on %s", runtimeGOOSFn())
-			}
-			return updater.UpdatePackage(ctx, pkg)
-		}
-		return adapters.Result{Success: false}, fmt.Errorf("go's manager %s does not support per-package updates", owner.Name())
+	if owner := ResolveOwner("go", plat); owner != nil {
+		return DelegatedUpdate(ctx, a, dryRun)
 	}
 
 	before := extractGoVersion(commandOutput(ctx, "go", "version"))
