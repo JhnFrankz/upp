@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/doctor"
 )
 
@@ -128,5 +130,68 @@ func TestDoctorCommand_QuietAllOK(t *testing.T) {
 	want := "upp doctor: all checks passed.\n"
 	if out != want {
 		t.Errorf("quiet output expected %q, got %q", want, out)
+	}
+}
+
+func TestDoctorCommand_DefaultAdaptersInjected(t *testing.T) {
+	var buf bytes.Buffer
+	gf := &GlobalFlags{}
+
+	var receivedAdapters []adapters.Adapter
+	testDeps := doctorDeps{
+		diagnose: func(ctx context.Context, deps doctor.DoctorDeps) []doctor.CheckResult {
+			receivedAdapters = deps.Adapters
+			return []doctor.CheckResult{
+				{
+					Category: "Tool Paths",
+					Name:     "Test",
+					Status:   doctor.SeverityOK,
+					Message:  "ok",
+				},
+			}
+		},
+	}
+
+	err := runDoctor(context.Background(), gf, &buf, testDeps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedAdapters := official.AdaptersForCurrentPlatform()
+	if len(receivedAdapters) != len(expectedAdapters) {
+		t.Fatalf("expected %d platform adapters injected, got %d", len(expectedAdapters), len(receivedAdapters))
+	}
+}
+
+func TestDoctorCommand_PreservesExplicitAdapters(t *testing.T) {
+	var buf bytes.Buffer
+	gf := &GlobalFlags{}
+
+	customAdapters := []adapters.Adapter{&fakeUpdateAdapter{name: "custom-adapter"}}
+	var receivedAdapters []adapters.Adapter
+	testDeps := doctorDeps{
+		diagnose: func(ctx context.Context, deps doctor.DoctorDeps) []doctor.CheckResult {
+			receivedAdapters = deps.Adapters
+			return []doctor.CheckResult{
+				{
+					Category: "Tool Paths",
+					Name:     "Test",
+					Status:   doctor.SeverityOK,
+					Message:  "ok",
+				},
+			}
+		},
+		deps: doctor.DoctorDeps{
+			Adapters: customAdapters,
+		},
+	}
+
+	err := runDoctor(context.Background(), gf, &buf, testDeps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(receivedAdapters) != 1 || receivedAdapters[0].Name() != "custom-adapter" {
+		t.Fatalf("expected explicit adapters to be preserved, got: %v", receivedAdapters)
 	}
 }
