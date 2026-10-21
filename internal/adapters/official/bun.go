@@ -20,7 +20,7 @@ func (a *BunAdapter) Detect() bool {
 
 func (a *BunAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("bun is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: bun is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := commandOutput(ctx, "bun", "--version")
@@ -37,7 +37,7 @@ func (a *BunAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 
 func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("bun is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: bun is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := commandOutput(ctx, "bun", "--version")

@@ -40,7 +40,7 @@ func (a *NVMAdapter) Detect() bool {
 
 func (a *NVMAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("nvm is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: nvm is not installed", adapters.ErrNotInstalled)
 	}
 
 	// Get current node version via nvm. nvm is bash-only, so run through
@@ -92,7 +92,7 @@ func semverCompare(cur, latest string) bool {
 
 func (a *NVMAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("nvm is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: nvm is not installed", adapters.ErrNotInstalled)
 	}
 
 	before, _ := a.currentVersion(ctx)

@@ -37,7 +37,7 @@ func (a *UvAdapter) Info() adapters.ToolInfo {
 
 func (a *UvAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("uv is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: uv is not installed", adapters.ErrNotInstalled)
 	}
 
 	rawVersion, _, _ := runCmdArgs(ctx, "uv", "--version")
@@ -167,7 +167,7 @@ func parseUvToolListOutdatedOutput(output string) bool {
 
 func (a *UvAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("uv is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: uv is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := extractUvVersion(commandOutput(ctx, "uv", "--version"))

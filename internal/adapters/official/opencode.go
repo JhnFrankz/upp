@@ -65,7 +65,7 @@ func (a *OpenCodeAdapter) Detect() bool {
 
 func (a *OpenCodeAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("opencode is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: opencode is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := commandOutput(ctx, "opencode", "--version")
@@ -90,7 +90,7 @@ func (a *OpenCodeAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error
 
 func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("opencode is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: opencode is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := extractVersion(commandOutput(ctx, "opencode", "--version"))

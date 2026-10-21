@@ -29,7 +29,7 @@ func (a *WingetAdapter) Detect() bool {
 
 func (a *WingetAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("winget is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
 	}
 
 	// Self-only: report winget's own version from `winget --version`, then
@@ -72,7 +72,7 @@ func (a *WingetAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 // update).
 func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("winget is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
 	}
 	stdout, err := commandOutputErr(ctx, "winget", "upgrade")
 	if err != nil {
@@ -93,7 +93,7 @@ func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.
 // manager, so the group update may auto-proceed.
 func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := "unknown"
@@ -136,7 +136,7 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 
 func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("winget is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := commandOutput(ctx, "winget", "--version")

@@ -28,7 +28,7 @@ func (a *AptAdapter) Detect() bool {
 
 func (a *AptAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("apt is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
 	}
 	return a.CheckPackage(ctx, "apt")
 }
@@ -77,7 +77,7 @@ func parseAptPolicyOutput(out string) (string, string) {
 // through bash or awk.
 func (a *AptAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("apt is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
 	}
 	stdout, err := commandOutputErrFor(ctx, "apt", "apt-cache", "policy", pkg)
 	if err != nil {
@@ -100,7 +100,7 @@ func (a *AptAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Upd
 // mutating counterpart to CheckPackage's read-only availability query.
 func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := "unknown"
@@ -146,7 +146,7 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 
 func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("apt is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
 	}
 
 	before, _ := a.CurrentVersion(ctx)

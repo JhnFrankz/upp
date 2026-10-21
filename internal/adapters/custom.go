@@ -120,10 +120,10 @@ func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 
 	base := extractBaseCommand(c.command)
 	if base == "" {
-		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, "")
+		return UpdateInfo{}, fmt.Errorf("%w: tool %q is not installed (binary %q not found on PATH)", ErrNotInstalled, c.id, "")
 	}
 	if _, err := lookPathFn(base); err != nil {
-		return UpdateInfo{}, fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, base)
+		return UpdateInfo{}, fmt.Errorf("%w: tool %q is not installed (binary %q not found on PATH)", ErrNotInstalled, c.id, base)
 	}
 
 	stdout, _, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
@@ -165,7 +165,7 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 	if !c.Detect() {
 		return Result{
 			Success:    false,
-			Error:      fmt.Errorf("tool %q is not installed (binary %q not found on PATH)", c.id, extractBaseCommand(c.command)),
+			Error:      fmt.Errorf("%w: tool %q is not installed (binary %q not found on PATH)", ErrNotInstalled, c.id, extractBaseCommand(c.command)),
 			Privileges: privileges,
 		}, nil
 	}

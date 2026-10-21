@@ -20,7 +20,7 @@ func (a *DockerAdapter) Detect() bool {
 
 func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("docker is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: docker is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := extractVersion(commandOutput(ctx, "docker", "--version"))
@@ -29,7 +29,7 @@ func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 
 func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("docker is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: docker is not installed", adapters.ErrNotInstalled)
 	}
 
 	return DelegatedUpdate(ctx, a, dryRun)

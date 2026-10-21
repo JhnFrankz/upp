@@ -2,6 +2,7 @@ package official
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -127,6 +128,9 @@ func TestDelegatedCheck_NoResolvingOwner(t *testing.T) {
 	if !strings.Contains(err.Error(), "go has no resolving owner on linux") {
 		t.Errorf("DelegatedCheck() error = %q, want contains %q", err.Error(), "go has no resolving owner on linux")
 	}
+	if !errors.Is(err, adapters.ErrNoResolvingOwner) {
+		t.Errorf("DelegatedCheck() error = %v, want errors.Is(err, adapters.ErrNoResolvingOwner)", err)
+	}
 }
 
 func TestDelegatedCheck_ManagerNotPackageChecker(t *testing.T) {
@@ -150,6 +154,9 @@ func TestDelegatedCheck_ManagerNotPackageChecker(t *testing.T) {
 	if !strings.Contains(err.Error(), "gh's manager dummy-mgr does not support per-package checks") {
 		t.Errorf("DelegatedCheck() error = %q, want contains expected message", err.Error())
 	}
+	if !errors.Is(err, adapters.ErrUnsupportedPackageCheck) {
+		t.Errorf("DelegatedCheck() error = %v, want errors.Is(err, adapters.ErrUnsupportedPackageCheck)", err)
+	}
 }
 
 func TestDelegatedCheck_NoManagerPackage(t *testing.T) {
@@ -164,6 +171,9 @@ func TestDelegatedCheck_NoManagerPackage(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "custom-pkgless has no manager package on linux") {
 		t.Errorf("DelegatedCheck() error = %q, want contains %q", err.Error(), "custom-pkgless has no manager package on linux")
+	}
+	if !errors.Is(err, adapters.ErrNoManagerPackage) {
+		t.Errorf("DelegatedCheck() error = %v, want errors.Is(err, adapters.ErrNoManagerPackage)", err)
 	}
 }
 
@@ -215,6 +225,9 @@ func TestDelegatedUpdate_NoResolvingOwner(t *testing.T) {
 	if res.Error == nil || !strings.Contains(res.Error.Error(), "go has no resolving owner on linux") {
 		t.Errorf("DelegatedUpdate() res.Error = %v, want contains %q", res.Error, "go has no resolving owner on linux")
 	}
+	if !errors.Is(res.Error, adapters.ErrNoResolvingOwner) {
+		t.Errorf("DelegatedUpdate() res.Error = %v, want errors.Is(res.Error, adapters.ErrNoResolvingOwner)", res.Error)
+	}
 }
 
 func TestDelegatedUpdate_ManagerNotPackageUpdater(t *testing.T) {
@@ -241,6 +254,9 @@ func TestDelegatedUpdate_ManagerNotPackageUpdater(t *testing.T) {
 	if !strings.Contains(err.Error(), "gh's manager dummy-mgr does not support per-package updates") {
 		t.Errorf("DelegatedUpdate() error = %q, want contains expected message", err.Error())
 	}
+	if !errors.Is(err, adapters.ErrUnsupportedPackageUpdate) {
+		t.Errorf("DelegatedUpdate() error = %v, want errors.Is(err, adapters.ErrUnsupportedPackageUpdate)", err)
+	}
 }
 
 func TestDelegatedUpdate_NoManagerPackage(t *testing.T) {
@@ -259,12 +275,18 @@ func TestDelegatedUpdate_NoManagerPackage(t *testing.T) {
 	if !strings.Contains(err.Error(), "custom-pkgless has no manager package on linux") {
 		t.Errorf("DelegatedUpdate() error = %q, want contains %q", err.Error(), "custom-pkgless has no manager package on linux")
 	}
+	if !errors.Is(err, adapters.ErrNoManagerPackage) {
+		t.Errorf("DelegatedUpdate() error = %v, want errors.Is(err, adapters.ErrNoManagerPackage)", err)
+	}
 }
 
 func TestDelegated_NilAdapter(t *testing.T) {
 	_, err := DelegatedCheck(context.Background(), nil, "1.0.0")
 	if err == nil || !strings.Contains(err.Error(), "adapter is nil") {
 		t.Fatalf("DelegatedCheck(nil) error = %v, want contains 'adapter is nil'", err)
+	}
+	if !errors.Is(err, adapters.ErrNilAdapter) {
+		t.Fatalf("DelegatedCheck(nil) error = %v, want errors.Is(err, adapters.ErrNilAdapter)", err)
 	}
 
 	res, err := DelegatedUpdate(context.Background(), nil, false)
@@ -273,6 +295,9 @@ func TestDelegated_NilAdapter(t *testing.T) {
 	}
 	if res.Success || res.Error == nil || !strings.Contains(res.Error.Error(), "adapter is nil") {
 		t.Fatalf("DelegatedUpdate(nil) res = %+v, want Failure with 'adapter is nil'", res)
+	}
+	if !errors.Is(res.Error, adapters.ErrNilAdapter) {
+		t.Fatalf("DelegatedUpdate(nil) res.Error = %v, want errors.Is(res.Error, adapters.ErrNilAdapter)", res.Error)
 	}
 }
 
@@ -364,6 +389,9 @@ func TestGoAdapter_HonorsResolveOwnerSeam(t *testing.T) {
 	if !strings.Contains(err.Error(), "go's manager dummy-mgr does not support per-package checks") {
 		t.Errorf("GoAdapter.Check() error = %q, want contains expected message", err.Error())
 	}
+	if !errors.Is(err, adapters.ErrUnsupportedPackageCheck) {
+		t.Errorf("GoAdapter.Check() error = %v, want errors.Is(err, adapters.ErrUnsupportedPackageCheck)", err)
+	}
 
 	res, err := (&GoAdapter{}).Update(context.Background(), false)
 	if err == nil {
@@ -371,6 +399,9 @@ func TestGoAdapter_HonorsResolveOwnerSeam(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "go's manager dummy-mgr does not support per-package updates") {
 		t.Errorf("GoAdapter.Update() error = %q, want contains expected message", err.Error())
+	}
+	if !errors.Is(err, adapters.ErrUnsupportedPackageUpdate) {
+		t.Errorf("GoAdapter.Update() error = %v, want errors.Is(err, adapters.ErrUnsupportedPackageUpdate)", err)
 	}
 	if res.Success {
 		t.Errorf("GoAdapter.Update() Success = true, want false")

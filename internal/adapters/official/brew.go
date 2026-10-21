@@ -28,7 +28,7 @@ func (a *BrewAdapter) Detect() bool {
 
 func (a *BrewAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("brew is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := commandOutput(ctx, "brew", "--version")
@@ -53,7 +53,7 @@ func (a *BrewAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 // a brew formula present in the outdated JSON array has a newer version.
 func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("brew is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
 	}
 	stdout, err := commandOutputErr(ctx, "brew", "outdated", "--json", pkg)
 	if err != nil {
@@ -74,7 +74,7 @@ func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Up
 // update may auto-proceed (spec security-model "Non-sudo group proceeds").
 func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := "unknown"
@@ -117,7 +117,7 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 
 func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("brew is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := commandOutput(ctx, "brew", "--version")

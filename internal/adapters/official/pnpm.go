@@ -22,7 +22,7 @@ func (a *PnpmAdapter) Detect() bool {
 
 func (a *PnpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("pnpm is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: pnpm is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := commandOutput(ctx, "pnpm", "--version")
@@ -76,7 +76,7 @@ func isCorruptPnpmStore(stderr string) bool {
 
 func (a *PnpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("pnpm is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: pnpm is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := commandOutput(ctx, "pnpm", "--version")

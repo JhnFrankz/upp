@@ -20,7 +20,7 @@ func (a *GhAdapter) Detect() bool {
 
 func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("gh is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: gh is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := extractVersion(commandOutput(ctx, "gh", "--version"))
@@ -29,7 +29,7 @@ func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 
 func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("gh is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: gh is not installed", adapters.ErrNotInstalled)
 	}
 
 	return DelegatedUpdate(ctx, a, dryRun)

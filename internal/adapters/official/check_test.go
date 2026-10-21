@@ -1050,11 +1050,12 @@ func TestCheck(t *testing.T) {
 			wantErrContains: "nvm check failed",
 		},
 		{
-			name:    "nvm/not-installed-error",
-			newAdpt: func() adapters.Adapter { return &NVMAdapter{} },
-			setup:   nvmMissingSetup,
-			fakes:   execFakes{},
-			wantErr: true,
+			name:            "nvm/not-installed-error",
+			newAdpt:         func() adapters.Adapter { return &NVMAdapter{} },
+			setup:           nvmMissingSetup,
+			fakes:           execFakes{},
+			wantErr:         true,
+			wantErrContains: "nvm is not installed",
 		},
 
 		// --- uv (dual-scope: self update + tool list) ---
@@ -1330,6 +1331,9 @@ func TestCheck(t *testing.T) {
 				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
 					t.Errorf("Check() error = %q, want contains %q", err, tt.wantErrContains)
 				}
+				if strings.Contains(tt.wantErrContains, "is not installed") && !errors.Is(err, adapters.ErrNotInstalled) {
+					t.Errorf("Check() error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+				}
 				if tt.wantDeadline && !errors.Is(err, context.DeadlineExceeded) {
 					t.Errorf("Check() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 				}
@@ -1575,6 +1579,9 @@ func TestCheckPackage(t *testing.T) {
 				}
 				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
 					t.Errorf("CheckPackage() error = %q, want contains %q", err, tt.wantErrContains)
+				}
+				if strings.Contains(tt.wantErrContains, "is not installed") && !errors.Is(err, adapters.ErrNotInstalled) {
+					t.Errorf("CheckPackage() error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
 				}
 				return
 			}
@@ -2047,6 +2054,9 @@ func TestAptCheckPackage_NotInstalled(t *testing.T) {
 	if !strings.Contains(err.Error(), "apt is not installed") {
 		t.Errorf("error = %q, want contains 'apt is not installed'", err.Error())
 	}
+	if !errors.Is(err, adapters.ErrNotInstalled) {
+		t.Errorf("error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+	}
 }
 
 func TestBrewCheckPackage_NotInstalled(t *testing.T) {
@@ -2061,6 +2071,9 @@ func TestBrewCheckPackage_NotInstalled(t *testing.T) {
 	if !strings.Contains(err.Error(), "brew is not installed") {
 		t.Errorf("error = %q, want contains 'brew is not installed'", err.Error())
 	}
+	if !errors.Is(err, adapters.ErrNotInstalled) {
+		t.Errorf("error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+	}
 }
 
 func TestWingetCheckPackage_NotInstalled(t *testing.T) {
@@ -2074,6 +2087,49 @@ func TestWingetCheckPackage_NotInstalled(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "winget is not installed") {
 		t.Errorf("error = %q, want contains 'winget is not installed'", err.Error())
+	}
+	if !errors.Is(err, adapters.ErrNotInstalled) {
+		t.Errorf("error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+	}
+}
+
+func TestOfficialAdapters_Check_NotInstalled(t *testing.T) {
+	adaptersList := []struct {
+		name    string
+		adapter adapters.Adapter
+	}{
+		{"apt", &AptAdapter{}},
+		{"brew", &BrewAdapter{}},
+		{"bun", &BunAdapter{}},
+		{"docker", &DockerAdapter{}},
+		{"gh", &GhAdapter{}},
+		{"go", &GoAdapter{}},
+		{"npm", &NpmAdapter{}},
+		{"nvm", &NVMAdapter{}},
+		{"opencode", &OpenCodeAdapter{}},
+		{"pacman", &PacmanAdapter{}},
+		{"pnpm", &PnpmAdapter{}},
+		{"scoop", &ScoopAdapter{}},
+		{"uv", &UvAdapter{}},
+		{"winget", &WingetAdapter{}},
+	}
+
+	for _, tc := range adaptersList {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "nvm" {
+				nvmMissingSetup(t)
+			}
+			setExecFakes(t, execFakes{
+				lookPath: map[string]bool{tc.name: false},
+			})
+			_, err := tc.adapter.Check(context.Background())
+			if err == nil {
+				t.Fatalf("%s.Check() expected error when tool not installed, got nil", tc.name)
+			}
+			if !errors.Is(err, adapters.ErrNotInstalled) {
+				t.Errorf("%s.Check() error = %v, want errors.Is(err, adapters.ErrNotInstalled)", tc.name, err)
+			}
+		})
 	}
 }
 

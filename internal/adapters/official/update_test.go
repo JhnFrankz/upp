@@ -1145,6 +1145,9 @@ func TestUpdate(t *testing.T) {
 				if err == nil {
 					t.Fatal("Update() error = nil, want error when tool is not installed")
 				}
+				if !errors.Is(err, adapters.ErrNotInstalled) {
+					t.Errorf("Update() error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+				}
 				return
 			}
 			if err != nil {
