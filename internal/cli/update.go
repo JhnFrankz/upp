@@ -77,42 +77,52 @@ type UpdateSession struct {
 	In          io.Reader
 	Out         io.Writer
 	ErrOut      io.Writer
+	Selector    func(pending []output.SelectOption) ([]string, bool)
+}
+
+func (s *UpdateSession) ensureDefaults() {
+	if s.Ctx == nil {
+		s.Ctx = context.Background()
+	}
+	if s.GlobalFlags == nil {
+		s.GlobalFlags = &GlobalFlags{}
+	}
+	if s.UpdateFlags == nil {
+		s.UpdateFlags = &UpdateFlags{}
+	}
+	if s.In == nil {
+		s.In = os.Stdin
+	}
+	if s.Out == nil {
+		s.Out = os.Stdout
+	}
+	if s.ErrOut == nil {
+		s.ErrOut = os.Stderr
+	}
+	if s.Renderer == nil {
+		s.Renderer = output.NewRendererVerbose(s.Out, s.GlobalFlags.Quiet, s.GlobalFlags.Verbose)
+	}
+	if s.OSName == "" {
+		if p, err := platform.Detect(); err == nil {
+			s.OSName = p.OS
+		}
+	}
+	if s.Engine == nil {
+		var opts []engine.Option
+		if s.AllAdapters != nil {
+			opts = append(opts, engine.WithAdapters(s.AllAdapters))
+		}
+		s.Engine = engine.New(nil, s.OSName, opts...)
+	}
 }
 
 // NewUpdateSession creates a populated UpdateSession with normalized defaults.
 func NewUpdateSession(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, r *output.Renderer, eng *engine.Engine, allAdapters []adapters.Adapter, osName string, in io.Reader, out io.Writer, errOut ...io.Writer) *UpdateSession {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if gf == nil {
-		gf = &GlobalFlags{}
-	}
-	if uf == nil {
-		uf = &UpdateFlags{}
-	}
-	if in == nil {
-		in = os.Stdin
-	}
-	if out == nil {
-		out = os.Stdout
-	}
 	var eo io.Writer
 	if len(errOut) > 0 && errOut[0] != nil {
 		eo = errOut[0]
-	} else {
-		eo = os.Stderr
 	}
-	if r == nil {
-		r = output.NewRendererVerbose(out, gf.Quiet, gf.Verbose)
-	}
-	if eng == nil {
-		var opts []engine.Option
-		if len(allAdapters) > 0 {
-			opts = append(opts, engine.WithAdapters(allAdapters))
-		}
-		eng = engine.New(nil, osName, opts...)
-	}
-	return &UpdateSession{
+	s := &UpdateSession{
 		Ctx:         ctx,
 		GlobalFlags: gf,
 		UpdateFlags: uf,
@@ -124,6 +134,8 @@ func NewUpdateSession(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, r *
 		Out:         out,
 		ErrOut:      eo,
 	}
+	s.ensureDefaults()
+	return s
 }
 
 func runUpdate(gf *GlobalFlags, uf *UpdateFlags, deps updateDeps) error {
@@ -212,6 +224,7 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 	}
 
 	sess := NewUpdateSession(ctx, gf, uf, r, eng, allAdapters, p.OS, in, out, errOut)
+	sess.Selector = deps.selector
 
 	// Interactive gate (design D2): selector only when stdin is a TTY and
 	// --ci, --quiet, and --dry-run are all unset. Any other combination keeps
@@ -220,7 +233,7 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		deps.stdinIsTTY = stdinIsTTY
 	}
 	if deps.stdinIsTTY() && !gf.CI && !gf.Quiet && !uf.DryRun {
-		return sess.RunInteractive(deps, filteredAdapters)
+		return sess.RunInteractive(filteredAdapters)
 	}
 
 	return sess.RunSequential(filteredAdapters)

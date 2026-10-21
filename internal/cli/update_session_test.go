@@ -160,3 +160,107 @@ func TestUpdateSession_AuthorizeChecks(t *testing.T) {
 		t.Fatalf("expected 1 adapter, got %d", len(auth))
 	}
 }
+
+func TestNewUpdateSession_EmptyAdapters(t *testing.T) {
+	s := NewUpdateSession(context.Background(), nil, nil, nil, nil, []adapters.Adapter{}, platform.OSLinux, nil, nil)
+	resolved, err := s.Engine.Resolve(engine.Filter{})
+	if err != nil {
+		t.Fatalf("unexpected resolve error: %v", err)
+	}
+	if len(resolved) != 0 {
+		t.Errorf("expected 0 resolved adapters for explicit empty adapter list, got %d", len(resolved))
+	}
+}
+
+func TestUpdateSession_NilReceiver(t *testing.T) {
+	var s *UpdateSession
+	if err := s.RunSequential(nil); err == nil {
+		t.Error("expected error on nil receiver RunSequential")
+	}
+	if err := s.RunInteractive(nil); err == nil {
+		t.Error("expected error on nil receiver RunInteractive")
+	}
+	if _, err := s.AuthorizeChecks(nil); err == nil {
+		t.Error("expected error on nil receiver AuthorizeChecks")
+	}
+	res := s.ExecutePlannedUpdate(engine.PlannedUpdate{ToolName: "test"}, nil, 1, 1)
+	if res.Status != output.StatusFailed {
+		t.Errorf("expected StatusFailed on nil receiver ExecutePlannedUpdate, got %v", res.Status)
+	}
+}
+
+func TestUpdateSession_DirectStructLiteral_EnsureDefaults(t *testing.T) {
+	var buf bytes.Buffer
+	s := &UpdateSession{
+		Out: &buf,
+	}
+	if err := s.RunSequential(nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.Ctx == nil || s.GlobalFlags == nil || s.Renderer == nil || s.Engine == nil {
+		t.Errorf("expected ensureDefaults to populate nil fields, got %+v", s)
+	}
+}
+
+func TestUpdateSession_RunInteractive_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	r := output.NewRenderer(&buf, false)
+	sess := NewUpdateSession(context.Background(), &GlobalFlags{}, &UpdateFlags{}, r, nil, nil, platform.OSLinux, nil, &buf)
+	err := sess.RunInteractive(nil)
+	if err != nil {
+		t.Fatalf("unexpected error for empty interactive run: %v", err)
+	}
+}
+
+func TestUpdateSession_RunInteractive_Canceled(t *testing.T) {
+	var buf bytes.Buffer
+	r := output.NewRenderer(&buf, false)
+	fake := &fakeUpdateAdapter{
+		name:   "tool-interactive",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+	}
+	sess := NewUpdateSession(context.Background(), &GlobalFlags{}, &UpdateFlags{}, r, nil, []adapters.Adapter{fake}, platform.OSLinux, nil, &buf)
+	sess.Selector = func(opts []output.SelectOption) ([]string, bool) {
+		return nil, true
+	}
+	err := sess.RunInteractive([]adapters.Adapter{fake})
+	if err != nil {
+		t.Fatalf("unexpected error on canceled interactive run: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("Update canceled")) {
+		t.Errorf("expected output to contain 'Update canceled', got %q", buf.String())
+	}
+}
+
+func TestUpdateSession_RunInteractive_Selected(t *testing.T) {
+	var buf bytes.Buffer
+	r := output.NewRenderer(&buf, false)
+	fake := &fakeUpdateAdapter{
+		name:   "tool-interactive",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+		result: adapters.Result{Success: true, Before: "1.0", After: "2.0"},
+	}
+	sess := NewUpdateSession(context.Background(), &GlobalFlags{}, &UpdateFlags{}, r, nil, []adapters.Adapter{fake}, platform.OSLinux, nil, &buf)
+	sess.Selector = func(opts []output.SelectOption) ([]string, bool) {
+		return []string{"tool-interactive"}, false
+	}
+	err := sess.RunInteractive([]adapters.Adapter{fake})
+	if err != nil {
+		t.Fatalf("unexpected error on selected interactive run: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("1 updated")) {
+		t.Errorf("expected summary to contain '1 updated', got %q", buf.String())
+	}
+}
+
+func TestUnconsentedCheckAdapter_Unwrap(t *testing.T) {
+	fake := &fakeUpdateAdapter{name: "base-adapter"}
+	wrapped := unconsentedCheckAdapter{Adapter: fake}
+	if unwrapped, ok := any(wrapped).(interface{ Unwrap() adapters.Adapter }); !ok {
+		t.Fatal("unconsentedCheckAdapter does not implement Unwrap()")
+	} else if unwrapped.Unwrap() != fake {
+		t.Errorf("expected unwrapped adapter %v, got %v", fake, unwrapped.Unwrap())
+	}
+}

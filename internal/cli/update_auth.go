@@ -26,9 +26,17 @@ func (a unconsentedCheckAdapter) Check(ctx context.Context) (adapters.UpdateInfo
 	return adapters.UpdateInfo{}, nil
 }
 
+func (a unconsentedCheckAdapter) Unwrap() adapters.Adapter {
+	return a.Adapter
+}
+
 // AuthorizeChecks runs check authorization on adapterList using the session's
 // flags, renderer, and IO streams.
 func (s *UpdateSession) AuthorizeChecks(adapterList []adapters.Adapter) ([]adapters.Adapter, error) {
+	if s == nil {
+		return nil, fmt.Errorf("update session is nil")
+	}
+	s.ensureDefaults()
 	return authorizeChecks(s.GlobalFlags, adapterList, s.Renderer, s.In, s.Out)
 }
 

@@ -56,6 +56,23 @@ func (s *UpdateSession) allAdaptersArg() [][]adapters.Adapter {
 // self-row iff it declares privileges, so pacman prompts while apt/brew/winget
 // keep their byte-identical auto-proceed decision).
 func (s *UpdateSession) ExecutePlannedUpdate(p engine.PlannedUpdate, a adapters.Adapter, index, total int) output.ToolResult {
+	if s == nil {
+		return output.ToolResult{
+			Name:   p.ToolName,
+			Status: output.StatusFailed,
+			Error:  fmt.Errorf("update session is nil"),
+		}
+	}
+	s.ensureDefaults()
+
+	if a == nil {
+		return output.ToolResult{
+			Name:   p.ToolName,
+			Status: output.StatusFailed,
+			Error:  fmt.Errorf("adapter is nil"),
+		}
+	}
+
 	info := a.Info()
 
 	if !s.GlobalFlags.Quiet && total > 1 {

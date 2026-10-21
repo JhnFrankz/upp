@@ -159,7 +159,7 @@ func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) 
 // plan-derived pending set (engine.Plan, so PolicyAlwaysUpdate tools appear
 // even when current), and the carried-outcome loop that updates the user's
 // selection while reporting every deselected pending tool distinctly.
-func runUpdateInteractive(s *UpdateSession, deps updateDeps, filteredAdapters []adapters.Adapter) error {
+func runUpdateInteractive(s *UpdateSession, filteredAdapters []adapters.Adapter) error {
 	if err := s.Ctx.Err(); err != nil {
 		return err
 	}
@@ -247,8 +247,9 @@ func runUpdateInteractive(s *UpdateSession, deps updateDeps, filteredAdapters []
 		return nil
 	}
 
-	if deps.selector == nil {
-		deps.selector = func(opts []output.SelectOption) ([]string, bool) {
+	selector := s.Selector
+	if selector == nil {
+		selector = func(opts []output.SelectOption) ([]string, bool) {
 			res, err := output.NewCheckboxSelector(s.Out, s.In, opts).Run()
 			if err != nil {
 				return nil, true
@@ -256,7 +257,7 @@ func runUpdateInteractive(s *UpdateSession, deps updateDeps, filteredAdapters []
 			return res.Selected, res.Canceled
 		}
 	}
-	selected, canceled := deps.selector(pending)
+	selected, canceled := selector(pending)
 	if canceled {
 		s.Renderer.UpdateCancelled()
 		return nil
@@ -345,12 +346,20 @@ func runUpdateInteractive(s *UpdateSession, deps updateDeps, filteredAdapters []
 
 // RunSequential delegates to runUpdateSequential.
 func (s *UpdateSession) RunSequential(filteredAdapters []adapters.Adapter) error {
+	if s == nil {
+		return fmt.Errorf("update session is nil")
+	}
+	s.ensureDefaults()
 	return runUpdateSequential(s, filteredAdapters)
 }
 
 // RunInteractive delegates to runUpdateInteractive.
-func (s *UpdateSession) RunInteractive(deps updateDeps, filteredAdapters []adapters.Adapter) error {
-	return runUpdateInteractive(s, deps, filteredAdapters)
+func (s *UpdateSession) RunInteractive(filteredAdapters []adapters.Adapter) error {
+	if s == nil {
+		return fmt.Errorf("update session is nil")
+	}
+	s.ensureDefaults()
+	return runUpdateInteractive(s, filteredAdapters)
 }
 
 // outcomeSelectionID returns the canonical selection identity carried by a
