@@ -459,7 +459,7 @@ func resolveOwnerForAdapter(a adapters.Adapter, os string) adapters.Adapter {
 // resolving package manager's PackageChecker interface.
 func DelegatedCheck(ctx context.Context, a adapters.Adapter, current string) (adapters.UpdateInfo, error) {
 	if a == nil {
-		return adapters.UpdateInfo{}, fmt.Errorf("adapter is nil")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: adapter is nil", adapters.ErrNilAdapter)
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -476,14 +476,14 @@ func DelegatedCheck(ctx context.Context, a adapters.Adapter, current string) (ad
 		if checker, ok := owner.(adapters.PackageChecker); ok {
 			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
-				return adapters.UpdateInfo{}, fmt.Errorf("%s has no manager package on %s", a.Name(), runtimeGOOSFn())
+				return adapters.UpdateInfo{}, fmt.Errorf("%w: %s has no manager package on %s", adapters.ErrNoManagerPackage, a.Name(), runtimeGOOSFn())
 			}
 			return checker.CheckPackage(ctx, pkg)
 		}
-		return adapters.UpdateInfo{}, fmt.Errorf("%s's manager %s does not support per-package checks", a.Name(), owner.Name())
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: %s's manager %s does not support per-package checks", adapters.ErrUnsupportedPackageCheck, a.Name(), owner.Name())
 	}
 
-	return adapters.UpdateInfo{}, fmt.Errorf("%s has no resolving owner on %s", a.Name(), runtimeGOOSFn())
+	return adapters.UpdateInfo{}, fmt.Errorf("%w: %s has no resolving owner on %s", adapters.ErrNoResolvingOwner, a.Name(), runtimeGOOSFn())
 }
 
 // DelegatedUpdate updates an owned tool by delegating to its resolving package
@@ -492,7 +492,7 @@ func DelegatedUpdate(ctx context.Context, a adapters.Adapter, dryRun bool) (adap
 	if a == nil {
 		return adapters.Result{
 			Success: false,
-			Error:   fmt.Errorf("adapter is nil"),
+			Error:   fmt.Errorf("%w: adapter is nil", adapters.ErrNilAdapter),
 		}, nil
 	}
 	if ctx == nil {
@@ -506,16 +506,16 @@ func DelegatedUpdate(ctx context.Context, a adapters.Adapter, dryRun bool) (adap
 		if updater, ok := owner.(adapters.PackageUpdater); ok {
 			pkg := a.Info().ManagerPackage[plat]
 			if pkg == "" {
-				return adapters.Result{Success: false}, fmt.Errorf("%s has no manager package on %s", a.Name(), runtimeGOOSFn())
+				return adapters.Result{Success: false}, fmt.Errorf("%w: %s has no manager package on %s", adapters.ErrNoManagerPackage, a.Name(), runtimeGOOSFn())
 			}
 			return updater.UpdatePackage(ctx, pkg)
 		}
-		return adapters.Result{Success: false}, fmt.Errorf("%s's manager %s does not support per-package updates", a.Name(), owner.Name())
+		return adapters.Result{Success: false}, fmt.Errorf("%w: %s's manager %s does not support per-package updates", adapters.ErrUnsupportedPackageUpdate, a.Name(), owner.Name())
 	}
 
 	// Fail-closed fallback if ownership map ever regresses.
 	return adapters.Result{
 		Success: false,
-		Error:   fmt.Errorf("%s has no resolving owner on %s", a.Name(), runtimeGOOSFn()),
+		Error:   fmt.Errorf("%w: %s has no resolving owner on %s", adapters.ErrNoResolvingOwner, a.Name(), runtimeGOOSFn()),
 	}, nil
 }

@@ -27,7 +27,7 @@ func (a *ScoopAdapter) Detect() bool {
 
 func (a *ScoopAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("scoop is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: scoop is not installed", adapters.ErrNotInstalled)
 	}
 
 	// Self-only: scan `scoop status` output for scoop's own row to report a
@@ -54,7 +54,7 @@ func (a *ScoopAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 
 func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("scoop is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: scoop is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := "unknown"
@@ -113,7 +113,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 // CheckPackage reports the installed vs available version of an owned package under scoop.
 func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("scoop is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: scoop is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := "unknown"
@@ -137,7 +137,7 @@ func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.U
 // UpdatePackage runs the per-package update command for an owned tool under scoop.
 func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("scoop is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: scoop is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := "unknown"

@@ -192,6 +192,9 @@ func TestCustomAdapter_Check_MissingBinary(t *testing.T) {
 	if err == nil {
 		t.Fatal("Check() expected error when binary missing, got nil")
 	}
+	if !errors.Is(err, ErrNotInstalled) {
+		t.Errorf("Check() error = %v, want errors.Is(err, ErrNotInstalled)", err)
+	}
 }
 
 func TestCustomAdapter_Check_CheckTimeoutKills(t *testing.T) {
@@ -273,6 +276,9 @@ func TestCustomAdapter_Update_MissingBinary(t *testing.T) {
 	if result.Error == nil {
 		t.Error("Update(dryRun=false) Result.Error = nil, want structured error when binary missing")
 	}
+	if !errors.Is(result.Error, ErrNotInstalled) {
+		t.Errorf("Update(dryRun=false) Result.Error = %v, want errors.Is(result.Error, ErrNotInstalled)", result.Error)
+	}
 
 	dryResult, err := ca.Update(context.Background(), true)
 	if err != nil {
@@ -283,6 +289,9 @@ func TestCustomAdapter_Update_MissingBinary(t *testing.T) {
 	}
 	if dryResult.Error == nil {
 		t.Error("Update(dryRun=true) Result.Error = nil, want structured error when binary missing")
+	}
+	if !errors.Is(dryResult.Error, ErrNotInstalled) {
+		t.Errorf("Update(dryRun=true) Result.Error = %v, want errors.Is(dryResult.Error, ErrNotInstalled)", dryResult.Error)
 	}
 }
 

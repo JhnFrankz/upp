@@ -313,7 +313,7 @@ func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
 
 func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("go is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: go is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := commandOutput(ctx, "go", "version")
@@ -368,7 +368,7 @@ func hasCommandError(stderr string) bool {
 
 func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("go is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: go is not installed", adapters.ErrNotInstalled)
 	}
 
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())

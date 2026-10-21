@@ -20,7 +20,7 @@ func (a *NpmAdapter) Detect() bool {
 
 func (a *NpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("npm is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: npm is not installed", adapters.ErrNotInstalled)
 	}
 
 	current := commandOutput(ctx, "npm", "--version")
@@ -52,7 +52,7 @@ func (a *NpmAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 
 func (a *NpmAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("npm is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: npm is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := commandOutput(ctx, "npm", "--version")

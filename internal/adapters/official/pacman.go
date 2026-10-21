@@ -61,7 +61,7 @@ func (a *PacmanAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 // Update updates pacman itself.
 func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("pacman is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: pacman is not installed", adapters.ErrNotInstalled)
 	}
 
 	before, _ := a.CurrentVersion(ctx)
@@ -148,7 +148,7 @@ func parsePacmanSiOutput(out string) string {
 // CheckPackage reports the installed vs candidate version of a package under pacman.
 func (a *PacmanAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("pacman is not installed")
+		return adapters.UpdateInfo{}, fmt.Errorf("%w: pacman is not installed", adapters.ErrNotInstalled)
 	}
 
 	qOut := commandOutput(ctx, "pacman", "-Q", pkg)
@@ -197,7 +197,7 @@ func (a *PacmanAdapter) CurrentVersion(ctx context.Context) (string, error) {
 // UpdatePackage updates a single package using pacman.
 func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("pacman is not installed")
+		return adapters.Result{Success: false}, fmt.Errorf("%w: pacman is not installed", adapters.ErrNotInstalled)
 	}
 
 	before := "unknown"
