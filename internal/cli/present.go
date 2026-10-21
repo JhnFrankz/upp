@@ -71,7 +71,7 @@ func presentGroups(toolGroups []engine.ToolGroup, outcomes []engine.CheckOutcome
 }
 
 // presentDoctorResults maps doctor domain models into presentation view models and renders them.
-func presentDoctorResults(r *output.Renderer, results []doctor.CheckResult, quiet, verbose bool) {
+func presentDoctorResults(r output.DiagnosticPresenter, results []doctor.CheckResult, quiet, verbose bool) {
 	items := make([]output.DiagnosticResult, len(results))
 	for i, res := range results {
 		var sev output.DiagnosticSeverity
@@ -98,7 +98,7 @@ func presentDoctorResults(r *output.Renderer, results []doctor.CheckResult, quie
 }
 
 // presentUninstallPlan maps uninstall domain models into presentation view models and renders them.
-func presentUninstallPlan(r *output.Renderer, targets []uninstall.Target) {
+func presentUninstallPlan(r output.UninstallPresenter, targets []uninstall.Target) {
 	items := make([]output.TargetItem, len(targets))
 	for i, t := range targets {
 		items[i] = output.TargetItem{
