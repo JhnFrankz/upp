@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1476,20 +1478,64 @@ func TestDefaultDoctorDeps(t *testing.T) {
 }
 
 func TestDoctorPackage_NoOfficialAdaptersImport(t *testing.T) {
-	entries, err := os.ReadDir(".")
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, parser.ImportsOnly)
 	if err != nil {
-		t.Fatalf("failed to read doctor package directory: %v", err)
+		t.Fatalf("failed to parse doctor package directory: %v", err)
 	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
+
+	const forbidden = "github.com/JhnFrankz/upp/internal/adapters/official"
+	for _, pkg := range pkgs {
+		for filename, file := range pkg.Files {
+			for _, imp := range file.Imports {
+				path := strings.Trim(imp.Path.Value, `"`)
+				if strings.Contains(path, forbidden) {
+					t.Errorf("architectural boundary violation: %s imports %q", filename, path)
+				}
+			}
 		}
-		content, err := os.ReadFile(entry.Name())
-		if err != nil {
-			t.Fatalf("failed to read %s: %v", entry.Name(), err)
+	}
+}
+
+func TestDiagnose_ToolPaths_DuplicateAdaptersPrioritizesDetecting(t *testing.T) {
+	deps := DoctorDeps{
+		ConfigPath: func() (string, error) { return "/tmp/config.toml", nil },
+		ConfigDir:  func() (string, error) { return "/tmp", nil },
+		CacheDir:   func() (string, error) { return "/tmp", nil },
+		LoadConfig: func() (*config.Config, error) {
+			return &config.Config{}, nil
+		},
+		LockPath:     func() (string, error) { return "/tmp/lock", nil },
+		ProcessAlive: func(pid int) bool { return false },
+		TryLock:      func(f *os.File) error { return nil },
+		LookPath:     func(name string) (string, error) { return "", os.ErrNotExist },
+		FindAllPaths: func(name string) []string { return nil },
+		Platform:     platform.Platform{OS: "linux", Arch: "x86_64"},
+		Adapters: []adapters.Adapter{
+			&mockAdapter{name: "nvm", installed: false},
+			&mockAdapter{name: "nvm", installed: true},
+		},
+		HTTPGet: func(ctx context.Context, url string) (int, error) { return 200, nil },
+	}
+
+	results := Diagnose(context.Background(), deps)
+
+	var nvmRes *CheckResult
+	for i := range results {
+		if results[i].Name == "nvm" && results[i].Category == "Tool Paths" {
+			nvmRes = &results[i]
+			break
 		}
-		if strings.Contains(string(content), "internal/adapters/official") {
-			t.Errorf("architectural boundary violation: %s imports internal/adapters/official", entry.Name())
-		}
+	}
+	if nvmRes == nil {
+		t.Fatalf("expected nvm check result, got none in %+v", results)
+	}
+	if nvmRes.Status != SeverityOK {
+		t.Errorf("expected nvm status OK, got %v (%s)", nvmRes.Status, nvmRes.Message)
+	}
+	if !strings.Contains(nvmRes.Message, "detected via environment") {
+		t.Errorf("expected message containing 'detected via environment', got: %s", nvmRes.Message)
 	}
 }

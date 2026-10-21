@@ -195,3 +195,28 @@ func TestDoctorCommand_PreservesExplicitAdapters(t *testing.T) {
 		t.Fatalf("expected explicit adapters to be preserved, got: %v", receivedAdapters)
 	}
 }
+
+func TestDoctorCommand_NilGlobalFlags(t *testing.T) {
+	var buf bytes.Buffer
+	testDeps := doctorDeps{
+		diagnose: func(ctx context.Context, deps doctor.DoctorDeps) []doctor.CheckResult {
+			return []doctor.CheckResult{
+				{
+					Category: "Tool Paths",
+					Name:     "Test",
+					Status:   doctor.SeverityOK,
+					Message:  "ok",
+				},
+			}
+		},
+	}
+
+	err := runDoctor(context.Background(), nil, &buf, testDeps)
+	if err != nil {
+		t.Fatalf("unexpected error when gf is nil: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Test") {
+		t.Errorf("expected output to contain 'Test', got: %q", out)
+	}
+}

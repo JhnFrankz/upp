@@ -35,6 +35,9 @@ func runDoctor(ctx context.Context, gf *GlobalFlags, out io.Writer, deps doctorD
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if gf == nil {
+		gf = &GlobalFlags{}
+	}
 
 	if deps.diagnose == nil {
 		deps.diagnose = doctor.Diagnose
