@@ -208,6 +208,8 @@ type summaryIndices struct {
 
 // UpdateSummary renders the final summary of an update or check run.
 func (r *Renderer) UpdateSummary(summary Summary) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	var idx summaryIndices
 	idx.updated = idx.uBuf[:0]
 	idx.current = idx.cBuf[:0]
@@ -402,6 +404,8 @@ func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary, idx *summ
 // US spelling is intentional: the repo lint (golangci-lint misspell,
 // locale US) rejects the British double-L spelling.
 func (r *Renderer) UpdateCancelled() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "Update canceled — no changes made.")
 }
 
@@ -409,10 +413,14 @@ func (r *Renderer) UpdateCancelled() {
 
 // DryRunHeader prints the dry-run header.
 func (r *Renderer) DryRunHeader() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "%s Dry run — no changes will be made\n\n", r.statusIcon(StatusAvailable))
 }
 
 // DryRunPlanned prints a planned action for dry-run mode.
 func (r *Renderer) DryRunPlanned(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusAvailable), r.cyan(name))
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -280,5 +281,47 @@ func TestRenderer_LogPresenterInterface(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "test error") || !strings.Contains(out, "test warning") {
 		t.Errorf("LogPresenter interface test missing expected output, got: %s", out)
+	}
+}
+
+func TestRenderer_ConcurrentThreadSafety(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, false, false)
+
+	var wg sync.WaitGroup
+	const workers = 10
+	const iterations = 20
+	wg.Add(workers * 4)
+
+	for w := 0; w < workers; w++ {
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				r.ToolLine(ToolResult{Name: "brew", Status: StatusUpdated})
+			}
+		}(w)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				r.Error("something went wrong")
+			}
+		}(w)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				r.Warning("potential issue")
+			}
+		}(w)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				r.DryRunPlanned("cargo")
+			}
+		}(w)
+	}
+
+	wg.Wait()
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from concurrent operations")
 	}
 }

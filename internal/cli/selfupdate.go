@@ -190,7 +190,7 @@ func formatVersion(v selfupdate.Version) string {
 // and returns true only on an explicit y/yes answer. The prompt shows
 // current → latest versions and the resolved binary path, and is never
 // suppressed by --quiet.
-func confirmReplace(r *output.Renderer, stdin io.Reader, current, latest, target string) bool {
+func confirmReplace(r output.SelfUpdatePresenter, stdin io.Reader, current, latest, target string) bool {
 	r.SelfUpdatePrompt(current, latest, target)
 	reader := stdin
 	if reader == nil {

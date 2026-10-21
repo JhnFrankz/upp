@@ -183,10 +183,14 @@ func (r *Renderer) dim(text string) string    { return r.colorize("2", text) }
 
 // Error prints a prefixed error message.
 func (r *Renderer) Error(msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "%s %s\n", r.statusIcon(StatusFailed), r.red(msg))
 }
 
 // Warning prints a warning message.
 func (r *Renderer) Warning(msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "⚠️  %s\n", r.yellow(msg))
 }

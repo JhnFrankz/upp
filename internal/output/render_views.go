@@ -93,6 +93,8 @@ var (
 // beneath it (the manager's own row leads, followed by the tools it owns).
 // A standalone group (empty Header) prints only its rows.
 func (r *Renderer) ListTools(groups []Group) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	w := tabwriter.NewWriter(r.w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 		r.cyan("ID"), "Name", "Status", "Version")
@@ -118,6 +120,8 @@ func (r *Renderer) ListTools(groups []Group) {
 // tools are configured. Suppressed under --quiet like other list status
 // output.
 func (r *Renderer) NoToolsConfigured() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet {
 		return
 	}
@@ -128,6 +132,8 @@ func (r *Renderer) NoToolsConfigured() {
 // list`: the filter matched none of the configured tools. Suppressed under
 // --quiet like other list status output.
 func (r *Renderer) NoToolsMatchFilter(filter string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet {
 		return
 	}
@@ -138,6 +144,8 @@ func (r *Renderer) NoToolsMatchFilter(filter string) {
 
 // Dashboard renders the bare upp welcome dashboard.
 func (r *Renderer) Dashboard(data DashboardData) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet {
 		return
 	}
@@ -153,6 +161,8 @@ func (r *Renderer) Dashboard(data DashboardData) {
 
 // DashboardNoConfig renders the bare upp guidance when no config exists.
 func (r *Renderer) DashboardNoConfig(version, platform string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet {
 		return
 	}
@@ -165,17 +175,23 @@ func (r *Renderer) DashboardNoConfig(version, platform string) {
 
 // InitHeader prints the init wizard header.
 func (r *Renderer) InitHeader() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "upp init — detecting installed tools...")
 	_, _ = fmt.Fprintln(r.w)
 }
 
 // InitDetected prints a detected tool.
 func (r *Renderer) InitDetected(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusCurrent), r.cyan(name))
 }
 
 // InitConfigGenerated prints the config generated message.
 func (r *Renderer) InitConfigGenerated(path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w)
 	_, _ = fmt.Fprintf(r.w, "%s Config written to %s\n", r.statusIcon(StatusUpdated), path)
 }
@@ -187,6 +203,8 @@ func (r *Renderer) InitConfigGenerated(path string) {
 // Proceed question. It is never suppressed by quiet mode (spec flag
 // semantics: --quiet must not hide the confirm prompt).
 func (r *Renderer) SelfUpdatePrompt(current, latest, target string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "  Update upp from %s to %s?\n", current, latest)
 	_, _ = fmt.Fprintf(r.w, "    Target: %s\n", target)
 	_, _ = fmt.Fprint(r.w, "  Proceed? [y/N] ")
@@ -195,18 +213,24 @@ func (r *Renderer) SelfUpdatePrompt(current, latest, target string) {
 // SelfUpdateDevBuild prints the development-build message (spec R1:
 // exit 0, no update claim). Always shown, including quiet mode.
 func (r *Renderer) SelfUpdateDevBuild() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "development build; self-update is only available for release builds")
 }
 
 // SelfUpdateUpToDate prints the already-up-to-date message with the
 // current release tag (spec R1). Always shown.
 func (r *Renderer) SelfUpdateUpToDate(tag string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "already up to date (%s)\n", tag)
 }
 
 // SelfUpdateDone prints the replacement success line: current → latest.
 // Always shown.
 func (r *Renderer) SelfUpdateDone(current, latest string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "upp updated: %s → %s\n", current, latest)
 }
 
@@ -214,16 +238,22 @@ func (r *Renderer) SelfUpdateDone(current, latest string) {
 
 // UninstallDryRunHeader prints the dry-run header for uninstallation.
 func (r *Renderer) UninstallDryRunHeader() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "%s Dry run — no files will be removed\n\n", r.statusIcon(StatusAvailable))
 }
 
 // UninstallDryRunTarget prints a planned target to be removed during dry-run.
 func (r *Renderer) UninstallDryRunTarget(targetType, path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "  %s Would remove %s: %s\n", r.statusIcon(StatusAvailable), targetType, r.cyan(path))
 }
 
 // UninstallRemoved prints a successfully removed target.
 func (r *Renderer) UninstallRemoved(targetType, path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.quiet {
 		return
 	}
@@ -232,6 +262,8 @@ func (r *Renderer) UninstallRemoved(targetType, path string) {
 
 // UninstallPlan renders the list of targets to be removed before interactive confirmation.
 func (r *Renderer) UninstallPlan(targets []TargetItem) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "The following targets will be removed:")
 	hasExisting := false
 	for _, t := range targets {
@@ -255,10 +287,14 @@ func (r *Renderer) UninstallPlan(targets []TargetItem) {
 
 // UninstallCanceled prints the cancellation message when the user declines uninstallation.
 func (r *Renderer) UninstallCanceled() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "Uninstall canceled — no files were removed.")
 }
 
 // UninstallDone prints the uninstallation completion message.
 func (r *Renderer) UninstallDone() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "upp has been successfully uninstalled.")
 }

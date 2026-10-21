@@ -52,6 +52,15 @@ func TestToolLine_Quiet(t *testing.T) {
 	if strings.HasPrefix(out, "  ") {
 		t.Error("quiet mode should not indent")
 	}
+
+	// Quiet mode should not contain verbose text like "(not installed)"
+	outSkipped := renderToolLine(ToolResult{Name: "brew", Status: StatusSkipped}, false, true, true, false)
+	if !strings.Contains(outSkipped, "brew") {
+		t.Error("output should contain tool name")
+	}
+	if strings.Contains(outSkipped, "(not installed)") {
+		t.Error("quiet mode should not contain verbose text")
+	}
 }
 
 func TestToolLine_FailedWithError(t *testing.T) {
@@ -86,6 +95,8 @@ func TestToolLine_VerboseFailureDiagnostics(t *testing.T) {
 	if !strings.Contains(out, "npm ERR! network connection refused") || !strings.Contains(out, "npm ERR! retry limit reached") {
 		t.Errorf("expected verbose tool line to contain stderr, got:\n%s", out)
 	}
+	// Spec ux-patterns Verbose Error Diagnostics: each stderr line renders
+	// INDENTED beneath the failed tool entry ("    │ <line>").
 	for _, line := range []string{"npm ERR! network connection refused", "npm ERR! retry limit reached"} {
 		if !strings.Contains(out, "    │ "+line) {
 			t.Errorf("stderr line must render indented beneath the failed tool, got:\n%s", out)
@@ -129,6 +140,7 @@ func TestDryRunHeader(t *testing.T) {
 func TestProgress_SingleTool(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, true, false, false)
+	// Single tool should not show progress
 	r.Progress("Checking", 1, 1, "brew")
 	if buf.Len() > 0 {
 		t.Error("progress should not show for single tool")
@@ -179,6 +191,9 @@ func TestRenderer_ConcurrentProgress_ThreadSafe(t *testing.T) {
 	}
 }
 
+// TestUpdateCancelled locks the fixed cancel message for interactive update
+// runs (design D8, spec ux-patterns "Esc cancels run" / "q cancels run"):
+// "Update canceled — no changes made." (US spelling per repo misspell locale)
 func TestUpdateCancelled(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, false, false, false)
@@ -190,6 +205,8 @@ func TestUpdateCancelled(t *testing.T) {
 }
 
 func TestUpdateSummary_AllUpdated(t *testing.T) {
+	// Spec ux-patterns Summary Report, "All succeed": the clean line counts
+	// updated AND failed explicitly ("5 updated, 0 failed. All clean!").
 	checkSummary(t, Summary{
 		Results: []ToolResult{
 			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
@@ -199,6 +216,8 @@ func TestUpdateSummary_AllUpdated(t *testing.T) {
 }
 
 func TestUpdateSummary_PartialFailure(t *testing.T) {
+	// Spec ux-patterns Summary Report, "Partial fail": counts compose as
+	// "N updated, M failed" followed by the review tagline.
 	checkSummary(t, Summary{
 		Results: []ToolResult{
 			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
@@ -234,6 +253,9 @@ func TestUpdateSummary_NotCleanWithSkips(t *testing.T) {
 	}, []string{"1 updated"}, "All clean!")
 }
 
+// TestUpdateSummary_AllCurrentDryRun proves current tools are counted on the
+// update path (design D6). StatusCurrent used to be counted nowhere, so an
+// all-current dry-run fell into the "All tools not installed" branch.
 func TestUpdateSummary_AllCurrentDryRun(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -244,6 +266,10 @@ func TestUpdateSummary_AllCurrentDryRun(t *testing.T) {
 	}, []string{"2 up to date"}, "All tools not installed", "All clean!")
 }
 
+// TestUpdateSummary_CurrentWithSkipsDryRun pins the spec ux-patterns Summary
+// Report scenario "Up-to-date with skips": 8 current + 2 skipped tools on a
+// dry-run count both explicitly ("8 up to date, 2 skipped"), the detail list
+// names the current tools, and no "All tools up to date." tagline appears.
 func TestUpdateSummary_CurrentWithSkipsDryRun(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -254,6 +280,8 @@ func TestUpdateSummary_CurrentWithSkipsDryRun(t *testing.T) {
 	}, []string{"1 up to date", "1 skipped"}, "All tools not installed")
 }
 
+// TestUpdateSummary_UpdatedAndCurrent proves the up-to-date part composes
+// with real updates in non-dry-run mode, in canonical part order.
 func TestUpdateSummary_UpdatedAndCurrent(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -264,6 +292,10 @@ func TestUpdateSummary_UpdatedAndCurrent(t *testing.T) {
 	}, []string{"2 updated, 1 up to date", "Up to date: go"})
 }
 
+// TestUpdateSummary_Deselected pins the Deselected Pending Tools Reporting
+// requirement (spec command-interface): a pending-but-deselected tool gets a
+// distinct count and detail line, is never counted as skipped or updated, and
+// keeps the run from claiming "All clean!".
 func TestUpdateSummary_Deselected(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -273,6 +305,9 @@ func TestUpdateSummary_Deselected(t *testing.T) {
 	}, []string{"1 updated", "1 deselected", "Deselected: bun"}, "skipped", "All clean!")
 }
 
+// TestUpdateSummary_OnlyDeselected proves the "All pending deselected" scenario:
+// when every result is deselected, the summary reports the deselected count and
+// must NOT fall into the "All tools not installed" branch.
 func TestUpdateSummary_OnlyDeselected(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -282,6 +317,9 @@ func TestUpdateSummary_OnlyDeselected(t *testing.T) {
 	}, []string{"2 deselected", "Deselected: brew, bun"}, "All tools not installed")
 }
 
+// TestUpdateSummary_DeselectedDistinctFromSkipped proves the "Distinct from
+// skipped" scenario: a not-installed (skipped) tool and a deselected pending
+// tool are counted in separate buckets and listed separately.
 func TestUpdateSummary_DeselectedDistinctFromSkipped(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -291,6 +329,9 @@ func TestUpdateSummary_DeselectedDistinctFromSkipped(t *testing.T) {
 	}, []string{"1 skipped, 1 deselected", "Skipped: missing", "Deselected: bun"}, "2 skipped")
 }
 
+// TestUpdateSummary_Denied pins confirmation denial reporting: a denied tool
+// gets a distinct count and detail line, is never counted as skipped or updated,
+// and keeps the run from claiming "All clean!".
 func TestUpdateSummary_Denied(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -300,6 +341,8 @@ func TestUpdateSummary_Denied(t *testing.T) {
 	}, []string{"1 updated", "1 denied", "Denied: docker"}, "skipped", "All clean!")
 }
 
+// TestUpdateSummary_OnlyDenied proves that when all tools are denied confirmation,
+// the summary reports the denied count and must NOT fall into "All tools not installed".
 func TestUpdateSummary_OnlyDenied(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -309,6 +352,8 @@ func TestUpdateSummary_OnlyDenied(t *testing.T) {
 	}, []string{"2 denied", "Denied: brew, docker"}, "All tools not installed")
 }
 
+// TestUpdateSummary_DeniedDistinctFromSkipped proves that not-installed (skipped)
+// and denied tools are counted in separate buckets and listed separately.
 func TestUpdateSummary_DeniedDistinctFromSkipped(t *testing.T) {
 	checkSummary(t, Summary{
 		Results: []ToolResult{
@@ -361,6 +406,9 @@ func TestUpdateSummary_VerboseMultilineFailureDiagnostics(t *testing.T) {
 	}
 }
 
+// TestUpdateSummary_NoMisleadingAllCleanWithPending proves spec ux-patterns:
+// UpdateSummary with pending updates in dry-run mode prints "N would update"
+// and never claims "All clean!" or "All tools up to date.".
 func TestUpdateSummary_NoMisleadingAllCleanWithPending(t *testing.T) {
 	out := renderUpdateSummary(Summary{
 		Results: []ToolResult{
