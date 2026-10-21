@@ -7,8 +7,10 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/adapters/official"
+	"github.com/JhnFrankz/upp/internal/doctor"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
+	"github.com/JhnFrankz/upp/internal/uninstall"
 )
 
 func TestPresentGroups(t *testing.T) {
@@ -207,5 +209,114 @@ func TestPresentGroups_SharedDisplayNameDoesNotCollide(t *testing.T) {
 	}
 	if groups[0].Items[1].Status != output.StatusCurrent {
 		t.Errorf("item 1 status = %v, want StatusCurrent", groups[0].Items[1].Status)
+	}
+}
+
+type fakeDiagnosticPresenter struct {
+	results []output.DiagnosticResult
+	quiet   bool
+	verbose bool
+	called  bool
+}
+
+func (f *fakeDiagnosticPresenter) DoctorResults(results []output.DiagnosticResult, quiet, verbose bool) {
+	f.results = results
+	f.quiet = quiet
+	f.verbose = verbose
+	f.called = true
+}
+
+type fakeUninstallPresenter struct {
+	targets []output.TargetItem
+	called  bool
+}
+
+func (f *fakeUninstallPresenter) UninstallDryRunHeader()                        {}
+func (f *fakeUninstallPresenter) UninstallDryRunTarget(targetType, path string) {}
+func (f *fakeUninstallPresenter) UninstallRemoved(targetType, path string)      {}
+func (f *fakeUninstallPresenter) UninstallPlan(targets []output.TargetItem) {
+	f.targets = targets
+	f.called = true
+}
+func (f *fakeUninstallPresenter) UninstallCanceled() {}
+func (f *fakeUninstallPresenter) UninstallDone()     {}
+
+func TestPresentDoctorResults_Mapping(t *testing.T) {
+	fake := &fakeDiagnosticPresenter{}
+	results := []doctor.CheckResult{
+		{
+			Category: "System",
+			Name:     "OS",
+			Status:   doctor.SeverityOK,
+			Message:  "Linux supported",
+		},
+		{
+			Category: "Config",
+			Name:     "Lock",
+			Status:   doctor.SeverityWarn,
+			Message:  "Stale lock",
+			FixHint:  "rm lock",
+		},
+		{
+			Category: "Tools",
+			Name:     "Brew",
+			Status:   doctor.SeverityError,
+			Message:  "Corrupt formula",
+			Detail:   "syntax error at line 5",
+		},
+		{
+			Category: "Network",
+			Name:     "DNS",
+			Status:   doctor.Severity(99), // unmapped -> SeverityWarn
+			Message:  "Unknown severity",
+		},
+	}
+
+	presentDoctorResults(fake, results, true, false)
+
+	if !fake.called {
+		t.Fatal("DoctorResults was not called on DiagnosticPresenter")
+	}
+	if !fake.quiet || fake.verbose {
+		t.Errorf("quiet/verbose flags not passed correctly: quiet=%v, verbose=%v", fake.quiet, fake.verbose)
+	}
+	if len(fake.results) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(fake.results))
+	}
+
+	if fake.results[0].Status != output.DiagnosticSeverityOK {
+		t.Errorf("expected OK severity for item 0, got %v", fake.results[0].Status)
+	}
+	if fake.results[1].Status != output.DiagnosticSeverityWarn || fake.results[1].FixHint != "rm lock" {
+		t.Errorf("expected Warn severity and FixHint for item 1, got %+v", fake.results[1])
+	}
+	if fake.results[2].Status != output.DiagnosticSeverityError || fake.results[2].Detail != "syntax error at line 5" {
+		t.Errorf("expected Error severity and Detail for item 2, got %+v", fake.results[2])
+	}
+	if fake.results[3].Status != output.DiagnosticSeverityWarn {
+		t.Errorf("expected fallback Warn severity for item 3, got %v", fake.results[3].Status)
+	}
+}
+
+func TestPresentUninstallPlan_Mapping(t *testing.T) {
+	fake := &fakeUninstallPresenter{}
+	targets := []uninstall.Target{
+		{Type: uninstall.TargetBinary, Path: "/usr/local/bin/upp", Exists: true},
+		{Type: uninstall.TargetConfig, Path: "/home/user/.config/upp", Exists: false},
+	}
+
+	presentUninstallPlan(fake, targets)
+
+	if !fake.called {
+		t.Fatal("UninstallPlan was not called on UninstallPresenter")
+	}
+	if len(fake.targets) != 2 {
+		t.Fatalf("expected 2 targets, got %d", len(fake.targets))
+	}
+	if fake.targets[0].Type != string(uninstall.TargetBinary) || !fake.targets[0].Exists {
+		t.Errorf("target 0 unexpected: %+v", fake.targets[0])
+	}
+	if fake.targets[1].Type != string(uninstall.TargetConfig) || fake.targets[1].Exists {
+		t.Errorf("target 1 unexpected: %+v", fake.targets[1])
 	}
 }

@@ -70,6 +70,8 @@ func (r *Renderer) doctorIcon(s DiagnosticSeverity) string {
 
 // DoctorResults renders diagnostics results grouped by category.
 func (r *Renderer) DoctorResults(results []DiagnosticResult, quiet, verbose bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	hasErrors := false
 	hasWarnings := false
 	for _, res := range results {

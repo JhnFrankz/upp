@@ -48,7 +48,7 @@ func (s *UpdateSession) AuthorizeChecks(adapterList []adapters.Adapter) ([]adapt
 // gate). Interactive runs prompt through security.ConfirmAction; --ci denies
 // with a non-zero error. A denial neutralizes only that check: the tool still
 // reports as detected with an unknown version, and the run continues.
-func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r *output.Renderer, in io.Reader, out io.Writer) ([]adapters.Adapter, error) {
+func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r output.LogPresenter, in io.Reader, out io.Writer) ([]adapters.Adapter, error) {
 	authorized := make([]adapters.Adapter, 0, len(adapterList))
 	for _, a := range adapterList {
 		inner := a
