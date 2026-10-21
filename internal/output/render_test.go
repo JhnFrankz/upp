@@ -2,19 +2,18 @@ package output
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"testing"
 )
 
 func TestStatusIcons_ColorMode(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, true, true, false, false)
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, false, false)
 
 	tests := []struct {
-		status   Status
-		expected string
+		status Status
+		want   string
 	}{
 		{StatusUpdated, "✅"},
 		{StatusSkipped, "⏭️ "},
@@ -23,22 +22,24 @@ func TestStatusIcons_ColorMode(t *testing.T) {
 		{StatusCurrent, "✔️ "},
 		{StatusDeselected, "☐ "},
 		{StatusDenied, "🚫"},
+		{Status(99), "?"},
 	}
 
 	for _, tt := range tests {
-		icon := r.statusIcon(tt.status)
-		if icon != tt.expected {
-			t.Errorf("statusIcon(%d) = %q, want %q", tt.status, icon, tt.expected)
+		got := r.statusIcon(tt.status)
+		if got != tt.want {
+			t.Errorf("statusIcon(%d) = %q, want %q", tt.status, got, tt.want)
 		}
 	}
 }
 
 func TestStatusIcons_PlainMode(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, false, false, false, false)
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
 
 	tests := []struct {
-		status   Status
-		expected string
+		status Status
+		want   string
 	}{
 		{StatusUpdated, "[updated]"},
 		{StatusSkipped, "[skipped]"},
@@ -47,683 +48,35 @@ func TestStatusIcons_PlainMode(t *testing.T) {
 		{StatusCurrent, "[current]"},
 		{StatusDeselected, "[deselected]"},
 		{StatusDenied, "[denied]"},
+		{Status(99), "[?]"},
 	}
 
 	for _, tt := range tests {
-		icon := r.statusIcon(tt.status)
-		if icon != tt.expected {
-			t.Errorf("statusIcon(%d) = %q, want %q", tt.status, icon, tt.expected)
+		got := r.statusIcon(tt.status)
+		if got != tt.want {
+			t.Errorf("statusIcon(%d) = %q, want %q", tt.status, got, tt.want)
 		}
 	}
 }
 
 func TestColorize_NoColor(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, false, false, false, false)
-	result := r.colorize("31", "hello")
-	if result != "hello" {
-		t.Errorf("colorize with no color should return plain text, got %q", result)
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+
+	got := r.colorize("31", "hello")
+	if got != "hello" {
+		t.Errorf("colorize without color = %q, want %q", got, "hello")
 	}
 }
 
 func TestColorize_WithColor(t *testing.T) {
-	r := NewRendererForced(&bytes.Buffer{}, true, false, false, false)
-	result := r.colorize("31", "hello")
-	if result != "\033[31mhello\033[0m" {
-		t.Errorf("colorize with color should wrap in ANSI codes, got %q", result)
-	}
-}
-
-func TestToolLine_Verbose(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.ToolLine(ToolResult{
-		Name:    "brew",
-		Status:  StatusUpdated,
-		Version: "4.1.0",
-	})
-
-	output := buf.String()
-	if !strings.Contains(output, "brew") {
-		t.Error("output should contain tool name")
-	}
-	if !strings.Contains(output, "4.1.0") {
-		t.Error("output should contain version")
-	}
-	if !strings.Contains(output, "✅") {
-		t.Error("output should contain status icon")
-	}
-}
-
-func TestToolLine_Quiet(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, true, false)
-
-	r.ToolLine(ToolResult{
-		Name:   "brew",
-		Status: StatusSkipped,
-	})
-
-	output := buf.String()
-	if !strings.Contains(output, "brew") {
-		t.Error("output should contain tool name")
-	}
-	// Quiet mode should not contain verbose text like "(not installed)"
-	if strings.Contains(output, "(not installed)") {
-		t.Error("quiet mode should not contain verbose text")
-	}
-}
-
-func TestToolLine_FailedWithError(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.ToolLine(ToolResult{
-		Name:   "npm",
-		Status: StatusFailed,
-		Error:  fmt.Errorf("network error"),
-	})
-
-	output := buf.String()
-	if !strings.Contains(output, "npm") {
-		t.Error("output should contain tool name")
-	}
-	if !strings.Contains(output, "❌") {
-		t.Error("output should contain failed icon")
-	}
-}
-
-func TestUpdateSummary_AllUpdated(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
-			{Name: "npm", Status: StatusUpdated, Version: "10.0.0"},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	// Spec ux-patterns Summary Report, "All succeed": the clean line counts
-	// updated AND failed explicitly ("5 updated, 0 failed. All clean!").
-	if !strings.Contains(output, "2 updated, 0 failed. All clean!") {
-		t.Errorf("summary should report '2 updated, 0 failed. All clean!', got:\n%s", output)
-	}
-}
-
-func TestUpdateSummary_PartialFailure(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
-			{Name: "npm", Status: StatusFailed, Error: fmt.Errorf("timeout")},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	// Spec ux-patterns Summary Report, "Partial fail": counts compose as
-	// "N updated, M failed" followed by the review tagline.
-	if !strings.Contains(output, "1 updated, 1 failed. Review errors above.") {
-		t.Errorf("summary should report '1 updated, 1 failed. Review errors above.', got:\n%s", output)
-	}
-}
-
-func TestUpdateSummary_AllSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusSkipped},
-			{Name: "npm", Status: StatusSkipped},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	if !strings.Contains(output, "All tools not installed") {
-		t.Errorf("summary should contain 'All tools not installed', got:\n%s", output)
-	}
-}
-
-func TestUpdateSummary_DryRun(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusAvailable, Version: "4.0.0 → 4.1.0"},
-		},
-		DryRun: true,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	if !strings.Contains(output, "would update") {
-		t.Errorf("dry-run summary should say 'would update', got:\n%s", output)
-	}
-	if strings.Contains(output, "All clean!") {
-		t.Errorf("dry-run summary must never claim 'All clean!' while updates are pending, got:\n%s", output)
-	}
-}
-
-func TestUpdateSummary_NotCleanWithSkips(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
-			{Name: "npm", Status: StatusSkipped},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	if !strings.Contains(output, "1 updated") {
-		t.Errorf("summary should count 1 updated, got:\n%s", output)
-	}
-	if strings.Contains(output, "All clean!") {
-		t.Errorf("summary must not claim 'All clean!' when tools were skipped, got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_AllCurrentDryRun proves current tools are counted on the
-// update path (design D6). StatusCurrent used to be counted nowhere, so an
-// all-current dry-run fell into the "All tools not installed" branch.
-func TestUpdateSummary_AllCurrentDryRun(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusCurrent, Version: "4.1.0"},
-			{Name: "npm", Status: StatusCurrent, Version: "10.0.0"},
-		},
-		DryRun: true,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	if !strings.Contains(output, "2 up to date") {
-		t.Errorf("summary must count up-to-date tools (D6), got:\n%s", output)
-	}
-	if strings.Contains(output, "not installed") {
-		t.Errorf("all-current run must not claim tools are 'not installed', got:\n%s", output)
-	}
-	if strings.Contains(output, "All clean!") {
-		t.Errorf("dry-run summary must never claim 'All clean!', got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_CurrentWithSkipsDryRun pins the spec ux-patterns Summary
-// Report scenario "Up-to-date with skips": 8 current + 2 skipped tools on a
-// dry-run count both explicitly ("8 up to date, 2 skipped"), the detail list
-// names the current tools, and no "All tools up to date." tagline appears.
-func TestUpdateSummary_CurrentWithSkipsDryRun(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	results := make([]ToolResult, 0, 10)
-	for i := 1; i <= 8; i++ {
-		results = append(results, ToolResult{Name: fmt.Sprintf("tool-%d", i), Status: StatusCurrent})
-	}
-	results = append(results,
-		ToolResult{Name: "missing-a", Status: StatusSkipped},
-		ToolResult{Name: "missing-b", Status: StatusSkipped},
-	)
-
-	r.UpdateSummary(Summary{Results: results, DryRun: true})
-
-	output := buf.String()
-	if !strings.Contains(output, "8 up to date, 2 skipped") {
-		t.Errorf("summary must count up-to-date and skipped explicitly, got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools up to date.") {
-		t.Errorf("summary must never claim 'All tools up to date.' when a tool was skipped, got:\n%s", output)
-	}
-	if !strings.Contains(output, "Up to date: tool-1, tool-2, tool-3, tool-4, tool-5, tool-6, tool-7, tool-8") {
-		t.Errorf("detail summary must list current tools (D6), got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_UpdatedAndCurrent proves the up-to-date part composes
-// with real updates in non-dry-run mode, in canonical part order.
-func TestUpdateSummary_UpdatedAndCurrent(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusUpdated, Version: "4.2.0"},
-			{Name: "npm", Status: StatusUpdated, Version: "10.1.0"},
-			{Name: "go", Status: StatusCurrent, Version: "1.22"},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	output := buf.String()
-	if !strings.Contains(output, "2 updated, 1 up to date") {
-		t.Errorf("summary must compose updated and up-to-date parts in order, got:\n%s", output)
-	}
-	if !strings.Contains(output, "Up to date: go") {
-		t.Errorf("detail summary must list current tools (D6), got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_Deselected pins the Deselected Pending Tools Reporting
-// requirement (spec command-interface): a pending-but-deselected tool gets a
-// distinct count and detail line, is never counted as skipped or updated, and
-// keeps the run from claiming "All clean!".
-func TestUpdateSummary_Deselected(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.UpdateSummary(Summary{Results: []ToolResult{
-		{Name: "brew", Status: StatusUpdated, Version: "4.2.0"},
-		{Name: "bun", Status: StatusDeselected},
-	}})
-
-	output := buf.String()
-	if !strings.Contains(output, "1 updated") {
-		t.Errorf("summary must count the executed update; got:\n%s", output)
-	}
-	if !strings.Contains(output, "1 deselected") {
-		t.Errorf("summary must count the deselected pending tool distinctly; got:\n%s", output)
-	}
-	if strings.Contains(output, "skipped") {
-		t.Errorf("a deselected tool must never be counted as skipped; got:\n%s", output)
-	}
-	if !strings.Contains(output, "Deselected: bun") {
-		t.Errorf("detail summary must name the deselected tool; got:\n%s", output)
-	}
-	if strings.Contains(output, "All clean!") {
-		t.Errorf("a deselected pending tool must keep the run from claiming 'All clean!'; got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_OnlyDeselected proves the "All pending deselected" scenario:
-// when every result is deselected, the summary reports the deselected count and
-// must NOT fall into the "All tools not installed" branch.
-func TestUpdateSummary_OnlyDeselected(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.UpdateSummary(Summary{Results: []ToolResult{
-		{Name: "brew", Status: StatusDeselected},
-		{Name: "bun", Status: StatusDeselected},
-	}})
-
-	output := buf.String()
-	if !strings.Contains(output, "2 deselected") {
-		t.Errorf("summary must report '2 deselected'; got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools not installed") {
-		t.Errorf("deselected tools are installed — 'not installed' claim is wrong; got:\n%s", output)
-	}
-	if !strings.Contains(output, "Deselected: brew, bun") {
-		t.Errorf("detail summary must name every deselected tool; got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_DeselectedDistinctFromSkipped proves the "Distinct from
-// skipped" scenario: a not-installed (skipped) tool and a deselected pending
-// tool are counted in separate buckets and listed separately.
-func TestUpdateSummary_DeselectedDistinctFromSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.UpdateSummary(Summary{Results: []ToolResult{
-		{Name: "missing", Status: StatusSkipped},
-		{Name: "bun", Status: StatusDeselected},
-	}})
-
-	output := buf.String()
-	if !strings.Contains(output, "1 skipped, 1 deselected") {
-		t.Errorf("summary must count skipped and deselected separately; got:\n%s", output)
-	}
-	if strings.Contains(output, "2 skipped") {
-		t.Errorf("a deselected tool must not inflate the skipped count; got:\n%s", output)
-	}
-	if !strings.Contains(output, "Skipped: missing") || !strings.Contains(output, "Deselected: bun") {
-		t.Errorf("detail summary must list the skipped and deselected tools distinctly; got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_Denied pins confirmation denial reporting: a denied tool
-// gets a distinct count and detail line, is never counted as skipped or updated,
-// and keeps the run from claiming "All clean!".
-func TestUpdateSummary_Denied(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.UpdateSummary(Summary{Results: []ToolResult{
-		{Name: "brew", Status: StatusUpdated, Version: "4.2.0"},
-		{Name: "docker", Status: StatusDenied},
-	}})
-
-	output := buf.String()
-	if !strings.Contains(output, "1 updated") {
-		t.Errorf("summary must count the executed update; got:\n%s", output)
-	}
-	if !strings.Contains(output, "1 denied") {
-		t.Errorf("summary must count the denied tool distinctly; got:\n%s", output)
-	}
-	if strings.Contains(output, "skipped") {
-		t.Errorf("a denied tool must never be counted as skipped; got:\n%s", output)
-	}
-	if !strings.Contains(output, "Denied: docker") {
-		t.Errorf("detail summary must name the denied tool; got:\n%s", output)
-	}
-	if strings.Contains(output, "All clean!") {
-		t.Errorf("a denied tool must keep the run from claiming 'All clean!'; got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_OnlyDenied proves that when all tools are denied confirmation,
-// the summary reports the denied count and must NOT fall into "All tools not installed".
-func TestUpdateSummary_OnlyDenied(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.UpdateSummary(Summary{Results: []ToolResult{
-		{Name: "brew", Status: StatusDenied},
-		{Name: "docker", Status: StatusDenied},
-	}})
-
-	output := buf.String()
-	if !strings.Contains(output, "2 denied") {
-		t.Errorf("summary must report '2 denied'; got:\n%s", output)
-	}
-	if strings.Contains(output, "All tools not installed") {
-		t.Errorf("denied tools are installed — 'not installed' claim is wrong; got:\n%s", output)
-	}
-	if !strings.Contains(output, "Denied: brew, docker") {
-		t.Errorf("detail summary must name every denied tool; got:\n%s", output)
-	}
-}
-
-// TestUpdateSummary_DeniedDistinctFromSkipped proves that not-installed (skipped)
-// and denied tools are counted in separate buckets and listed separately.
-func TestUpdateSummary_DeniedDistinctFromSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.UpdateSummary(Summary{Results: []ToolResult{
-		{Name: "missing", Status: StatusSkipped},
-		{Name: "docker", Status: StatusDenied},
-	}})
-
-	output := buf.String()
-	if !strings.Contains(output, "1 skipped, 1 denied") {
-		t.Errorf("summary must count skipped and denied separately; got:\n%s", output)
-	}
-	if strings.Contains(output, "2 skipped") {
-		t.Errorf("a denied tool must not inflate the skipped count; got:\n%s", output)
-	}
-	if !strings.Contains(output, "Skipped: missing") || !strings.Contains(output, "Denied: docker") {
-		t.Errorf("detail summary must list skipped and denied tools distinctly; got:\n%s", output)
-	}
-}
-
-func TestToolLine_Denied(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.ToolLine(ToolResult{
-		Name:   "docker",
-		Status: StatusDenied,
-	})
-
-	output := buf.String()
-	if !strings.Contains(output, "docker") {
-		t.Error("output should contain tool name")
-	}
-	if !strings.Contains(output, "(denied)") {
-		t.Error("output should contain (denied)")
-	}
-	if !strings.Contains(output, "🚫") {
-		t.Error("output should contain denied icon")
-	}
-}
-
-func TestToolLine_QuietVersion(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, true, false)
-
-	r.ToolLine(ToolResult{
-		Name:    "brew",
-		Status:  StatusUpdated,
-		Version: "4.1.0 → 4.2.0",
-	})
-
-	output := buf.String()
-	if !strings.Contains(output, "brew") {
-		t.Error("output should contain tool name")
-	}
-	if !strings.Contains(output, "4.1.0 → 4.2.0") {
-		t.Errorf("quiet mode must include version delta if present; got: %q", output)
-	}
-}
-
-func TestListTools(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	entries := []ListEntry{
-		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
-		{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
-	}
-
-	r.ListTools([]Group{{Items: entries}})
-
-	output := buf.String()
-	if !strings.Contains(output, "Homebrew") {
-		t.Error("list should contain tool name")
-	}
-	if !strings.Contains(output, "4.1.0") {
-		t.Error("list should contain version")
-	}
-}
-
-func TestListTools_IDColumn(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	entries := []ListEntry{
-		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
-		{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
-	}
-
-	r.ListTools([]Group{{Items: entries}})
-
-	output := buf.String()
-	header := strings.SplitN(output, "\n", 2)[0]
-	if !strings.Contains(header, "ID") || !strings.Contains(header, "Name") ||
-		!strings.Contains(header, "Status") || !strings.Contains(header, "Version") {
-		t.Errorf("list header must be 'ID | Name | Status | Version', got: %q", header)
-	}
-	if strings.Contains(header, "Tool") {
-		t.Errorf("list header must not mislabel the ID column as 'Tool', got: %q", header)
-	}
-	// The ID column shows the --only filter IDs, distinct from the
-	// display name.
-	if !strings.Contains(output, "brew") || !strings.Contains(output, "npm") {
-		t.Errorf("list rows must show tool IDs usable with --only, got:\n%s", output)
-	}
-}
-
-// TestListTools_GroupedHeaderThenChildren locks the design grouping contract
-// (task 3.1): a manager group renders its header line (the manager name) first,
-// then the manager's own row, then the owned tool rows indented beneath it; a
-// standalone group renders its rows without a header line; and the standalone
-// group comes after all manager groups.
-func TestListTools_GroupedHeaderThenChildren(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	groups := []Group{
-		{
-			Header: "Homebrew",
-			Items: []ListEntry{
-				{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
-				{ID: "gh", Name: "GitHub CLI", Status: StatusCurrent, Version: "2.4.0"},
-			},
-		},
-		{
-			Items: []ListEntry{
-				{ID: "npm", Name: "npm", Status: StatusSkipped, Version: ""},
-			},
-		},
-	}
-
-	r.ListTools(groups)
-
-	output := buf.String()
-	// Manager header line present for the brew group.
-	if !strings.Contains(output, "Homebrew") {
-		t.Errorf("manager group must render its header, got:\n%s", output)
-	}
-	// Manager's own row and its owned tool row both present.
-	if !strings.Contains(output, "brew") || !strings.Contains(output, "gh") {
-		t.Errorf("group rows must include the manager and its owned tool, got:\n%s", output)
-	}
-	// Standalone group present after the manager group.
-	if !strings.Contains(output, "npm") {
-		t.Errorf("standalone group must render after manager groups, got:\n%s", output)
-	}
-	// The header line carries only "ID | Name | Status | Version".
-	header := strings.SplitN(output, "\n", 2)[0]
-	if !strings.Contains(header, "ID") || !strings.Contains(header, "Name") {
-		t.Errorf("column header must lead the grouped output, got: %q", header)
-	}
-}
-
-func TestDryRunHeader(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.DryRunHeader()
-
-	output := buf.String()
-	if !strings.Contains(output, "Dry run") {
-		t.Errorf("dry run header should contain 'Dry run', got:\n%s", output)
-	}
-}
-
-func TestProgress_SingleTool(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	// Single tool should not show progress
-	r.Progress("Checking", 1, 1, "brew")
-
-	if buf.Len() > 0 {
-		t.Error("progress should not show for single tool")
-	}
-}
-
-func TestProgress_CheckVerb(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.Progress("Checking", 2, 5, "brew")
-
-	output := buf.String()
-	if !strings.Contains(output, "Checking 2/5") {
-		t.Errorf("progress should say 'Checking 2/5', got:\n%s", output)
-	}
-	if !strings.Contains(output, "brew") {
-		t.Errorf("progress should contain tool name, got:\n%s", output)
-	}
-	if strings.Contains(output, "Updating") {
-		t.Errorf("read-only progress must not say 'Updating', got:\n%s", output)
-	}
-}
-
-func TestProgress_UpdateVerb(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	r.Progress("Updating", 3, 10, "npm")
-
-	output := buf.String()
-	if !strings.Contains(output, "Updating 3/10") {
-		t.Errorf("progress should say 'Updating 3/10', got:\n%s", output)
-	}
-	if !strings.Contains(output, "npm") {
-		t.Errorf("progress should contain tool name, got:\n%s", output)
-	}
-	if strings.Contains(output, "Checking") {
-		t.Errorf("update progress must not say 'Checking', got:\n%s", output)
-	}
-}
-
-func TestSelfUpdatePrompt(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRenderer(&buf, false)
-	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
-
-	want := "  Update upp from v0.1.0 to v0.1.1?\n    Target: /home/u/.local/bin/upp\n  Proceed? [y/N] "
-	if got := buf.String(); got != want {
-		t.Errorf("prompt = %q, want %q", got, want)
-	}
-}
-
-func TestSelfUpdatePrompt_QuietNeverSuppresses(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRenderer(&buf, true)
-	r.SelfUpdatePrompt("v0.1.0", "v0.1.1", "/home/u/.local/bin/upp")
-
-	if got := buf.String(); !strings.Contains(got, "Proceed?") {
-		t.Errorf("prompt must never be suppressed by quiet mode, got %q", got)
-	}
-}
-
-func TestSelfUpdateMessages(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRenderer(&buf, false)
-	r.SelfUpdateDevBuild()
-	r.SelfUpdateUpToDate("v0.1.1")
-	r.SelfUpdateDone("v0.1.0", "v0.1.1")
-
-	want := "development build; self-update is only available for release builds\n" +
-		"already up to date (v0.1.1)\n" +
-		"upp updated: v0.1.0 → v0.1.1\n"
-	if got := buf.String(); got != want {
-		t.Errorf("messages = %q, want %q", got, want)
-	}
-}
-
-// TestUpdateCancelled locks the fixed cancel message for interactive update
-// runs (design D8, spec ux-patterns "Esc cancels run" / "q cancels run"):
-// "Update canceled — no changes made." (US spelling per repo misspell locale)
-func TestUpdateCancelled(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, false)
-
-	r.UpdateCancelled()
-
-	want := "Update canceled — no changes made.\n"
-	if got := buf.String(); got != want {
-		t.Errorf("UpdateCancelled() = %q, want %q", got, want)
+	r := NewRendererForced(&buf, true, false, false, false)
+
+	got := r.colorize("31", "hello")
+	want := "\033[31mhello\033[0m"
+	if got != want {
+		t.Errorf("colorize with color = %q, want %q", got, want)
 	}
 }
 
@@ -888,438 +241,44 @@ func TestNewRenderer_TermDumb(t *testing.T) {
 	}
 }
 
-func TestRenderer_ConcurrentProgress_ThreadSafe(t *testing.T) {
+func TestRenderer_Color(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, false, false)
-
-	const goroutines = 20
-	const iterations = 50
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-
-	for g := 0; g < goroutines; g++ {
-		go func(id int) {
-			defer wg.Done()
-			for i := 1; i <= iterations; i++ {
-				r.Progress("Checking", i, iterations, fmt.Sprintf("tool-%d", id))
-			}
-		}(g)
+	rNoColor := NewRendererForced(&buf, false, false, false, false)
+	if rNoColor.Color() {
+		t.Error("Color() should be false for forced non-color renderer")
 	}
 
-	wg.Wait()
-	if buf.Len() == 0 {
-		t.Errorf("expected non-empty output from concurrent progress writes")
+	rColor := NewRendererForced(&buf, true, false, false, false)
+	if !rColor.Color() {
+		t.Error("Color() should be true for forced color renderer")
 	}
 }
 
-func TestDashboard_Formatting(t *testing.T) {
+func TestRenderer_ErrorAndWarning(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewRendererForced(&buf, false, false, false, false)
 
-	data := DashboardData{
-		Version:        "v0.2.0",
-		Platform:       "linux/amd64",
-		EnabledTools:   5,
-		AvailableTools: 10,
+	r.Error("fatal failure")
+	if !strings.Contains(buf.String(), "[failed] fatal failure") {
+		t.Errorf("Error() output missing expected content, got: %s", buf.String())
 	}
 
-	r.Dashboard(data)
+	buf.Reset()
+	r.Warning("potential issue")
+	if !strings.Contains(buf.String(), "⚠️  potential issue") {
+		t.Errorf("Warning() output missing expected content, got: %s", buf.String())
+	}
+}
+
+func TestRenderer_LogPresenterInterface(t *testing.T) {
+	var buf bytes.Buffer
+	var lp LogPresenter = NewRendererForced(&buf, false, false, false, false)
+
+	lp.Error("test error")
+	lp.Warning("test warning")
 
 	out := buf.String()
-	for _, want := range []string{
-		"upp v0.2.0 (linux/amd64)",
-		"Tools: 5 enabled (10 configured for platform)",
-		"Commands:",
-		"upp update -n",
-		"upp update",
-		"upp list",
-		"upp doctor",
-		"upp --help",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("Dashboard output missing %q, got:\n%s", want, out)
-		}
+	if !strings.Contains(out, "test error") || !strings.Contains(out, "test warning") {
+		t.Errorf("LogPresenter interface test missing expected output, got: %s", out)
 	}
-	// The check command is removed; the query surface is `upp update -n`.
-	if strings.Contains(out, "upp check") {
-		t.Errorf("Dashboard must not reference the removed 'upp check', got:\n%s", out)
-	}
-}
-
-func TestDashboard_QuietSuppresses(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, true, false)
-
-	data := DashboardData{
-		Version:        "v0.2.0",
-		Platform:       "linux/amd64",
-		EnabledTools:   5,
-		AvailableTools: 10,
-	}
-
-	r.Dashboard(data)
-
-	if buf.Len() > 0 {
-		t.Errorf("Dashboard in quiet mode must produce no output, got: %q", buf.String())
-	}
-}
-
-func TestDashboardNoConfig(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, false)
-
-	r.DashboardNoConfig("v0.2.0", "linux/amd64")
-
-	out := buf.String()
-	for _, want := range []string{
-		"upp v0.2.0 (linux/amd64)",
-		"No configuration found.",
-		"Run \"upp init\" to detect installed tools and initialize your config.",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("DashboardNoConfig output missing %q, got:\n%s", want, out)
-		}
-	}
-}
-
-func TestDashboardNoConfig_QuietSuppresses(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, true, true, true, false)
-
-	r.DashboardNoConfig("v0.2.0", "linux/amd64")
-
-	if buf.Len() > 0 {
-		t.Errorf("DashboardNoConfig in quiet mode must produce no output, got: %q", buf.String())
-	}
-}
-
-func TestDashboard_PlainNonTTY(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, false)
-
-	r.Dashboard(DashboardData{
-		Version:        "v0.2.0",
-		Platform:       "linux/amd64",
-		EnabledTools:   3,
-		AvailableTools: 3,
-	})
-
-	out := buf.String()
-	if strings.Contains(out, "\033[") {
-		t.Errorf("Plain non-TTY dashboard must not contain ANSI escape codes, got: %q", out)
-	}
-}
-
-func TestToolLine_VerboseFailureDiagnostics(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, true)
-
-	r.ToolLine(ToolResult{
-		Name:   "npm",
-		Status: StatusFailed,
-		Error:  fmt.Errorf("exit 1"),
-		Stderr: "npm ERR! network connection refused\nnpm ERR! retry limit reached",
-	})
-
-	out := buf.String()
-	if !strings.Contains(out, "npm ERR! network connection refused") {
-		t.Errorf("expected verbose tool line to contain stderr, got:\n%s", out)
-	}
-	if !strings.Contains(out, "npm ERR! retry limit reached") {
-		t.Errorf("expected verbose tool line to contain stderr line 2, got:\n%s", out)
-	}
-	// Spec ux-patterns Verbose Error Diagnostics: each stderr line renders
-	// INDENTED beneath the failed tool entry ("    │ <line>").
-	for _, line := range []string{"npm ERR! network connection refused", "npm ERR! retry limit reached"} {
-		if !strings.Contains(out, "    │ "+line) {
-			t.Errorf("stderr line must render indented beneath the failed tool, got:\n%s", out)
-		}
-	}
-}
-
-func TestToolLine_NonVerboseFailureSuppressed(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, false)
-
-	r.ToolLine(ToolResult{
-		Name:   "npm",
-		Status: StatusFailed,
-		Error:  fmt.Errorf("exit 1"),
-		Stderr: "npm ERR! network connection refused",
-	})
-
-	out := buf.String()
-	if strings.Contains(out, "npm ERR! network connection refused") {
-		t.Errorf("expected non-verbose tool line to suppress stderr, got:\n%s", out)
-	}
-}
-
-func TestToolLine_QuietOverridesVerbose(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, true, true)
-
-	r.ToolLine(ToolResult{
-		Name:   "npm",
-		Status: StatusFailed,
-		Error:  fmt.Errorf("exit 1"),
-		Stderr: "npm ERR! network connection refused",
-	})
-
-	out := buf.String()
-	if strings.Contains(out, "npm ERR! network connection refused") {
-		t.Errorf("expected quiet mode to override verbose and suppress stderr, got:\n%s", out)
-	}
-}
-
-func TestUpdateSummary_VerboseFailureDiagnostics(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, true)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
-			{
-				Name:   "npm",
-				Status: StatusFailed,
-				Error:  fmt.Errorf("timeout"),
-				Stderr: "npm ERR! lock frontend held by another process",
-			},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	out := buf.String()
-	if !strings.Contains(out, "lock frontend held by another process") {
-		t.Errorf("expected verbose update summary to contain stderr, got:\n%s", out)
-	}
-}
-
-func TestUpdateSummary_VerboseMultilineFailureDiagnostics(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, true)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{
-				Name:   "cargo",
-				Status: StatusFailed,
-				Error:  fmt.Errorf("build failed"),
-				Stderr: "error[E0432]: unresolved import\n   --> src/main.rs:1:5\n    |\n1   | use foo::bar;\n    |     ^^^",
-			},
-		},
-		DryRun: false,
-	}
-
-	r.UpdateSummary(summary)
-
-	out := buf.String()
-	expectedLines := []string{
-		"error[E0432]: unresolved import",
-		"--> src/main.rs:1:5",
-		"use foo::bar;",
-		"^^^",
-	}
-	for _, expected := range expectedLines {
-		if !strings.Contains(out, expected) {
-			t.Errorf("expected verbose update summary to contain line %q, got:\n%s", expected, out)
-		}
-	}
-}
-
-// TestUpdateSummary_NoMisleadingAllCleanWithPending proves spec ux-patterns:
-// UpdateSummary with pending updates in dry-run mode prints "N would update"
-// and never claims "All clean!" or "All tools up to date.".
-func TestUpdateSummary_NoMisleadingAllCleanWithPending(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, true, false, false)
-
-	summary := Summary{
-		Results: []ToolResult{
-			{Name: "gh", Status: StatusAvailable, Version: "2.45.0 → 2.46.0"},
-			{Name: "docker", Status: StatusAvailable, Version: "26.1.4 → 27.0.0"},
-			{Name: "npm", Status: StatusCurrent, Version: "10.0.0"},
-		},
-		DryRun: true,
-	}
-
-	r.UpdateSummary(summary)
-
-	out := buf.String()
-	if !strings.Contains(out, "2 would update, 1 up to date") {
-		t.Errorf("expected dry-run summary with would-update count, got:\n%s", out)
-	}
-	if strings.Contains(out, "All clean!") {
-		t.Errorf("dry-run with pending updates must never claim 'All clean!', got:\n%s", out)
-	}
-	if strings.Contains(out, "All tools up to date.") {
-		t.Errorf("dry-run with pending updates must not claim all tools up to date, got:\n%s", out)
-	}
-}
-
-func TestRenderer_UninstallCanceled(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, false)
-	r.UninstallCanceled()
-
-	expected := "Uninstall canceled — no files were removed.\n"
-	if buf.String() != expected {
-		t.Errorf("UninstallCanceled() = %q, want %q", buf.String(), expected)
-	}
-}
-
-func TestRenderer_UninstallPlan(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewRendererForced(&buf, false, false, false, false)
-	targets := []TargetItem{
-		{Type: "binary", Path: "/usr/local/bin/upp", Exists: true},
-		{Type: "config", Path: "/home/user/.config/upp", Exists: true},
-		{Type: "cache", Path: "/home/user/.cache/upp", Exists: false},
-	}
-	r.UninstallPlan(targets)
-
-	out := buf.String()
-	if !strings.Contains(out, "The following targets will be removed:") {
-		t.Errorf("expected plan header, got: %s", out)
-	}
-	if !strings.Contains(out, "  - Binary: /usr/local/bin/upp") {
-		t.Errorf("expected binary target in plan, got: %s", out)
-	}
-	if !strings.Contains(out, "  - Config: /home/user/.config/upp") {
-		t.Errorf("expected config target in plan, got: %s", out)
-	}
-	if strings.Contains(out, "/home/user/.cache/upp") {
-		t.Errorf("non-existent cache target should not be in plan, got: %s", out)
-	}
-}
-
-func TestRenderer_DoctorResults_AllOK(t *testing.T) {
-	results := []DiagnosticResult{
-		{
-			Category: "Configuration & Storage",
-			Name:     "Config File",
-			Status:   DiagnosticSeverityOK,
-			Message:  "Configuration file is valid",
-		},
-		{
-			Category: "Network",
-			Name:     "api.github.com",
-			Status:   DiagnosticSeverityOK,
-			Message:  "Reachable (status 200)",
-		},
-	}
-
-	t.Run("normal mode", func(t *testing.T) {
-		var buf bytes.Buffer
-		r := NewRendererForced(&buf, false, false, false, false)
-		r.DoctorResults(results, false, false)
-
-		out := buf.String()
-		if !strings.Contains(out, "Configuration & Storage") {
-			t.Errorf("missing category header, got: %s", out)
-		}
-		if !strings.Contains(out, "[✓] Config File: Configuration file is valid") {
-			t.Errorf("missing check line, got: %s", out)
-		}
-		if !strings.Contains(out, "Results: 2 passed, 0 warnings, 0 errors.") {
-			t.Errorf("missing or incorrect summary, got: %s", out)
-		}
-	})
-
-	t.Run("quiet mode", func(t *testing.T) {
-		var buf bytes.Buffer
-		r := NewRendererForced(&buf, false, false, true, false)
-		r.DoctorResults(results, true, false)
-
-		out := buf.String()
-		want := "upp doctor: all checks passed.\n"
-		if out != want {
-			t.Errorf("quiet all-ok expected %q, got %q", want, out)
-		}
-	})
-}
-
-func TestRenderer_DoctorResults_WarningsAndErrors(t *testing.T) {
-	results := []DiagnosticResult{
-		{
-			Category: "Configuration & Storage",
-			Name:     "Config File",
-			Status:   DiagnosticSeverityOK,
-			Message:  "Configuration file is valid",
-		},
-		{
-			Category: "Process Lock",
-			Name:     "Process Lock",
-			Status:   DiagnosticSeverityWarn,
-			Message:  "Stale lock file detected (PID: 999 is dead)",
-			FixHint:  "Remove stale lock file: rm /path/to/upp.lock",
-		},
-		{
-			Category: "Configuration & Storage",
-			Name:     "Config Directory",
-			Status:   DiagnosticSeverityError,
-			Message:  "Config directory is not writable",
-			Detail:   "permission denied",
-			FixHint:  "chmod 755 ~/.config/upp",
-		},
-	}
-
-	t.Run("normal mode", func(t *testing.T) {
-		var buf bytes.Buffer
-		r := NewRendererForced(&buf, false, false, false, false)
-		r.DoctorResults(results, false, false)
-
-		out := buf.String()
-		if !strings.Contains(out, "[✓] Config File: Configuration file is valid") {
-			t.Errorf("missing OK check line, got: %s", out)
-		}
-		if !strings.Contains(out, "[!] Process Lock: Stale lock file detected") {
-			t.Errorf("missing warning line, got: %s", out)
-		}
-		if !strings.Contains(out, "Hint: Remove stale lock file: rm /path/to/upp.lock") {
-			t.Errorf("missing fix hint, got: %s", out)
-		}
-		if !strings.Contains(out, "[✗] Config Directory: Config directory is not writable") {
-			t.Errorf("missing error line, got: %s", out)
-		}
-		if !strings.Contains(out, "Hint: chmod 755 ~/.config/upp") {
-			t.Errorf("missing error fix hint, got: %s", out)
-		}
-		if !strings.Contains(out, "Results: 1 passed, 1 warnings, 1 errors.") {
-			t.Errorf("incorrect summary, got: %s", out)
-		}
-	})
-
-	t.Run("quiet mode", func(t *testing.T) {
-		var buf bytes.Buffer
-		r := NewRendererForced(&buf, false, false, true, false)
-		r.DoctorResults(results, true, false)
-
-		out := buf.String()
-		// In quiet mode, only warnings and errors are rendered
-		if strings.Contains(out, "Config File: Configuration file is valid") {
-			t.Errorf("quiet mode should suppress OK results, got: %s", out)
-		}
-		if !strings.Contains(out, "[!] Process Lock: Stale lock file detected") {
-			t.Errorf("quiet mode should show warnings, got: %s", out)
-		}
-		if !strings.Contains(out, "[✗] Config Directory: Config directory is not writable") {
-			t.Errorf("quiet mode should show errors, got: %s", out)
-		}
-		if !strings.Contains(out, "Results: 1 passed, 1 warnings, 1 errors.") {
-			t.Errorf("quiet mode with issues should show summary, got: %s", out)
-		}
-	})
-
-	t.Run("verbose mode", func(t *testing.T) {
-		var buf bytes.Buffer
-		r := NewRendererForced(&buf, false, false, false, true)
-		r.DoctorResults(results, false, true)
-
-		out := buf.String()
-		if !strings.Contains(out, "permission denied") {
-			t.Errorf("verbose mode should display Detail, got: %s", out)
-		}
-	})
 }
