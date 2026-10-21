@@ -35,12 +35,24 @@ func GlobalProvider() Provider {
 }
 
 // AdaptersForPlatform returns platform adapters using the registered provider, or nil.
-func AdaptersForPlatform(os string) []Adapter {
+// It normalizes the OS identifier (e.g. "darwin" -> "macos") while falling back to
+// the raw input if the provider uses custom keys.
+func AdaptersForPlatform(osName string) []Adapter {
 	providerMu.RLock()
 	p := globalProvider
 	providerMu.RUnlock()
-	if p != nil {
-		return p.AdaptersForPlatform(os)
+	if p == nil {
+		return nil
+	}
+	canonOS := osName
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		canonOS = norm
+	}
+	if list := p.AdaptersForPlatform(canonOS); len(list) > 0 {
+		return list
+	}
+	if canonOS != osName {
+		return p.AdaptersForPlatform(osName)
 	}
 	return nil
 }
@@ -57,12 +69,24 @@ func AdapterByName(name string) Adapter {
 }
 
 // ResolveOwner resolves the owning manager using the registered provider, or nil.
-func ResolveOwner(tool, os string) Adapter {
+// It normalizes the OS identifier (e.g. "darwin" -> "macos") while falling back to
+// the raw input if the provider uses custom keys.
+func ResolveOwner(tool, osName string) Adapter {
 	providerMu.RLock()
 	p := globalProvider
 	providerMu.RUnlock()
-	if p != nil {
-		return p.ResolveOwner(tool, os)
+	if p == nil {
+		return nil
+	}
+	canonOS := osName
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		canonOS = norm
+	}
+	if owner := p.ResolveOwner(tool, canonOS); owner != nil {
+		return owner
+	}
+	if canonOS != osName {
+		return p.ResolveOwner(tool, osName)
 	}
 	return nil
 }
@@ -103,6 +127,9 @@ func ResolveAdapters(cfg *config.Config, osName string, opts ...ResolveOption) (
 	var platformAdapters []Adapter
 	if provider != nil {
 		platformAdapters = provider.AdaptersForPlatform(canonOS)
+		if len(platformAdapters) == 0 && canonOS != osName {
+			platformAdapters = provider.AdaptersForPlatform(osName)
+		}
 	}
 
 	customCount := 0
@@ -112,6 +139,9 @@ func ResolveAdapters(cfg *config.Config, osName string, opts ...ResolveOption) (
 
 	source := make([]Adapter, 0, len(platformAdapters)+customCount)
 	for _, a := range platformAdapters {
+		if a == nil {
+			continue
+		}
 		info := a.Info()
 		if cfg != nil && cfg.Tools != nil {
 			toolCfg, exists := cfg.Tools[info.ID]
@@ -149,8 +179,19 @@ func ResolveAdapters(cfg *config.Config, osName string, opts ...ResolveOption) (
 					}
 				}
 				if !managerDisabled && provider != nil {
-					if mgr := provider.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == KindManager && mgr.Info().SupportsPlatform(canonOS) {
-						managerArgs = append(managerArgs, mgr)
+					mgr := provider.AdapterByName(custom.Manager)
+					if mgr != nil && mgr.Info().Kind == KindManager && (mgr.Info().SupportsPlatform(canonOS) || mgr.Info().SupportsPlatform(osName)) {
+						if cfg.Tools != nil {
+							if toolCfg, exists := cfg.Tools[mgr.Info().ID]; exists && !toolCfg.Enabled {
+								managerDisabled = true
+							}
+							if toolCfg, exists := cfg.Tools[mgr.Name()]; exists && !toolCfg.Enabled {
+								managerDisabled = true
+							}
+						}
+						if !managerDisabled {
+							managerArgs = append(managerArgs, mgr)
+						}
 					}
 				}
 			}

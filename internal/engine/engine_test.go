@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -148,6 +149,25 @@ func TestEngine_WithAdapterResolver(t *testing.T) {
 	}
 	if len(res) != 1 || res[0].Name() != "resolvedTool" {
 		t.Errorf("Resolve = %v, want resolvedTool", res)
+	}
+}
+
+func TestEngine_WithAdapterResolver_Error(t *testing.T) {
+	expectedErr := errors.New("resolver failure")
+	customResolver := func(c *config.Config, osName string) ([]adapters.Adapter, error) {
+		return nil, expectedErr
+	}
+
+	eng := New(nil, "linux", WithAdapterResolver(customResolver))
+	res, err := eng.Resolve(Filter{})
+	if err == nil {
+		t.Fatal("expected error from Resolve, got nil")
+	}
+	if !errors.Is(err, expectedErr) {
+		t.Errorf("got error %v, want %v", err, expectedErr)
+	}
+	if res != nil {
+		t.Errorf("expected nil result on error, got %v", res)
 	}
 }
 

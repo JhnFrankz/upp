@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/config"
@@ -40,6 +41,10 @@ type mockProvider struct {
 func (m *mockProvider) AdaptersForPlatform(os string) []Adapter {
 	var res []Adapter
 	for _, a := range m.adapters {
+		if a == nil {
+			res = append(res, nil)
+			continue
+		}
 		info := a.Info()
 		if len(info.Platforms) == 0 || info.SupportsPlatform(os) {
 			res = append(res, a)
@@ -88,6 +93,15 @@ func TestProviderRegistrationAndHelpers(t *testing.T) {
 		t.Errorf("AdaptersForPlatform(darwin) = %v, want [brew]", darwinAdapters)
 	}
 
+	upperDarwinAdapters := AdaptersForPlatform("DARWIN")
+	if len(upperDarwinAdapters) != 1 || upperDarwinAdapters[0].Name() != "brew" {
+		t.Errorf("AdaptersForPlatform(DARWIN) = %v, want [brew]", upperDarwinAdapters)
+	}
+
+	if freebsdAdapters := AdaptersForPlatform("freebsd"); freebsdAdapters != nil {
+		t.Errorf("AdaptersForPlatform(freebsd) = %v, want nil", freebsdAdapters)
+	}
+
 	a := AdapterByName("brew")
 	if a == nil || a.Name() != "brew" {
 		t.Errorf("AdapterByName(brew) = %v, want brew", a)
@@ -96,6 +110,21 @@ func TestProviderRegistrationAndHelpers(t *testing.T) {
 	owner := ResolveOwner("gh", "macos")
 	if owner == nil || owner.Name() != "brew" {
 		t.Errorf("ResolveOwner(gh, macos) = %v, want brew", owner)
+	}
+
+	// Verify un-normalized OS ("darwin" and uppercase "DARWIN") normalizes to "macos"
+	ownerDarwin := ResolveOwner("gh", "darwin")
+	if ownerDarwin == nil || ownerDarwin.Name() != "brew" {
+		t.Errorf("ResolveOwner(gh, darwin) = %v, want brew", ownerDarwin)
+	}
+
+	ownerDarwinUpper := ResolveOwner("gh", "DARWIN")
+	if ownerDarwinUpper == nil || ownerDarwinUpper.Name() != "brew" {
+		t.Errorf("ResolveOwner(gh, DARWIN) = %v, want brew", ownerDarwinUpper)
+	}
+
+	if ownerFreebsd := ResolveOwner("gh", "freebsd"); ownerFreebsd != nil {
+		t.Errorf("ResolveOwner(gh, freebsd) = %v, want nil", ownerFreebsd)
 	}
 }
 
@@ -229,4 +258,96 @@ func TestResolveAdapters_CustomToolDisabledManager(t *testing.T) {
 	if ca.ManagerAdapter() != nil {
 		t.Errorf("expected nil ManagerAdapter when manager is disabled in config, got %v", ca.ManagerAdapter())
 	}
+}
+
+func TestResolveAdapters_NilAdapterInProviderList(t *testing.T) {
+	mgr := &mockAdapter{name: "brew", kind: KindManager, platforms: []string{platform.OSMacOS}}
+	p := &mockProvider{
+		adapters: []Adapter{nil, mgr, nil},
+		byName: map[string]Adapter{
+			"brew": mgr,
+		},
+	}
+
+	resolved, err := ResolveAdapters(nil, "macos", WithProvider(p))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 1 || resolved[0].Name() != "brew" {
+		t.Errorf("expected 1 adapter [brew], got %v", resolved)
+	}
+}
+
+func TestResolveAdapters_CustomToolManagerDisabledByID(t *testing.T) {
+	mgr := &mockAdapter{name: "Homebrew", kind: KindManager, platforms: []string{platform.OSMacOS}}
+	p := &mockProvider{
+		adapters: []Adapter{mgr},
+		byName: map[string]Adapter{
+			"brew": mgr,
+		},
+	}
+
+	cfg := &config.Config{
+		Tools: map[string]config.ToolConfig{
+			"Homebrew": {Enabled: false},
+		},
+		Custom: map[string]config.CustomTool{
+			"tool": {
+				Command: "tool --update",
+				Manager: "brew",
+			},
+		},
+	}
+
+	resolved, err := ResolveAdapters(cfg, "macos", WithProvider(p))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 custom tool, got %d", len(resolved))
+	}
+	ca, ok := resolved[0].(*CustomAdapter)
+	if !ok {
+		t.Fatalf("expected *CustomAdapter, got %T", resolved[0])
+	}
+	if ca.ManagerAdapter() != nil {
+		t.Errorf("expected nil ManagerAdapter when manager is disabled by ID/name in config, got %v", ca.ManagerAdapter())
+	}
+}
+
+func TestProviderConcurrency(t *testing.T) {
+	orig := GlobalProvider()
+	defer RegisterProvider(orig)
+
+	mgr := &mockAdapter{name: "brew", kind: KindManager, platforms: []string{platform.OSMacOS}}
+	p := &mockProvider{
+		adapters: []Adapter{mgr},
+		byName: map[string]Adapter{
+			"brew": mgr,
+		},
+		owners: map[string]Adapter{
+			"gh:macos": mgr,
+		},
+	}
+	RegisterProvider(p)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			switch idx % 4 {
+			case 0:
+				RegisterProvider(p)
+			case 1:
+				_ = GlobalProvider()
+			case 2:
+				_ = AdaptersForPlatform("darwin")
+				_ = ResolveOwner("gh", "darwin")
+			default:
+				_, _ = ResolveAdapters(nil, "darwin")
+			}
+		}(i)
+	}
+	wg.Wait()
 }

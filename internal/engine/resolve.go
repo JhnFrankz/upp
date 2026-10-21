@@ -101,6 +101,9 @@ func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapte
 	if custom, ok := a.(*adapters.CustomAdapter); ok {
 		if m := custom.ManagerAdapter(); m != nil {
 			if allAdapters != nil {
+				if owner := adapterByName(allAdapters, m.Info().ID); owner != nil {
+					return owner
+				}
 				return adapterByName(allAdapters, m.Name())
 			}
 			return m
@@ -129,7 +132,13 @@ func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapte
 		return nil
 	}
 
+	if owner := adapters.ResolveOwner(a.Info().ID, canonOS); owner != nil {
+		return owner
+	}
 	if owner := adapters.ResolveOwner(a.Name(), canonOS); owner != nil {
+		return owner
+	}
+	if owner := adapters.ResolveOwner(a.Info().ID, osName); owner != nil {
 		return owner
 	}
 	return adapters.ResolveOwner(a.Name(), osName)
