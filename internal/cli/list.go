@@ -69,19 +69,16 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 	}
 
 	var allAdapters []adapters.Adapter
-	var opts []engine.Option
 	if deps.buildAdapterList != nil {
 		allAdapters = deps.buildAdapterList(cfg, p.OS)
-		opts = append(opts, engine.WithAdapters(allAdapters))
-	}
-	eng := engine.New(cfg, p.OS, opts...)
-	if allAdapters == nil {
+	} else {
 		var err error
-		allAdapters, err = eng.Resolve(engine.Filter{})
+		allAdapters, err = adapters.ResolveAdapters(cfg, p.OS)
 		if err != nil {
 			return fmt.Errorf("cannot resolve tools: %w", err)
 		}
 	}
+	eng := engine.New(cfg, p.OS, engine.WithAdapters(allAdapters))
 
 	only := ParseFilter(gf.Only)
 	if len(only) > 0 {

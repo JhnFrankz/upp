@@ -1,11 +1,9 @@
 package engine
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
@@ -16,67 +14,17 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 
 	if e.adapters != nil {
 		source = e.adapters
+	} else if e.adapterResolver != nil {
+		var err error
+		source, err = e.adapterResolver(e.cfg, e.osName)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		canonOS := e.osName
-		if norm, err := platform.NormalizeOS(e.osName); err == nil {
-			canonOS = norm
-		}
-		platformAdapters := official.AdaptersForPlatform(canonOS)
-		customCount := 0
-		if e.cfg != nil {
-			customCount = len(e.cfg.Custom)
-		}
-		source = make([]adapters.Adapter, 0, len(platformAdapters)+customCount)
-		for _, a := range platformAdapters {
-			info := a.Info()
-			if e.cfg != nil && e.cfg.Tools != nil {
-				toolCfg, exists := e.cfg.Tools[info.ID]
-				if !exists {
-					toolCfg, exists = e.cfg.Tools[a.Name()]
-				}
-				if exists && !toolCfg.Enabled {
-					continue
-				}
-			}
-			source = append(source, a)
-		}
-
-		if e.cfg != nil && len(e.cfg.Custom) > 0 {
-			customIDs := make([]string, 0, len(e.cfg.Custom))
-			for id := range e.cfg.Custom {
-				customIDs = append(customIDs, id)
-			}
-			sort.Strings(customIDs)
-
-			for _, id := range customIDs {
-				custom := e.cfg.Custom[id]
-				if e.cfg.Tools != nil {
-					if toolCfg, exists := e.cfg.Tools[id]; exists && !toolCfg.Enabled {
-						continue
-					}
-				}
-
-				var managerArgs []adapters.Adapter
-				if custom.Manager != "" {
-					managerDisabled := false
-					if e.cfg != nil && e.cfg.Tools != nil {
-						if toolCfg, exists := e.cfg.Tools[custom.Manager]; exists && !toolCfg.Enabled {
-							managerDisabled = true
-						}
-					}
-					if !managerDisabled {
-						if mgr := official.AdapterByName(custom.Manager); mgr != nil && mgr.Info().Kind == adapters.KindManager && mgr.Info().SupportsPlatform(canonOS) {
-							managerArgs = append(managerArgs, mgr)
-						}
-					}
-				}
-
-				a, err := adapters.NewCustomAdapterWithPackage(id, custom.Command, custom.CheckCmd, custom.Package, custom.Trusted, managerArgs...)
-				if err != nil {
-					continue
-				}
-				source = append(source, a)
-			}
+		var err error
+		source, err = adapters.ResolveAdapters(e.cfg, e.osName)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -181,10 +129,10 @@ func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapte
 		return nil
 	}
 
-	if owner := official.ResolveOwner(a.Name(), canonOS); owner != nil {
+	if owner := adapters.ResolveOwner(a.Name(), canonOS); owner != nil {
 		return owner
 	}
-	return official.ResolveOwner(a.Name(), osName)
+	return adapters.ResolveOwner(a.Name(), osName)
 }
 
 // ResolvingOwner returns the manager adapter that owns the given adapter on the

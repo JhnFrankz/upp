@@ -162,3 +162,21 @@ var (
 	platformsWindows           = catalog.PlatformsWindows
 	platformsLinuxMacOSWindows = catalog.PlatformsLinuxMacOSWindows
 )
+
+type officialProvider struct{}
+
+func (officialProvider) AdaptersForPlatform(os string) []adapters.Adapter {
+	return AdaptersForPlatform(os)
+}
+
+func (officialProvider) AdapterByName(name string) adapters.Adapter {
+	return AdapterByName(name)
+}
+
+func (officialProvider) ResolveOwner(tool, os string) adapters.Adapter {
+	return ResolveOwner(tool, os)
+}
+
+func init() {
+	adapters.RegisterProvider(officialProvider{})
+}

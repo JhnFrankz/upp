@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -226,5 +225,5 @@ func resolveOwnerByID(managerID string, allAdapters ...[]adapters.Adapter) adapt
 		}
 		return nil
 	}
-	return official.AdapterByName(managerID)
+	return adapters.AdapterByName(managerID)
 }

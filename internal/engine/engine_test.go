@@ -120,6 +120,37 @@ func TestEngine_WithAdapters(t *testing.T) {
 	}
 }
 
+func TestEngine_WithAdapterResolver(t *testing.T) {
+	cfg := &config.Config{}
+	dummyList := []adapters.Adapter{
+		&dummyAdapter{name: "resolvedTool"},
+	}
+
+	resolverCalled := false
+	customResolver := func(c *config.Config, osName string) ([]adapters.Adapter, error) {
+		resolverCalled = true
+		if c != cfg {
+			t.Errorf("resolver received cfg %v, want %v", c, cfg)
+		}
+		if osName != "linux" {
+			t.Errorf("resolver received osName %q, want linux", osName)
+		}
+		return dummyList, nil
+	}
+
+	eng := New(cfg, "linux", WithAdapterResolver(customResolver))
+	res, err := eng.Resolve(Filter{})
+	if err != nil {
+		t.Fatalf("Resolve returned unexpected error: %v", err)
+	}
+	if !resolverCalled {
+		t.Error("expected custom resolver to be called")
+	}
+	if len(res) != 1 || res[0].Name() != "resolvedTool" {
+		t.Errorf("Resolve = %v, want resolvedTool", res)
+	}
+}
+
 func TestEngine_HeadlessImportIsolation(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
@@ -133,6 +164,7 @@ func TestEngine_HeadlessImportIsolation(t *testing.T) {
 		"github.com/JhnFrankz/upp/internal/output",
 		"github.com/spf13/cobra",
 		"github.com/charmbracelet/bubbletea",
+		"github.com/JhnFrankz/upp/internal/adapters/official",
 	}
 
 	for _, pkg := range pkgs {
@@ -143,6 +175,28 @@ func TestEngine_HeadlessImportIsolation(t *testing.T) {
 					if strings.Contains(path, d) {
 						t.Errorf("file %s imports forbidden package %q", filename, path)
 					}
+				}
+			}
+		}
+	}
+}
+
+func TestEnginePackage_NoOfficialAdaptersImport(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("failed to parse engine package directory: %v", err)
+	}
+
+	const forbidden = "github.com/JhnFrankz/upp/internal/adapters/official"
+	for _, pkg := range pkgs {
+		for filename, file := range pkg.Files {
+			for _, imp := range file.Imports {
+				path := strings.Trim(imp.Path.Value, `"`)
+				if strings.Contains(path, forbidden) {
+					t.Errorf("architectural boundary violation: %s imports %q", filename, path)
 				}
 			}
 		}
