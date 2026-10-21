@@ -1458,3 +1458,38 @@ func TestDiagnose_ToolPaths_SkipsOtherPlatformToolsAndRespectsLookPathOnly(t *te
 		t.Errorf("expected linux-rust to resolve rustup via LookPath when FindAllPaths is nil, got %+v", rustRes)
 	}
 }
+
+func TestDefaultDoctorDeps(t *testing.T) {
+	deps := DefaultDoctorDeps()
+	if deps.ConfigPath == nil || deps.ConfigDir == nil || deps.CacheDir == nil {
+		t.Error("expected config path/dir hooks to be populated")
+	}
+	if deps.LoadConfig == nil || deps.LockPath == nil || deps.ProcessAlive == nil || deps.TryLock == nil {
+		t.Error("expected core system hooks to be populated")
+	}
+	if deps.LookPath == nil || deps.FindAllPaths == nil || deps.HTTPGet == nil {
+		t.Error("expected tool and network hooks to be populated")
+	}
+	if deps.Adapters != nil {
+		t.Errorf("expected DefaultDoctorDeps.Adapters to be nil (injected by CLI), got: %v", deps.Adapters)
+	}
+}
+
+func TestDoctorPackage_NoOfficialAdaptersImport(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("failed to read doctor package directory: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		content, err := os.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", entry.Name(), err)
+		}
+		if strings.Contains(string(content), "internal/adapters/official") {
+			t.Errorf("architectural boundary violation: %s imports internal/adapters/official", entry.Name())
+		}
+	}
+}

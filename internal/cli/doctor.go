@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/JhnFrankz/upp/internal/adapters/official"
 	"github.com/JhnFrankz/upp/internal/doctor"
 	"github.com/JhnFrankz/upp/internal/output"
 	"github.com/spf13/cobra"
@@ -37,6 +38,9 @@ func runDoctor(ctx context.Context, gf *GlobalFlags, out io.Writer, deps doctorD
 
 	if deps.diagnose == nil {
 		deps.diagnose = doctor.Diagnose
+	}
+	if deps.deps.Adapters == nil {
+		deps.deps.Adapters = official.AdaptersForCurrentPlatform()
 	}
 
 	results := deps.diagnose(ctx, deps.deps)
