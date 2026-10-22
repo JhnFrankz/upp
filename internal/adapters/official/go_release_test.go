@@ -2,9 +2,11 @@ package official
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/JhnFrankz/upp/internal/archive"
 )
 
 func TestFetchGoRelease(t *testing.T) {
@@ -339,6 +343,89 @@ func TestExtractGoTarball(t *testing.T) {
 		err = extractGoTarball(truncatedFile, t.TempDir())
 		if err == nil {
 			t.Fatal("expected error on truncated tar stream, got nil")
+		}
+	})
+
+	t.Run("rejects oversized archive entry header cleanly", func(t *testing.T) {
+		origMax := maxGoExtractFileSize
+		maxGoExtractFileSize = 100
+		t.Cleanup(func() { maxGoExtractFileSize = origMax })
+
+		archiveFile := createTestTarball(t, map[string]string{
+			"go/bin/big": strings.Repeat("B", 200),
+		})
+		destDir := t.TempDir()
+		err := extractGoTarball(archiveFile, destDir)
+		if err == nil {
+			t.Fatal("expected error on oversized header, got nil")
+		}
+		if !errors.Is(err, archive.ErrDecompressionLimit) {
+			t.Fatalf("expected ErrDecompressionLimit, got: %v", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(destDir, "go", "bin", "big")); !os.IsNotExist(statErr) {
+			t.Error("expected oversized file to not exist on disk")
+		}
+	})
+
+	t.Run("rejects oversized stream decompression bomb and removes partial file", func(t *testing.T) {
+		origMax := maxGoExtractFileSize
+		maxGoExtractFileSize = 200
+		t.Cleanup(func() { maxGoExtractFileSize = origMax })
+
+		tmpDir := t.TempDir()
+		archivePath := filepath.Join(tmpDir, "bomb.tar.gz")
+		f, err := os.Create(archivePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gw := gzip.NewWriter(f)
+		tw := tar.NewWriter(gw)
+		hdr := &tar.Header{
+			Name:     "go/bin/bomb",
+			Mode:     0755,
+			Size:     500,
+			Typeflag: tar.TypeReg,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(bytes.Repeat([]byte("Z"), 500)); err != nil {
+			t.Fatal(err)
+		}
+		_ = tw.Close()
+		_ = gw.Close()
+		_ = f.Close()
+
+		destDir := t.TempDir()
+		err = extractGoTarball(archivePath, destDir)
+		if err == nil {
+			t.Fatal("expected error on bomb entry, got nil")
+		}
+		if !errors.Is(err, archive.ErrDecompressionLimit) {
+			t.Fatalf("expected ErrDecompressionLimit, got: %v", err)
+		}
+		bombFile := filepath.Join(destDir, "go", "bin", "bomb")
+		if _, statErr := os.Stat(bombFile); !os.IsNotExist(statErr) {
+			t.Errorf("expected partial bomb file %q to be removed, got stat: %v", bombFile, statErr)
+		}
+	})
+
+	t.Run("rejects archive exceeding cumulative size limit", func(t *testing.T) {
+		origTotal := maxGoExtractTotalSize
+		maxGoExtractTotalSize = 300
+		t.Cleanup(func() { maxGoExtractTotalSize = origTotal })
+
+		archiveFile := createTestTarball(t, map[string]string{
+			"go/bin/file1": strings.Repeat("A", 200),
+			"go/bin/file2": strings.Repeat("B", 200),
+		})
+		destDir := t.TempDir()
+		err := extractGoTarball(archiveFile, destDir)
+		if err == nil {
+			t.Fatal("expected error on cumulative size exceeded, got nil")
+		}
+		if !errors.Is(err, archive.ErrDecompressionLimit) {
+			t.Fatalf("expected ErrDecompressionLimit, got: %v", err)
 		}
 	})
 }
