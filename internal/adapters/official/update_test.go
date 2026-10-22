@@ -1480,6 +1480,24 @@ func TestUpdatePackage(t *testing.T) {
 			fakes:   execFakes{lookPath: map[string]bool{"pacman": false}},
 			wantErr: true,
 		},
+		{
+			name:    "brew/not-installed-error",
+			newAdpt: func() adapters.Adapter { return &BrewAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"brew": false}},
+			wantErr: true,
+		},
+		{
+			name:    "scoop/not-installed-error",
+			newAdpt: func() adapters.Adapter { return &ScoopAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"scoop": false}},
+			wantErr: true,
+		},
+		{
+			name:    "winget/not-installed-error",
+			newAdpt: func() adapters.Adapter { return &WingetAdapter{} },
+			fakes:   execFakes{lookPath: map[string]bool{"winget": false}},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1498,6 +1516,9 @@ func TestUpdatePackage(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("UpdatePackage() error = nil, want error")
+				}
+				if !errors.Is(err, adapters.ErrNotInstalled) {
+					t.Errorf("UpdatePackage() error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
 				}
 				return
 			}
