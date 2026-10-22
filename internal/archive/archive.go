@@ -36,6 +36,19 @@ var (
 
 	// ErrNilHeader is returned when a provided archive header is nil.
 	ErrNilHeader = errors.New("archive header is nil")
+
+	// ErrDecompressionLimit is returned when an archive entry or extraction exceeds the permitted size limit.
+	ErrDecompressionLimit = errors.New("decompression limit exceeded")
+)
+
+const (
+	// MaxExtractFileSize defines the default maximum uncompressed size permitted
+	// for extracting a single archive entry (500 MB).
+	MaxExtractFileSize int64 = 500 * 1024 * 1024
+
+	// MaxTotalExtractSize defines the default maximum cumulative uncompressed size permitted
+	// when extracting an entire archive (2 GB).
+	MaxTotalExtractSize int64 = 2 * 1024 * 1024 * 1024
 )
 
 // ValidatePath validates that an archive entry path is relative, non-empty, and free of path traversal sequences.
@@ -185,8 +198,19 @@ func CheckZipEntry(f *zip.File, allowLinks bool) error {
 }
 
 // ExtractToFile writes the content of r to targetPath with the given file mode,
-// ensuring parent directories exist and using bufferpool to avoid per-file memory allocations.
+// enforcing MaxExtractFileSize limit, ensuring parent directories exist, and
+// using bufferpool to avoid per-file memory allocations.
 func ExtractToFile(targetPath string, r io.Reader, mode os.FileMode) error {
+	return ExtractToFileWithLimit(targetPath, r, mode, MaxExtractFileSize)
+}
+
+// ExtractToFileWithLimit writes the content of r to targetPath with the given file mode,
+// bounding extraction to at most maxBytes. If the copied stream exceeds maxBytes,
+// the partial file is removed and ErrDecompressionLimit is returned.
+func ExtractToFileWithLimit(targetPath string, r io.Reader, mode os.FileMode, maxBytes int64) error {
+	if maxBytes <= 0 {
+		maxBytes = MaxExtractFileSize
+	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 		return err
 	}
@@ -197,14 +221,25 @@ func ExtractToFile(targetPath string, r io.Reader, mode os.FileMode) error {
 	bufPtr := bufferpool.Get()
 	defer bufferpool.Put(bufPtr)
 
-	if _, err := io.CopyBuffer(outFile, r, *bufPtr); err != nil {
-		_ = outFile.Close()
-		_ = os.Remove(targetPath)
-		return err
+	limit := maxBytes
+	if limit < 1<<62 {
+		limit++
 	}
-	if err := outFile.Close(); err != nil {
+	lr := io.LimitReader(r, limit)
+	written, copyErr := io.CopyBuffer(outFile, lr, *bufPtr)
+	closeErr := outFile.Close()
+
+	if copyErr != nil {
 		_ = os.Remove(targetPath)
-		return err
+		return copyErr
+	}
+	if written > maxBytes {
+		_ = os.Remove(targetPath)
+		return fmt.Errorf("%w: extracted size exceeds %d bytes", ErrDecompressionLimit, maxBytes)
+	}
+	if closeErr != nil {
+		_ = os.Remove(targetPath)
+		return closeErr
 	}
 	return nil
 }

@@ -93,6 +93,14 @@ var goBinaryPathFn = func() string {
 // Swapped in tests via setExecFakes.
 var goDevVersionFn = fetchGoDevVersion
 
+// maxGoExtractFileSize is the maximum permitted size for a single file during tarball extraction.
+// Swapped in tests for limits testing.
+var maxGoExtractFileSize = archive.MaxExtractFileSize
+
+// maxGoExtractTotalSize is the maximum permitted cumulative uncompressed size during tarball extraction.
+// Swapped in tests for limits testing.
+var maxGoExtractTotalSize = archive.MaxTotalExtractSize
+
 func fetchGoDevVersion(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -233,6 +241,7 @@ func extractGoTarball(archivePath, destDir string) error {
 
 	tr := tar.NewReader(gz)
 	cleanDest := filepath.Clean(destDir)
+	var totalExtracted int64
 
 	for {
 		hdr, err := tr.Next()
@@ -257,12 +266,27 @@ func extractGoTarball(archivePath, destDir string) error {
 				return err
 			}
 		case tar.TypeReg:
+			if hdr.Size < 0 || hdr.Size > maxGoExtractFileSize {
+				return fmt.Errorf("%w: entry %q size %d exceeds limit %d", archive.ErrDecompressionLimit, hdr.Name, hdr.Size, maxGoExtractFileSize)
+			}
+			remaining := maxGoExtractTotalSize - totalExtracted
+			if remaining <= 0 {
+				return fmt.Errorf("%w: cumulative extracted size exceeds %d bytes", archive.ErrDecompressionLimit, maxGoExtractTotalSize)
+			}
+			fileLimit := maxGoExtractFileSize
+			if remaining < fileLimit {
+				fileLimit = remaining
+			}
 			mode := hdr.FileInfo().Mode().Perm()
 			if mode == 0 {
 				mode = 0644
 			}
-			if err := archive.ExtractToFile(targetPath, tr, mode); err != nil {
+			if err := archive.ExtractToFileWithLimit(targetPath, tr, mode, fileLimit); err != nil {
 				return err
+			}
+			fi, err := os.Stat(targetPath)
+			if err == nil {
+				totalExtracted += fi.Size()
 			}
 		case tar.TypeSymlink:
 			if err := archive.ValidateSymlinkTarget(hdr.Linkname); err != nil {
