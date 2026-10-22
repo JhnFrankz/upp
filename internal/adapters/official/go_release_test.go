@@ -369,8 +369,13 @@ func TestExtractGoTarball(t *testing.T) {
 
 	t.Run("rejects oversized stream decompression bomb and removes partial file", func(t *testing.T) {
 		origMax := maxGoExtractFileSize
-		maxGoExtractFileSize = 200
-		t.Cleanup(func() { maxGoExtractFileSize = origMax })
+		origTotal := maxGoExtractTotalSize
+		maxGoExtractFileSize = 1000
+		maxGoExtractTotalSize = 200
+		t.Cleanup(func() {
+			maxGoExtractFileSize = origMax
+			maxGoExtractTotalSize = origTotal
+		})
 
 		tmpDir := t.TempDir()
 		archivePath := filepath.Join(tmpDir, "bomb.tar.gz")

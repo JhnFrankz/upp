@@ -285,9 +285,10 @@ func extractGoTarball(archivePath, destDir string) error {
 				return err
 			}
 			fi, err := os.Stat(targetPath)
-			if err == nil {
-				totalExtracted += fi.Size()
+			if err != nil {
+				return fmt.Errorf("stat extracted file %s: %w", targetPath, err)
 			}
+			totalExtracted += fi.Size()
 		case tar.TypeSymlink:
 			if err := archive.ValidateSymlinkTarget(hdr.Linkname); err != nil {
 				return fmt.Errorf("unsupported or unsafe symlink target: %s", hdr.Linkname)
