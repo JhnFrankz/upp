@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 	"github.com/JhnFrankz/upp/internal/version"
 )
@@ -264,16 +265,9 @@ func (c *CustomAdapter) IsTrusted() bool {
 	return c.trusted
 }
 
-// extractBaseCommand gets the first token from a command string.
+// extractBaseCommand gets the base executable from a command string.
 func extractBaseCommand(cmd string) string {
-	cmd = strings.TrimLeft(cmd, " \t\r\n")
-	if cmd == "" {
-		return ""
-	}
-	if idx := strings.IndexAny(cmd, " \t\r\n"); idx != -1 {
-		return cmd[:idx]
-	}
-	return cmd
+	return platform.ExtractBaseCommand(cmd)
 }
 
 // shellExec runs a command via the platform shell, bounded by UpdateTimeout.
