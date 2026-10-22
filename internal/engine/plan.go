@@ -36,6 +36,14 @@ func buildAdapterIndex(adapterList []adapters.Adapter) adapterIndex {
 	return idx
 }
 
+func setAdapterIndex(idx adapterIndex, key string, a adapters.Adapter, overwrite bool) {
+	if overwrite {
+		idx[key] = a
+	} else if _, exists := idx[key]; !exists {
+		idx[key] = a
+	}
+}
+
 func indexAdapter(idx adapterIndex, a adapters.Adapter, overwrite bool) {
 	if a == nil {
 		return
@@ -44,38 +52,20 @@ func indexAdapter(idx adapterIndex, a adapters.Adapter, overwrite bool) {
 	id := info.ID
 	name := a.Name()
 
+	var idLower string
 	if id != "" {
-		if overwrite {
-			idx[id] = a
-		} else if _, exists := idx[id]; !exists {
-			idx[id] = a
-		}
-		idLower := strings.ToLower(id)
+		setAdapterIndex(idx, id, a, overwrite)
+		idLower = strings.ToLower(id)
 		if idLower != id {
-			if overwrite {
-				idx[idLower] = a
-			} else if _, exists := idx[idLower]; !exists {
-				idx[idLower] = a
-			}
+			setAdapterIndex(idx, idLower, a, overwrite)
 		}
 	}
 
-	if name != "" && name != id {
-		idLower := strings.ToLower(id)
-		if name != idLower {
-			if overwrite {
-				idx[name] = a
-			} else if _, exists := idx[name]; !exists {
-				idx[name] = a
-			}
-			nameLower := strings.ToLower(name)
-			if nameLower != name && nameLower != id && nameLower != idLower {
-				if overwrite {
-					idx[nameLower] = a
-				} else if _, exists := idx[nameLower]; !exists {
-					idx[nameLower] = a
-				}
-			}
+	if name != "" && name != id && name != idLower {
+		setAdapterIndex(idx, name, a, overwrite)
+		nameLower := strings.ToLower(name)
+		if nameLower != name && nameLower != id && nameLower != idLower {
+			setAdapterIndex(idx, nameLower, a, overwrite)
 		}
 	}
 }
