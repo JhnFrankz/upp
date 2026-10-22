@@ -208,7 +208,10 @@ func ExtractToFile(targetPath string, r io.Reader, mode os.FileMode) error {
 // bounding extraction to at most maxBytes. If the copied stream exceeds maxBytes,
 // the partial file is removed and ErrDecompressionLimit is returned.
 func ExtractToFileWithLimit(targetPath string, r io.Reader, mode os.FileMode, maxBytes int64) error {
-	if maxBytes <= 0 {
+	if r == nil {
+		return errors.New("archive: reader is nil")
+	}
+	if maxBytes < 0 {
 		maxBytes = MaxExtractFileSize
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
