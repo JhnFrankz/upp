@@ -3,6 +3,7 @@ package official
 import (
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -109,4 +110,28 @@ func TestManagerCommandDeclarations(t *testing.T) {
 	if !equalPrivileges(pacmanInfo.Privileges, []string{"sudo"}) {
 		t.Errorf("pacman Privileges = %v, want [sudo]", pacmanInfo.Privileges)
 	}
+}
+
+func TestGoAdapter_Info_Concurrent(t *testing.T) {
+	setExecFakes(t, execFakes{
+		goos:         "linux",
+		goBinaryPath: "/usr/bin/go",
+		lookPath:     map[string]bool{"go": true, "apt": true},
+	})
+	adpt := &GoAdapter{}
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			info := adpt.Info()
+			if info.ID != "go" {
+				t.Errorf("expected ID go, got %s", info.ID)
+			}
+			if info.Manager["linux"] != "apt" {
+				t.Errorf("expected apt manager, got %s", info.Manager["linux"])
+			}
+		}()
+	}
+	wg.Wait()
 }
