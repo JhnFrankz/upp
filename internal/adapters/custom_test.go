@@ -546,10 +546,17 @@ func TestExtractBaseCommand(t *testing.T) {
 		want string
 	}{
 		{"mytool --update", "mytool"},
-		{"sudo apt upgrade", "sudo"},
+		{"sudo apt upgrade", "apt"},
 		{"echo hello", "echo"},
 		{"", ""},
 		{"   ", ""},
+		{`"/path with spaces/tool" --flag`, "/path with spaces/tool"},
+		{`'/opt/custom bin/mytool' update`, "/opt/custom bin/mytool"},
+		{"env FOO=1 BAR=2 mybin --update", "mybin"},
+		{"doas -u admin pkg-tool upgrade", "pkg-tool"},
+		{"runas /user:Admin updater.exe /silent", "updater.exe"},
+		{"sh -c 'rustup update'", "rustup"},
+		{"bash -lc 'my-tool --upgrade'", "my-tool"},
 	}
 
 	for _, tt := range tests {
