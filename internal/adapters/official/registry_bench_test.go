@@ -68,3 +68,12 @@ func BenchmarkAdapter_Info(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkGoAdapter_Info(b *testing.B) {
+	var a GoAdapter
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.Info()
+	}
+}

@@ -92,4 +92,34 @@ func TestBuildAdapterIndex(t *testing.T) {
 			t.Errorf("idx[\"tool\"] = %v, want a2 %v", got, a2)
 		}
 	})
+
+	t.Run("mixed-case id and name with identical lowercase", func(t *testing.T) {
+		a := &mockPlanAdapter{
+			info: adapters.ToolInfo{
+				ID:   "myTool",
+				Name: "MyTool",
+			},
+		}
+		idx := buildAdapterIndex([]adapters.Adapter{a})
+		for _, key := range []string{"myTool", "MyTool", "mytool", "MYTOOL"} {
+			if got := idx.find(key, ""); got != a {
+				t.Errorf("idx.find(%q, \"\") = %v, want %v", key, got, a)
+			}
+		}
+	})
+
+	t.Run("empty id with non-empty name", func(t *testing.T) {
+		a := &mockPlanAdapter{
+			info: adapters.ToolInfo{
+				ID:   "",
+				Name: "NamedTool",
+			},
+		}
+		idx := buildAdapterIndex([]adapters.Adapter{a})
+		for _, key := range []string{"NamedTool", "namedtool", "NAMEDTOOL"} {
+			if got := idx.find(key, ""); got != a {
+				t.Errorf("idx.find(%q, \"\") = %v, want %v", key, got, a)
+			}
+		}
+	})
 }
