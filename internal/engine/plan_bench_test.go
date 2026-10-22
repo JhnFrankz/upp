@@ -97,3 +97,29 @@ func BenchmarkEngine_Plan_WithFilterOnly(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkBuildAdapterIndex(b *testing.B) {
+	sizes := []int{10, 50, 100}
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("%d_adapters", size), func(b *testing.B) {
+			adapterList := make([]adapters.Adapter, size)
+			for i := 0; i < size; i++ {
+				id := fmt.Sprintf("Tool-%d", i)
+				name := fmt.Sprintf("tool-%d", i)
+				adapterList[i] = &mockPlanAdapter{
+					info: adapters.ToolInfo{
+						ID:   id,
+						Name: name,
+					},
+				}
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				_ = buildAdapterIndex(adapterList)
+			}
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -252,11 +253,71 @@ var (
 		// plan takes the owning manager's command and never reads this field.
 		Command: goLinuxUpdateCmd,
 	}
+
+	goManagerApt        = map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}
+	goManagerPackageApt = map[string]string{"linux": "golang-go", "macos": "golang", "windows": "GoLang.Go"}
+	goInfoApt           = adapters.ToolInfo{
+		ID:             "go",
+		Name:           "Go",
+		Platforms:      platformsLinuxMacOSWindows,
+		Trust:          security.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyGated,
+		Kind:           adapters.KindTool,
+		Manager:        goManagerApt,
+		ManagerPackage: goManagerPackageApt,
+	}
+
+	goManagerPacman        = map[string]string{"linux": "pacman", "macos": "brew", "windows": "winget"}
+	goManagerPackagePacman = map[string]string{"linux": "go", "macos": "golang", "windows": "GoLang.Go"}
+	goInfoPacman           = adapters.ToolInfo{
+		ID:             "go",
+		Name:           "Go",
+		Platforms:      platformsLinuxMacOSWindows,
+		Trust:          security.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyGated,
+		Kind:           adapters.KindTool,
+		Manager:        goManagerPacman,
+		ManagerPackage: goManagerPackagePacman,
+	}
+
+	goLinuxOwnerMu     sync.RWMutex
+	cachedGoToolInfo   adapters.ToolInfo
+	cachedGoToolInfoOK bool
 )
 
+func resetGoOwnerCache() {
+	goLinuxOwnerMu.Lock()
+	cachedGoToolInfoOK = false
+	cachedGoToolInfo = adapters.ToolInfo{}
+	goLinuxOwnerMu.Unlock()
+}
+
 func (a *GoAdapter) Info() adapters.ToolInfo {
-	if runtimeGOOSFn() == "linux" {
-		if owner, pkg := a.linuxOwner(); owner != nil {
+	if runtimeGOOSFn() != "linux" {
+		return goInfo
+	}
+
+	goLinuxOwnerMu.RLock()
+	if cachedGoToolInfoOK {
+		info := cachedGoToolInfo
+		goLinuxOwnerMu.RUnlock()
+		return info
+	}
+	goLinuxOwnerMu.RUnlock()
+
+	goLinuxOwnerMu.Lock()
+	defer goLinuxOwnerMu.Unlock()
+	if cachedGoToolInfoOK {
+		return cachedGoToolInfo
+	}
+
+	if owner, pkg := a.linuxOwner(); owner != nil {
+		switch owner.Name() {
+		case "apt":
+			cachedGoToolInfo = goInfoApt
+		case "pacman":
+			cachedGoToolInfo = goInfoPacman
+		default:
 			info := goInfo
 			mgrMap := make(map[string]string, len(goManager)+1)
 			for k, v := range goManager {
@@ -274,10 +335,13 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 
 			info.UpdatePolicy = owner.Info().UpdatePolicy
 			info.Command = ""
-			return info
+			cachedGoToolInfo = info
 		}
+	} else {
+		cachedGoToolInfo = goInfo
 	}
-	return goInfo
+	cachedGoToolInfoOK = true
+	return cachedGoToolInfo
 }
 
 // extractGoVersion extracts the version from "go version go1.22.0 linux/amd64".

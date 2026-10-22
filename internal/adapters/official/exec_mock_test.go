@@ -43,6 +43,7 @@ func resetLinuxManagerCache() {
 	linuxManagerMu.Lock()
 	cachedLinuxManager = ""
 	linuxManagerMu.Unlock()
+	resetGoOwnerCache()
 }
 
 // setExecFakes swaps the package exec seam variables (runCmdFn,
