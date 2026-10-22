@@ -22,6 +22,14 @@ func TokenizeShellCommand(command string) []string {
 			}
 			if quote == '"' && ch == '\\' && i+1 < len(command) {
 				next := command[i+1]
+				if next == '\n' {
+					i++
+					continue
+				}
+				if next == '\r' && i+2 < len(command) && command[i+2] == '\n' {
+					i += 2
+					continue
+				}
 				if next == '"' || next == '\\' || next == '$' || next == '`' {
 					cur.WriteByte(next)
 					i++
@@ -40,6 +48,14 @@ func TokenizeShellCommand(command string) []string {
 
 		if ch == '\\' && i+1 < len(command) {
 			next := command[i+1]
+			if next == '\n' {
+				i++
+				continue
+			}
+			if next == '\r' && i+2 < len(command) && command[i+2] == '\n' {
+				i += 2
+				continue
+			}
 			if next == ' ' || next == '\t' || next == '"' || next == '\'' || next == ';' || next == '|' || next == '&' || next == '\\' {
 				cur.WriteByte(next)
 				inToken = true
@@ -114,7 +130,7 @@ func ExtractCommandBinary(command, fallbackName string) string {
 					continue
 				}
 				if next == "-S" || next == "--split-string" {
-					if i+2 < len(tokens) && i+3 >= len(tokens) {
+					if i+2 < len(tokens) {
 						if inner := ExtractCommandBinary(tokens[i+2], ""); inner != "" {
 							return inner
 						}
@@ -242,7 +258,7 @@ func extractShellCommandTarget(shell string, args []string) string {
 			}
 		case "powershell", "pwsh":
 			lower := strings.ToLower(arg)
-			if (lower == "-c" || lower == "-command") && i+1 < len(args) {
+			if (lower == "-c" || lower == "-command" || lower == "--command" || lower == "/c" || lower == "/command") && i+1 < len(args) {
 				inner := ExtractCommandBinary(args[i+1], "")
 				if inner != "" && !isShellBuiltin(normalizedWrapperName(inner)) {
 					return inner
@@ -250,7 +266,7 @@ func extractShellCommandTarget(shell string, args []string) string {
 				return ""
 			}
 		default:
-			if arg == "-c" || (strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.ContainsRune(arg[1:], 'c')) {
+			if arg == "-c" || (strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.HasSuffix(arg, "c")) {
 				if i+1 < len(args) {
 					inner := ExtractCommandBinary(args[i+1], "")
 					if inner != "" && !isShellBuiltin(normalizedWrapperName(inner)) {

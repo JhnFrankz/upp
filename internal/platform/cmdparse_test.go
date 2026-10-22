@@ -116,6 +116,26 @@ func TestTokenizeShellCommand(t *testing.T) {
 			command: ";; && \n cmd1 arg",
 			want:    []string{"cmd1", "arg"},
 		},
+		{
+			name:    "line continuation outside quotes",
+			command: "tool \\\n --update",
+			want:    []string{"tool", "--update"},
+		},
+		{
+			name:    "line continuation inside double quotes",
+			command: "\"echo \\\n hello\"",
+			want:    []string{"echo  hello"},
+		},
+		{
+			name:    "token concatenation with quoted parameter",
+			command: `--prefix="/usr/local" --opt='val'`,
+			want:    []string{"--prefix=/usr/local", "--opt=val"},
+		},
+		{
+			name:    "adjacent quoted strings",
+			command: `"foo""bar"`,
+			want:    []string{"foobar"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -296,6 +316,42 @@ func TestExtractCommandBinary(t *testing.T) {
 			command:  "mytool&&echo done",
 			fallback: "fallback",
 			want:     "mytool",
+		},
+		{
+			name:     "env with -S and trailing positional arguments",
+			command:  "env -S 'tool' arg1 arg2",
+			fallback: "fallback",
+			want:     "tool",
+		},
+		{
+			name:     "env with -S env vars and trailing command",
+			command:  `env -S "FOO=1 BAR=2" tool arg1`,
+			fallback: "fallback",
+			want:     "tool",
+		},
+		{
+			name:     "powershell with /c flag",
+			command:  `powershell.exe /c "winget upgrade"`,
+			fallback: "fallback",
+			want:     "winget",
+		},
+		{
+			name:     "pwsh with --command flag",
+			command:  `pwsh --command "brew upgrade"`,
+			fallback: "fallback",
+			want:     "brew",
+		},
+		{
+			name:     "shell flag with c not at suffix does not unwrap",
+			command:  "bash -check arg tool",
+			fallback: "fallback",
+			want:     "bash",
+		},
+		{
+			name:     "deeply nested wrappers bash and sh with quoted binary",
+			command:  `bash -c "sh -c '\"/opt/tool with spaces\" --flag'"`,
+			fallback: "fallback",
+			want:     "/opt/tool with spaces",
 		},
 	}
 
