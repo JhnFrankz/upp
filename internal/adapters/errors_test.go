@@ -99,3 +99,29 @@ func TestSentinelErrors_Wrapping(t *testing.T) {
 		})
 	}
 }
+
+func TestSentinelErrors_Unwrap(t *testing.T) {
+	allSentinels := []struct {
+		name string
+		err  error
+	}{
+		{"ErrNotInstalled", adapters.ErrNotInstalled},
+		{"ErrNilAdapter", adapters.ErrNilAdapter},
+		{"ErrNoResolvingOwner", adapters.ErrNoResolvingOwner},
+		{"ErrUnsupportedPackageCheck", adapters.ErrUnsupportedPackageCheck},
+		{"ErrUnsupportedPackageUpdate", adapters.ErrUnsupportedPackageUpdate},
+		{"ErrNoManagerPackage", adapters.ErrNoManagerPackage},
+		{"ErrTimeout", adapters.ErrTimeout},
+		{"ErrCommandFailed", adapters.ErrCommandFailed},
+	}
+
+	for _, tt := range allSentinels {
+		t.Run(tt.name, func(t *testing.T) {
+			wrapped := fmt.Errorf("%w: detailed context for %s", tt.err, tt.name)
+			unwrapped := errors.Unwrap(wrapped)
+			if unwrapped != tt.err {
+				t.Errorf("errors.Unwrap() = %v, want %v", unwrapped, tt.err)
+			}
+		})
+	}
+}

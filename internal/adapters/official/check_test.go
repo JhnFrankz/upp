@@ -2093,6 +2093,40 @@ func TestWingetCheckPackage_NotInstalled(t *testing.T) {
 	}
 }
 
+func TestPacmanCheckPackage_NotInstalled(t *testing.T) {
+	pacman := &PacmanAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"pacman": false},
+	})
+	_, err := pacman.CheckPackage(context.Background(), "gh")
+	if err == nil {
+		t.Fatal("CheckPackage() expected error when pacman is not installed, got nil")
+	}
+	if !strings.Contains(err.Error(), "pacman is not installed") {
+		t.Errorf("error = %q, want contains 'pacman is not installed'", err.Error())
+	}
+	if !errors.Is(err, adapters.ErrNotInstalled) {
+		t.Errorf("error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+	}
+}
+
+func TestScoopCheckPackage_NotInstalled(t *testing.T) {
+	scoop := &ScoopAdapter{}
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"scoop": false},
+	})
+	_, err := scoop.CheckPackage(context.Background(), "gh")
+	if err == nil {
+		t.Fatal("CheckPackage() expected error when scoop is not installed, got nil")
+	}
+	if !strings.Contains(err.Error(), "scoop is not installed") {
+		t.Errorf("error = %q, want contains 'scoop is not installed'", err.Error())
+	}
+	if !errors.Is(err, adapters.ErrNotInstalled) {
+		t.Errorf("error = %v, want errors.Is(err, adapters.ErrNotInstalled)", err)
+	}
+}
+
 func TestOfficialAdapters_Check_NotInstalled(t *testing.T) {
 	adaptersList := []struct {
 		name    string

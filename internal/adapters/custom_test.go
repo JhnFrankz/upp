@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/security"
@@ -292,6 +293,66 @@ func TestCustomAdapter_Update_MissingBinary(t *testing.T) {
 	}
 	if !errors.Is(dryResult.Error, ErrNotInstalled) {
 		t.Errorf("Update(dryRun=true) Result.Error = %v, want errors.Is(dryResult.Error, ErrNotInstalled)", dryResult.Error)
+	}
+}
+
+func TestCustomAdapter_Check_EmptyBaseCommand(t *testing.T) {
+	ca := &CustomAdapter{
+		id:       "empty-tool",
+		command:  "   ",
+		checkCmd: "check-something",
+	}
+	_, err := ca.Check(context.Background())
+	if err == nil {
+		t.Fatal("Check() expected error when command has empty base, got nil")
+	}
+	if !errors.Is(err, ErrNotInstalled) {
+		t.Errorf("Check() error = %v, want errors.Is(err, ErrNotInstalled)", err)
+	}
+}
+
+type dummyUninstalledManager struct {
+	Adapter
+}
+
+func (m *dummyUninstalledManager) Name() string { return "fake-mgr" }
+func (m *dummyUninstalledManager) Detect() bool { return false }
+func (m *dummyUninstalledManager) Info() ToolInfo {
+	return ToolInfo{
+		ID:        "fake-mgr",
+		Name:      "Fake Manager",
+		Platforms: platformsAll,
+		Kind:      KindManager,
+	}
+}
+func (m *dummyUninstalledManager) CheckPackage(ctx context.Context, pkg string) (UpdateInfo, error) {
+	return UpdateInfo{}, fmt.Errorf("%w: %s is not installed", ErrNotInstalled, m.Name())
+}
+func (m *dummyUninstalledManager) UpdatePackage(ctx context.Context, pkg string) (Result, error) {
+	return Result{Success: false}, fmt.Errorf("%w: %s is not installed", ErrNotInstalled, m.Name())
+}
+
+func TestCustomAdapter_Delegated_ManagerNotInstalled(t *testing.T) {
+	mgr := &dummyUninstalledManager{}
+	ca, err := NewCustomAdapter("owned-custom", "owned-custom update", "owned-custom --version", true, mgr)
+	if err != nil {
+		t.Fatalf("NewCustomAdapter() error = %v", err)
+	}
+
+	_, err = ca.Check(context.Background())
+	if err == nil {
+		t.Fatal("Check() expected error when manager is not installed, got nil")
+	}
+	if !errors.Is(err, ErrNotInstalled) {
+		t.Errorf("Check() error = %v, want errors.Is(err, ErrNotInstalled)", err)
+	}
+
+	res, err := ca.Update(context.Background(), false)
+	if err == nil && (res.Error == nil || !errors.Is(res.Error, ErrNotInstalled)) {
+		t.Errorf("Update() expected ErrNotInstalled in return or Result.Error, got err=%v, res.Error=%v", err, res.Error)
+	}
+	if err != nil && !errors.Is(err, ErrNotInstalled) {
+		t.Errorf("Update() error = %v, want errors.Is(err, ErrNotInstalled)", err)
 	}
 }
 
