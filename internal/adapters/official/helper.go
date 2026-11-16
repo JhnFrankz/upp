@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -119,8 +120,9 @@ func lookPath(name string) bool {
 }
 
 var (
-	linuxManagerMu     sync.RWMutex
-	cachedLinuxManager string
+	linuxManagerMu         sync.RWMutex
+	cachedLinuxManager     string
+	cachedLinuxManagerPath string
 )
 
 // defaultLinuxManager resolves the default Linux package manager for official tools.
@@ -129,8 +131,9 @@ func defaultLinuxManager() string {
 	if runtimeGOOSFn() != "linux" {
 		return "apt"
 	}
+	pathEnv := os.Getenv("PATH")
 	linuxManagerMu.RLock()
-	if cachedLinuxManager != "" {
+	if cachedLinuxManager != "" && cachedLinuxManagerPath == pathEnv {
 		mgr := cachedLinuxManager
 		linuxManagerMu.RUnlock()
 		return mgr
@@ -139,7 +142,7 @@ func defaultLinuxManager() string {
 
 	linuxManagerMu.Lock()
 	defer linuxManagerMu.Unlock()
-	if cachedLinuxManager != "" {
+	if cachedLinuxManager != "" && cachedLinuxManagerPath == pathEnv {
 		return cachedLinuxManager
 	}
 	mgr := "apt"
@@ -147,6 +150,7 @@ func defaultLinuxManager() string {
 		mgr = "pacman"
 	}
 	cachedLinuxManager = mgr
+	cachedLinuxManagerPath = pathEnv
 	return mgr
 }
 

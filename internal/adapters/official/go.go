@@ -284,15 +284,19 @@ var (
 		ManagerPackage: goManagerPackagePacman,
 	}
 
-	goLinuxOwnerMu     sync.RWMutex
-	cachedGoToolInfo   adapters.ToolInfo
-	cachedGoToolInfoOK bool
+	goLinuxOwnerMu       sync.RWMutex
+	cachedGoToolInfo     adapters.ToolInfo
+	cachedGoToolInfoOK   bool
+	cachedGoToolInfoPath string
+	cachedGoToolInfoBin  string
 )
 
 func resetGoOwnerCache() {
 	goLinuxOwnerMu.Lock()
 	cachedGoToolInfoOK = false
 	cachedGoToolInfo = adapters.ToolInfo{}
+	cachedGoToolInfoPath = ""
+	cachedGoToolInfoBin = ""
 	goLinuxOwnerMu.Unlock()
 }
 
@@ -300,9 +304,11 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 	if runtimeGOOSFn() != "linux" {
 		return goInfo
 	}
+	pathEnv := os.Getenv("PATH")
+	binPath := goBinaryPathFn()
 
 	goLinuxOwnerMu.RLock()
-	if cachedGoToolInfoOK {
+	if cachedGoToolInfoOK && cachedGoToolInfoPath == pathEnv && cachedGoToolInfoBin == binPath {
 		info := cachedGoToolInfo
 		goLinuxOwnerMu.RUnlock()
 		return info
@@ -311,7 +317,7 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 
 	goLinuxOwnerMu.Lock()
 	defer goLinuxOwnerMu.Unlock()
-	if cachedGoToolInfoOK {
+	if cachedGoToolInfoOK && cachedGoToolInfoPath == pathEnv && cachedGoToolInfoBin == binPath {
 		return cachedGoToolInfo
 	}
 
@@ -344,6 +350,8 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 	} else {
 		cachedGoToolInfo = goInfo
 	}
+	cachedGoToolInfoPath = pathEnv
+	cachedGoToolInfoBin = binPath
 	cachedGoToolInfoOK = true
 	return cachedGoToolInfo
 }

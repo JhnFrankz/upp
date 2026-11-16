@@ -66,3 +66,57 @@ func TestWingetAndScoopCoalesceConcurrentQueries(t *testing.T) {
 		}
 	})
 }
+
+func TestPathCachesInvalidateOnPathChange(t *testing.T) {
+	t.Run("defaultLinuxManager invalidates when PATH changes", func(t *testing.T) {
+		setExecFakes(t, execFakes{goos: "linux"})
+		calls := 0
+		lookPathFn = func(name string) bool {
+			calls++
+			return name == "pacman"
+		}
+
+		t.Setenv("PATH", "/bin/first")
+		if got := defaultLinuxManager(); got != "pacman" {
+			t.Fatalf("first defaultLinuxManager() = %q, want pacman", got)
+		}
+		if got := defaultLinuxManager(); got != "pacman" {
+			t.Fatalf("cached defaultLinuxManager() = %q, want pacman", got)
+		}
+		callsAfterFirstPath := calls
+
+		t.Setenv("PATH", "/bin/second")
+		lookPathFn = func(name string) bool {
+			calls++
+			return name == "apt"
+		}
+		if got := defaultLinuxManager(); got != "apt" {
+			t.Fatalf("after PATH change defaultLinuxManager() = %q, want apt", got)
+		}
+		if calls <= callsAfterFirstPath {
+			t.Error("expected lookPathFn to be re-evaluated after PATH change")
+		}
+	})
+
+	t.Run("GoAdapter.Info invalidates when PATH changes", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			goos:         "linux",
+			goBinaryPath: "/usr/bin/go",
+			lookPath:     map[string]bool{"go": true, "apt": false, "pacman": true},
+		})
+		t.Setenv("PATH", "/bin/first")
+		info1 := (&GoAdapter{}).Info()
+		if info1.Manager["linux"] != "pacman" {
+			t.Fatalf("first GoAdapter.Info().Manager[linux] = %q, want pacman", info1.Manager["linux"])
+		}
+
+		t.Setenv("PATH", "/bin/second")
+		lookPathFn = func(name string) bool {
+			return name == "go" || name == "apt"
+		}
+		info2 := (&GoAdapter{}).Info()
+		if info2.Manager["linux"] != "apt" {
+			t.Fatalf("after PATH change GoAdapter.Info().Manager[linux] = %q, want apt", info2.Manager["linux"])
+		}
+	})
+}
