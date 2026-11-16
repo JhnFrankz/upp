@@ -103,10 +103,7 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 		return adapters.Result{Success: false}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
 	}
 
-	before := "unknown"
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		before = info.CurrentVersion
-	}
+	before := a.installedVersion(ctx, pkg)
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "--only-upgrade", pkg)
 	if err != nil {
@@ -132,8 +129,8 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 	}
 
 	after := before
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		after = info.CurrentVersion
+	if v := a.installedVersion(ctx, pkg); v != "unknown" {
+		after = v
 	}
 
 	return adapters.Result{
@@ -219,4 +216,13 @@ func (a *AptAdapter) CurrentVersion(ctx context.Context) (string, error) {
 	}
 	current, _ := parseAptPolicyOutput(stdout)
 	return current, nil
+}
+
+func (a *AptAdapter) installedVersion(ctx context.Context, pkg string) string {
+	stdout, err := commandOutputErrFor(ctx, "apt", "apt-cache", "policy", pkg)
+	if err != nil {
+		return "unknown"
+	}
+	current, _ := parseAptPolicyOutput(stdout)
+	return current
 }

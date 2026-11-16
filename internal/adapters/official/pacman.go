@@ -200,10 +200,7 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 		return adapters.Result{Success: false}, fmt.Errorf("%w: pacman is not installed", adapters.ErrNotInstalled)
 	}
 
-	before := "unknown"
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		before = info.CurrentVersion
-	}
+	before := a.installedVersion(ctx, pkg)
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "pacman", "-S", "--noconfirm", pkg)
 	if err != nil {
@@ -229,8 +226,8 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 	}
 
 	after := before
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		after = info.CurrentVersion
+	if v := a.installedVersion(ctx, pkg); v != "unknown" {
+		after = v
 	}
 
 	return adapters.Result{
@@ -239,4 +236,8 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 		After:      after,
 		Privileges: []string{"sudo"},
 	}, nil
+}
+
+func (a *PacmanAdapter) installedVersion(ctx context.Context, pkg string) string {
+	return parsePacmanQOutput(commandOutput(ctx, "pacman", "-Q", pkg))
 }
