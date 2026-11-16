@@ -2,6 +2,8 @@ package output
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"os"
 	"slices"
@@ -509,5 +511,93 @@ func TestSelector_BareEsc_NonBlocking(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("selector blocked indefinitely waiting on bare Esc key")
+	}
+}
+
+// errAfterReader yields data and then fails with err instead of io.EOF.
+type errAfterReader struct {
+	data []byte
+	err  error
+}
+
+func (r *errAfterReader) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, r.err
+	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, nil
+}
+
+// TestSelector_ReadFailureFailsClosed locks the fail-closed contract: when
+// input ends or breaks before an explicit Enter, nothing is confirmed.
+func TestSelector_ReadFailureFailsClosed(t *testing.T) {
+	opts := []SelectOption{{ID: "brew", Label: "brew"}, {ID: "npm", Label: "npm"}}
+	readErr := errors.New("broken pipe")
+
+	tests := []struct {
+		name    string
+		r       io.Reader
+		wantErr error
+	}{
+		{name: "EOF before Enter cancels", r: strings.NewReader(" "), wantErr: nil},
+		{name: "empty input cancels", r: strings.NewReader(""), wantErr: nil},
+		{name: "read error cancels and is reported", r: &errAfterReader{data: []byte(" "), err: readErr}, wantErr: readErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			res, err := NewCheckboxSelector(&buf, tt.r, opts).Run()
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if !res.Canceled {
+				t.Errorf("Canceled = false, want true")
+			}
+			if len(res.Selected) != 0 {
+				t.Errorf("Selected = %v, want none", res.Selected)
+			}
+		})
+	}
+}
+
+// TestSelector_ContextCancelRestoresCursor verifies that canceling the
+// context unblocks a pending read, cancels the selection and restores the
+// cursor even though the input never produces another byte.
+func TestSelector_ContextCancelRestoresCursor(t *testing.T) {
+	opts := []SelectOption{{ID: "brew", Label: "brew"}}
+	pr, pw := io.Pipe()
+	defer func() { _ = pw.Close(); _ = pr.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var buf bytes.Buffer
+	sel := NewCheckboxSelector(&buf, pr, opts).WithColor(true)
+
+	type out struct {
+		res SelectResult
+		err error
+	}
+	done := make(chan out, 1)
+	go func() {
+		res, err := sel.RunContext(ctx)
+		done <- out{res, err}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case o := <-done:
+		if !o.res.Canceled {
+			t.Errorf("Canceled = false, want true")
+		}
+		if !errors.Is(o.err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", o.err)
+		}
+		if !strings.Contains(buf.String(), "\x1b[?25h") {
+			t.Errorf("cursor not restored, output: %q", buf.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunContext did not return after context cancellation")
 	}
 }

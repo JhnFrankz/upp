@@ -725,6 +725,18 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "1.22.0", LatestVersion: "1.27.1", UpdateAvailable: true},
 		},
 		{
+			name:    "go/linux-standalone-network-error-surfaces",
+			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
+			goos:    "linux",
+			fakes: execFakes{
+				lookPath:        map[string]bool{"go": true},
+				cmdArgs:         map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
+				goDevVersionErr: errors.New("network unreachable"),
+			},
+			wantErr:         true,
+			wantErrContains: "go latest version check failed",
+		},
+		{
 			name:    "go/linux-standalone-already-latest",
 			newAdpt: func() adapters.Adapter { return &GoAdapter{} },
 			goos:    "linux",
@@ -819,14 +831,15 @@ func TestCheck(t *testing.T) {
 			want: adapters.UpdateInfo{CurrentVersion: "v1.18.31", LatestVersion: "v1.18.31", UpdateAvailable: false},
 		},
 		{
-			name:    "opencode/network-error-fallback",
+			name:    "opencode/network-error-surfaces",
 			newAdpt: func() adapters.Adapter { return &OpenCodeAdapter{} },
 			fakes: execFakes{
 				lookPath:       map[string]bool{"opencode": true},
 				cmdArgs:        map[string]fakeResult{"opencode": {stdout: "opencode v0.3.6"}},
 				opencodeTagErr: errors.New("network unreachable"),
 			},
-			want: adapters.UpdateInfo{CurrentVersion: "v0.3.6", LatestVersion: "v0.3.6", UpdateAvailable: false},
+			wantErr:         true,
+			wantErrContains: "opencode latest version check failed",
 		},
 		{
 			name:    "opencode/empty-output",

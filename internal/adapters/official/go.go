@@ -64,7 +64,11 @@ func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		}, nil
 	}
 
-	if raw, err := goDevVersionFn(ctx); err == nil && raw != "" {
+	raw, err := goDevVersionFn(ctx)
+	if err != nil {
+		return adapters.UpdateInfo{}, fmt.Errorf("go latest version check failed: %w", err)
+	}
+	if raw != "" {
 		if v := extractGoVersion(raw); v != "" {
 			latest = v
 			updateAvailable = current != "" && semverCompare(current, latest)

@@ -250,7 +250,7 @@ func runUpdateInteractive(s *UpdateSession, filteredAdapters []adapters.Adapter)
 	selector := s.Selector
 	if selector == nil {
 		selector = func(opts []output.SelectOption) ([]string, bool) {
-			res, err := output.NewCheckboxSelector(s.Out, s.In, opts).Run()
+			res, err := output.NewCheckboxSelector(s.Out, s.In, opts).RunContext(s.Ctx)
 			if err != nil {
 				return nil, true
 			}

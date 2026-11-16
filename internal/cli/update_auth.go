@@ -86,7 +86,7 @@ func authorizeChecks(gf *GlobalFlags, adapterList []adapters.Adapter, r output.L
 			TrustLevel: info.Trust,
 			RiskLevel:  security.ClassifyCommand(info.CheckCommand),
 			Command:    info.CheckCommand,
-			Privileges: info.Privileges,
+			Privileges: security.DetectPrivileges(info.CheckCommand),
 			CI:         gf.CI,
 			Quiet:      gf.Quiet,
 			Reader:     in,
