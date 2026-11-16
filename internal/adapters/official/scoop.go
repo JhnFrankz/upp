@@ -12,6 +12,15 @@ import (
 // ScoopAdapter manages Scoop packages on Windows.
 type ScoopAdapter struct{}
 
+var scoopStatusQuery coalescedQuery
+
+func scoopStatusOutput(ctx context.Context) string {
+	out, _ := scoopStatusQuery.run(ctx, func(c context.Context) (string, error) {
+		return commandOutput(c, "scoop", "status"), nil
+	})
+	return out
+}
+
 // scoopSelfUpdateCmd is scoop's real self-update command — declared by Info()
 // and executed by Update() (design D2 single source of truth).
 const (
@@ -38,7 +47,7 @@ func (a *ScoopAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// current-only and reports no availability, no error.
 	current := "unknown"
 	latest := "unknown"
-	if out := commandOutput(ctx, "scoop", "status"); out != "" {
+	if out := scoopStatusOutput(ctx); out != "" {
 		if cur, lat, ok := parseScoopStatusOutput(out); ok {
 			current = cur
 			latest = lat
@@ -58,7 +67,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}
 
 	before := "unknown"
-	if out := commandOutput(ctx, "scoop", "status"); out != "" {
+	if out := scoopStatusOutput(ctx); out != "" {
 		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
 			before = cur
 		}
@@ -76,6 +85,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	// packages it manages. A bulk `scoop update *` (which updates every
 	// app) is intentionally avoided — self-only semantics per point 4.
 	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", "scoop")
+	scoopStatusQuery.invalidate()
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -97,7 +107,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}
 
 	after := before
-	if out := commandOutput(ctx, "scoop", "status"); out != "" {
+	if out := scoopStatusOutput(ctx); out != "" {
 		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
 			after = cur
 		}
@@ -119,7 +129,7 @@ func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.U
 	current := "unknown"
 	latest := "unknown"
 	found := false
-	if out := commandOutput(ctx, "scoop", "status"); out != "" {
+	if out := scoopStatusOutput(ctx); out != "" {
 		if cur, lat, ok := parseScoopPackageStatusOutput(out, pkg); ok {
 			current = cur
 			latest = lat
@@ -146,6 +156,7 @@ func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", pkg)
+	scoopStatusQuery.invalidate()
 	if err != nil {
 		return adapters.Result{
 			Success: false,

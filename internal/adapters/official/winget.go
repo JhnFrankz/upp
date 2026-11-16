@@ -12,6 +12,14 @@ import (
 // WingetAdapter manages Windows Package Manager packages.
 type WingetAdapter struct{}
 
+var wingetUpgradeQuery coalescedQuery
+
+func wingetUpgradeOutput(ctx context.Context) (string, error) {
+	return wingetUpgradeQuery.run(ctx, func(c context.Context) (string, error) {
+		return commandOutputErr(c, "winget", "upgrade")
+	})
+}
+
 // wingetSelfUpdateCmd is winget's real self-update command — declared by
 // Info() and executed by Update() (design D2 single source of truth).
 const wingetSelfUpdateCmd = "winget upgrade winget"
@@ -44,7 +52,7 @@ func (a *WingetAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) 
 
 	latest := current
 	found := false
-	if out := commandOutput(ctx, "winget", "upgrade"); out != "" {
+	if out, err := wingetUpgradeOutput(ctx); err == nil && out != "" {
 		if _, lat, ok := parseWingetUpgradeOutput(out); ok && lat != "" {
 			latest = lat
 			found = true
@@ -74,7 +82,7 @@ func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
 	}
-	stdout, err := commandOutputErr(ctx, "winget", "upgrade")
+	stdout, err := wingetUpgradeOutput(ctx)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -102,6 +110,7 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", pkg)
+	wingetUpgradeQuery.invalidate()
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -157,6 +166,7 @@ func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	// itself (equiv. Microsoft.AppInstaller), never the packages it manages.
 	// A bulk `winget upgrade --all` is intentionally avoided.
 	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", "winget")
+	wingetUpgradeQuery.invalidate()
 	if err != nil {
 		return adapters.Result{
 			Success: false,
