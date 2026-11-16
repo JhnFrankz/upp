@@ -240,7 +240,8 @@ func manualRemoveCommand(goos string, t uninstall.Target) string {
 func shellQuote(p string) string {
 	plain := p != ""
 	for _, c := range p {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("/._-+:@%=,", c)) {
+		isAlnum := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+		if !isAlnum && !strings.ContainsRune("/._-+:@%=,", c) {
 			plain = false
 			break
 		}
