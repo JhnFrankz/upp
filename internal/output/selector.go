@@ -2,6 +2,8 @@ package output
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -56,12 +58,50 @@ func (s *CheckboxSelector) WithColor(color bool) *CheckboxSelector {
 	return s
 }
 
-// Run renders the selector and processes keys until Enter (confirm), Esc/q
-// (cancel), or the reader is exhausted. For a *os.File reader the terminal is
+// Run is RunContext with a background context.
+func (s *CheckboxSelector) Run() (SelectResult, error) {
+	return s.RunContext(context.Background())
+}
+
+// ctxReader makes a blocking Read abortable by ctx. A Read pending when ctx
+// is cancelled is abandoned (its goroutine ends with the process or when the
+// underlying reader unblocks); callers must not reuse the reader afterwards.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	type result struct {
+		n   int
+		err error
+	}
+	ch := make(chan result, 1)
+	buf := make([]byte, len(p))
+	go func() {
+		n, err := c.r.Read(buf)
+		ch <- result{n, err}
+	}()
+	select {
+	case res := <-ch:
+		copy(p, buf[:res.n])
+		return res.n, res.err
+	case <-c.ctx.Done():
+		return 0, c.ctx.Err()
+	}
+}
+
+// RunContext renders the selector and processes keys until Enter (confirm),
+// Esc/q (cancel), ctx is cancelled, or input fails. It fails closed: end of
+// input or a read error before an explicit Enter cancels the selection
+// instead of confirming the pre-checked tools. For a *os.File reader the terminal is
 // put into raw mode first and restored on every exit path (confirm, cancel,
 // error, panic) via defer — the threat-matrix contract for terminal state.
 // Non-File readers (bytes.Buffer in tests, pipes) skip raw mode entirely.
-func (s *CheckboxSelector) Run() (SelectResult, error) {
+func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error) {
 	if f, ok := s.r.(*os.File); ok {
 		state, err := makeRawFn(int(f.Fd()))
 		if err != nil {
@@ -167,12 +207,15 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 		return ids
 	}
 
-	br := bufio.NewReader(s.r)
+	br := bufio.NewReader(ctxReader{ctx: ctx, r: s.r})
 	render()
 	for {
 		b, err := br.ReadByte()
 		if err != nil {
-			return SelectResult{Selected: collect()}, nil
+			if errors.Is(err, io.EOF) {
+				return SelectResult{Canceled: true}, nil
+			}
+			return SelectResult{Canceled: true}, err
 		}
 		switch b {
 		case '\r', '\n':
