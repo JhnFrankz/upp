@@ -9,6 +9,17 @@ import (
 	"unicode/utf8"
 )
 
+// DECAWM (auto-wrap) control. In-place redraws move the cursor with relative
+// row counts, which assumes one physical row per logical row. Each frame is
+// bracketed by these sequences so an over-wide row is cut at the right edge
+// instead of wrapping and desynchronizing the cursor. Re-enabling at the end
+// of every frame (never held across frames) means a crash between frames can
+// not leave the terminal with wrapping off.
+const (
+	noWrapOn  = "\x1b[?7l"
+	noWrapOff = "\x1b[?7h"
+)
+
 // CheckBoard paints a live pre-check board: exactly one stable line per
 // filtered tool, laid out in canonical tool discovery order, flipping each
 // line in place as its check completes (design D4).
@@ -55,12 +66,14 @@ func (b *CheckBoard) Start() {
 		return
 	}
 	var sb strings.Builder
+	sb.WriteString(noWrapOn)
 	for i, line := range b.lines {
 		sb.WriteString(line)
 		if i < len(b.lines)-1 {
 			sb.WriteByte('\n')
 		}
 	}
+	sb.WriteString(noWrapOff)
 	_, _ = io.WriteString(b.w, sb.String())
 }
 
@@ -110,6 +123,7 @@ func (b *CheckBoard) rewriteRow(index int) {
 	up := len(b.lines) - 1 - index
 	row := b.lines[index]
 	b.scratch = b.scratch[:0]
+	b.scratch = append(b.scratch, noWrapOn...)
 	b.scratch = append(b.scratch, '\r')
 	if up > 0 {
 		b.scratch = append(b.scratch, "\x1b["...)
@@ -124,6 +138,7 @@ func (b *CheckBoard) rewriteRow(index int) {
 		b.scratch = append(b.scratch, 'B')
 	}
 	b.scratch = append(b.scratch, '\r')
+	b.scratch = append(b.scratch, noWrapOff...)
 	_, _ = b.w.Write(b.scratch)
 }
 

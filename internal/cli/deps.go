@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/JhnFrankz/upp/internal/lock"
 )
 
@@ -26,7 +24,6 @@ var cliDeps = struct {
 }{
 	init: initDeps{
 		acquireLock: defaultAcquireLock,
-		scanPrompt:  defaultScanPrompt,
 	},
 }
 
@@ -36,10 +33,4 @@ func defaultAcquireLock() (*lock.Lock, error) {
 		return nil, err
 	}
 	return lock.Acquire(path)
-}
-
-func defaultScanPrompt() string {
-	var response string
-	_, _ = fmt.Scanln(&response)
-	return response
 }

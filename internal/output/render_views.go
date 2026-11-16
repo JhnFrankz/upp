@@ -175,6 +175,9 @@ func (r *Renderer) DashboardNoConfig(version, platform string) {
 
 // InitHeader prints the init wizard header.
 func (r *Renderer) InitHeader() {
+	if r.quiet {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w, "upp init — detecting installed tools...")
@@ -183,6 +186,9 @@ func (r *Renderer) InitHeader() {
 
 // InitDetected prints a detected tool.
 func (r *Renderer) InitDetected(name string) {
+	if r.quiet {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, _ = fmt.Fprintf(r.w, "  %s %s\n", r.statusIcon(StatusCurrent), r.cyan(name))
@@ -190,6 +196,9 @@ func (r *Renderer) InitDetected(name string) {
 
 // InitConfigGenerated prints the config generated message.
 func (r *Renderer) InitConfigGenerated(path string) {
+	if r.quiet {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, _ = fmt.Fprintln(r.w)
