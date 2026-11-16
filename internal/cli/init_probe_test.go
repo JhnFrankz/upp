@@ -45,8 +45,10 @@ func runInitCmd(t *testing.T, stdin string, args ...string) (string, error) {
 //     First-run state comes from explicit file existence, never applied
 //     defaults (config-system).
 //   - Existing config, interactive: the overwrite prompt appears and only an
-//     explicit y/yes rewrites. Anything else — including EOF on a non-TTY —
-//     cancels with exit 0 and leaves the file byte-for-byte unchanged.
+//     explicit y/yes rewrites. Any other answer cancels with exit 0 and leaves
+//     the file byte-for-byte unchanged. Input that ends before any answer
+//     (EOF: pipe, cron, closed stdin) is DENIED with ErrInitNonInteractive and
+//     a non-zero exit instead of being mistaken for a "no".
 //   - Existing config, --ci: DENIED before any work with ErrInitDeniedCI and a
 //     non-zero exit. --ci can never answer the prompt, and the doctrine
 //     (security.ConfirmAction, self-update Confirmation Gate) is to deny rather
@@ -90,9 +92,18 @@ func TestInitProbe_ConfigGateMatrix(t *testing.T) {
 			wantUntouched: true,
 		},
 		{
-			name:          "existing config, interactive EOF cancels",
+			name:          "existing config, non-interactive EOF is denied",
 			preexisting:   true,
 			stdin:         "",
+			wantErrIs:     ErrInitNonInteractive,
+			wantErrText:   "interactively",
+			wantPrompt:    true,
+			wantUntouched: true,
+		},
+		{
+			name:          "existing config, bare Enter cancels",
+			preexisting:   true,
+			stdin:         "\n",
 			wantPrompt:    true,
 			wantUntouched: true,
 		},
@@ -186,5 +197,51 @@ func TestInit_ContextCanceled(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("runInit(canceled): error = %v, want errors.Is context.Canceled", err)
+	}
+}
+
+// TestInitProbe_QuietSuppressesChrome pins that `upp init -q` prints no banner,
+// detected-tool lines or completion message (like list/update/doctor) while
+// still writing the config.
+func TestInitProbe_QuietSuppressesChrome(t *testing.T) {
+	probeHome(t)
+	out, err := runInitCmd(t, "", "-q")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("quiet init must print nothing, got: %q", out)
+	}
+	cfgPath, perr := config.ConfigPath()
+	if perr != nil {
+		t.Fatal(perr)
+	}
+	if _, serr := os.Stat(cfgPath); serr != nil {
+		t.Errorf("quiet init must still write the config: %v", serr)
+	}
+}
+
+func TestReadConfirmation(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr error
+	}{
+		{name: "answer with newline", in: "y\n", want: "y"},
+		{name: "answer without newline at EOF", in: "yes", want: "yes"},
+		{name: "bare Enter is an empty answer", in: "\n", want: ""},
+		{name: "immediate EOF is non-interactive", in: "", wantErr: ErrInitNonInteractive},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := readConfirmation(strings.NewReader(tc.in))
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

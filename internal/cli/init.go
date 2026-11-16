@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -23,10 +24,26 @@ import (
 // Gate — never auto-proceed, never hang, never silently skip.
 var ErrInitDeniedCI = errors.New("init denied in --ci mode")
 
+// ErrInitNonInteractive is returned when `upp init` must confirm an overwrite
+// but its input ends before any answer (pipe, cron, closed stdin). Treating
+// that EOF as "no" would hide the fact that nothing could be confirmed.
+var ErrInitNonInteractive = errors.New("init cannot confirm the overwrite without interactive input")
+
 type initDeps struct {
 	acquireLock func() (*lock.Lock, error)
-	scanPrompt  func() string
+	scanPrompt  func() string // test override; nil reads the answer from in
+	in          io.Reader
 	out         io.Writer
+}
+
+// readConfirmation reads one answer line from in. Input that ends before any
+// byte is read is ErrInitNonInteractive; a bare Enter is an empty answer.
+func readConfirmation(in io.Reader) (string, error) {
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && line == "" {
+		return "", ErrInitNonInteractive
+	}
+	return strings.TrimSpace(line), nil
 }
 
 // NewInitCommand creates the `upp init` command.
@@ -39,6 +56,9 @@ func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 			d := cliDeps.init
 			if d.out == nil {
 				d.out = cmd.OutOrStdout()
+			}
+			if d.in == nil {
+				d.in = cmd.InOrStdin()
 			}
 			return runInit(cmd.Context(), gf, d)
 		},
@@ -110,11 +130,21 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		_, _ = fmt.Fprintln(out)
 		_, _ = fmt.Fprintln(out, "  Config already exists. Overwrite with new detection?")
 		_, _ = fmt.Fprint(out, "  [y/N] ")
-		scanFn := deps.scanPrompt
-		if scanFn == nil {
-			scanFn = defaultScanPrompt
+		var response string
+		if deps.scanPrompt != nil {
+			response = deps.scanPrompt()
+		} else {
+			in := deps.in
+			if in == nil {
+				in = os.Stdin
+			}
+			var err error
+			response, err = readConfirmation(in)
+			if err != nil {
+				_, _ = fmt.Fprintln(out)
+				return fmt.Errorf("%w: rerun `upp init` interactively to confirm the overwrite", err)
+			}
 		}
-		response := scanFn()
 		norm := strings.ToLower(strings.TrimSpace(response))
 		if norm != "y" && norm != "yes" {
 			_, _ = fmt.Fprintln(out, "  Canceled.")
