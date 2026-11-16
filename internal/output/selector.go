@@ -133,6 +133,9 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 	render := func() {
 		var sb strings.Builder
 		sb.Grow(len(s.opts)*80 + 64)
+		if useColor {
+			sb.WriteString(noWrapOn)
+		}
 		if useColor && linesRendered > 0 {
 			sb.WriteString("\x1b[")
 			sb.WriteString(strconv.Itoa(linesRendered))
@@ -194,6 +197,9 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 			currentLines++
 		}
 		linesRendered = currentLines
+		if useColor {
+			sb.WriteString(noWrapOff)
+		}
 		_, _ = io.WriteString(s.w, sb.String())
 	}
 

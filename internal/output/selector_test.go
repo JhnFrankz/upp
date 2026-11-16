@@ -601,3 +601,70 @@ func TestSelector_ContextCancelRestoresCursor(t *testing.T) {
 		t.Fatal("RunContext did not return after context cancellation")
 	}
 }
+
+// writeRecorder captures each Write call separately so tests can assert on
+// per-frame framing.
+type writeRecorder struct{ writes []string }
+
+func (w *writeRecorder) Write(p []byte) (int, error) {
+	w.writes = append(w.writes, string(p))
+	return len(p), nil
+}
+
+// TestInPlaceFramesDisableLineWrap pins that every in-place redraw frame in
+// color mode is bracketed by DECAWM off/on, so a row wider than the terminal
+// is cut instead of wrapping onto a second physical row and desynchronizing
+// the relative cursor math (\x1b[<n>A). Plain mode never emits it.
+func TestInPlaceFramesDisableLineWrap(t *testing.T) {
+	const off, on = "\x1b[?7l", "\x1b[?7h"
+	frameOK := func(t *testing.T, frame string) {
+		t.Helper()
+		if !strings.HasPrefix(frame, off) || !strings.HasSuffix(frame, on) {
+			t.Errorf("frame not bracketed by no-wrap: %q", frame)
+		}
+	}
+
+	t.Run("board start and rewrite", func(t *testing.T) {
+		rec := &writeRecorder{}
+		b := NewCheckBoard(rec, true, []string{"a", "b"})
+		b.Start()
+		b.Complete(0, ToolResult{Name: "a", Status: StatusCurrent})
+		if len(rec.writes) != 2 {
+			t.Fatalf("writes = %d, want 2: %q", len(rec.writes), rec.writes)
+		}
+		for _, f := range rec.writes {
+			frameOK(t, f)
+		}
+	})
+
+	t.Run("selector redraw frames", func(t *testing.T) {
+		rec := &writeRecorder{}
+		opts := []SelectOption{{ID: "a", Label: "a"}, {ID: "b", Label: "b"}}
+		_, err := NewCheckboxSelector(rec, strings.NewReader(" \r"), opts).WithColor(true).Run()
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames := 0
+		for _, f := range rec.writes {
+			if strings.Contains(f, "▶") {
+				frames++
+				frameOK(t, f)
+			}
+		}
+		if frames < 2 {
+			t.Errorf("expected at least 2 render frames, got %d", frames)
+		}
+	})
+
+	t.Run("plain mode emits no wrap control", func(t *testing.T) {
+		rec := &writeRecorder{}
+		b := NewCheckBoard(rec, false, []string{"a"})
+		b.Start()
+		b.Complete(0, ToolResult{Name: "a", Status: StatusCurrent})
+		for _, f := range rec.writes {
+			if strings.Contains(f, "\x1b[?7") {
+				t.Errorf("plain mode leaked wrap control: %q", f)
+			}
+		}
+	})
+}
