@@ -74,7 +74,11 @@ func (a *OpenCodeAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error
 	latest := current
 	updateAvailable := false
 
-	if tag, err := opencodeLatestTagFn(ctx); err == nil && tag != "" {
+	tag, err := opencodeLatestTagFn(ctx)
+	if err != nil {
+		return adapters.UpdateInfo{}, fmt.Errorf("opencode latest version check failed: %w", err)
+	}
+	if tag != "" {
 		if v := extractVersion(tag); v != "" {
 			latest = v
 			updateAvailable = current != "" && semverCompare(current, latest)
