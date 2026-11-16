@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -204,12 +205,48 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 
 	if len(errs) > 0 {
 		for _, e := range errs {
-			r.Warning(fmt.Sprintf("could not remove %s (%s): %v. Run manual command: sudo rm -rf %s",
-				e.Target.Type, e.Target.Path, e.Err, e.Target.Path))
+			r.Warning(fmt.Sprintf("could not remove %s (%s): %v. Run manual command: %s",
+				e.Target.Type, e.Target.Path, e.Err, manualRemoveCommand(runtime.GOOS, e.Target)))
 		}
 		return errors.New("uninstall completed with warnings; some files could not be removed due to permissions")
 	}
 
 	r.UninstallDone()
 	return nil
+}
+
+// manualRemoveCommand returns the command a user can run by hand to remove a
+// target that upp could not delete. It is only ever printed, never executed.
+// Binaries and backups are single files (no recursion); config and cache
+// targets are directories. Windows gets a PowerShell command, other systems a
+// sudo rm, since the usual failure there is a permission denial.
+func manualRemoveCommand(goos string, t uninstall.Target) string {
+	recursive := t.Type != uninstall.TargetBinary && t.Type != uninstall.TargetBackup
+	if goos == "windows" {
+		flags := "-Force"
+		if recursive {
+			flags = "-Force -Recurse"
+		}
+		return "Remove-Item " + flags + " -LiteralPath '" + strings.ReplaceAll(t.Path, "'", "''") + "'"
+	}
+	flags := "-f"
+	if recursive {
+		flags = "-rf"
+	}
+	return "sudo rm " + flags + " " + shellQuote(t.Path)
+}
+
+// shellQuote leaves plain paths untouched and single-quotes anything else.
+func shellQuote(p string) string {
+	plain := p != ""
+	for _, c := range p {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("/._-+:@%=,", c)) {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		return p
+	}
+	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }

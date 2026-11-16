@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -162,8 +163,38 @@ func TestUninstall_PartialFailureWithWarnings(t *testing.T) {
 	if !strings.Contains(out, "could not remove binary (/usr/local/bin/upp)") {
 		t.Errorf("expected warning about binary, got: %s", out)
 	}
-	if !strings.Contains(out, "sudo rm -rf /usr/local/bin/upp") {
-		t.Errorf("expected manual remediation suggestion, got: %s", out)
+	want := manualRemoveCommand(runtime.GOOS, uninstall.Target{Type: uninstall.TargetBinary, Path: "/usr/local/bin/upp"})
+	if !strings.Contains(out, "Run manual command: "+want) {
+		t.Errorf("expected manual remediation %q, got: %s", want, out)
+	}
+	if runtime.GOOS != "windows" && strings.Contains(out, "rm -rf /usr/local/bin/upp") {
+		t.Errorf("a single binary must not be removed recursively, got: %s", out)
+	}
+}
+
+func TestManualRemoveCommand(t *testing.T) {
+	tests := []struct {
+		name   string
+		goos   string
+		target uninstall.Target
+		want   string
+	}{
+		{"linux binary", "linux", uninstall.Target{Type: uninstall.TargetBinary, Path: "/usr/local/bin/upp"}, "sudo rm -f /usr/local/bin/upp"},
+		{"darwin backup", "darwin", uninstall.Target{Type: uninstall.TargetBackup, Path: "/usr/local/bin/upp.backup.1"}, "sudo rm -f /usr/local/bin/upp.backup.1"},
+		{"linux config dir", "linux", uninstall.Target{Type: uninstall.TargetConfig, Path: "/home/u/.config/upp"}, "sudo rm -rf /home/u/.config/upp"},
+		{"linux cache dir", "linux", uninstall.Target{Type: uninstall.TargetCache, Path: "/home/u/.cache/upp"}, "sudo rm -rf /home/u/.cache/upp"},
+		{"unix path with spaces is quoted", "linux", uninstall.Target{Type: uninstall.TargetBinary, Path: "/opt/my tools/upp"}, "sudo rm -f '/opt/my tools/upp'"},
+		{"unix path with quote is escaped", "linux", uninstall.Target{Type: uninstall.TargetBinary, Path: "/opt/it's/upp"}, `sudo rm -f '/opt/it'\''s/upp'`},
+		{"windows binary", "windows", uninstall.Target{Type: uninstall.TargetBinary, Path: `C:\Tools\upp.exe`}, `Remove-Item -Force -LiteralPath 'C:\Tools\upp.exe'`},
+		{"windows config dir", "windows", uninstall.Target{Type: uninstall.TargetConfig, Path: `C:\Users\u\AppData\upp`}, `Remove-Item -Force -Recurse -LiteralPath 'C:\Users\u\AppData\upp'`},
+		{"windows quote is doubled", "windows", uninstall.Target{Type: uninstall.TargetBinary, Path: `C:\it's\upp.exe`}, `Remove-Item -Force -LiteralPath 'C:\it''s\upp.exe'`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := manualRemoveCommand(tc.goos, tc.target); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -85,7 +85,7 @@ Filtering rules for `--only`:
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Fresh install | No config | `upp init` | Detects tools, generates config |
-| Existing config | Config exists | `upp init` | Prompts: overwrite, merge, or cancel |
+| Existing config | Config exists | `upp init` | Prompts to overwrite (y/N); input that ends before an answer (EOF) is denied with a non-zero exit |
 | `--ci` mode | No config | `upp init --ci` | Generates config with all detected tools, no prompts |
 | `--ci` existing config | Config exists | `upp init --ci` | Deny message naming `--ci`, exit non-zero, config file byte-for-byte unchanged |
 
