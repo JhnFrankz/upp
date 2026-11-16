@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -118,8 +120,9 @@ func lookPath(name string) bool {
 }
 
 var (
-	linuxManagerMu     sync.RWMutex
-	cachedLinuxManager string
+	linuxManagerMu         sync.RWMutex
+	cachedLinuxManager     string
+	cachedLinuxManagerPath string
 )
 
 // defaultLinuxManager resolves the default Linux package manager for official tools.
@@ -128,8 +131,9 @@ func defaultLinuxManager() string {
 	if runtimeGOOSFn() != "linux" {
 		return "apt"
 	}
+	pathEnv := os.Getenv("PATH")
 	linuxManagerMu.RLock()
-	if cachedLinuxManager != "" {
+	if cachedLinuxManager != "" && cachedLinuxManagerPath == pathEnv {
 		mgr := cachedLinuxManager
 		linuxManagerMu.RUnlock()
 		return mgr
@@ -138,7 +142,7 @@ func defaultLinuxManager() string {
 
 	linuxManagerMu.Lock()
 	defer linuxManagerMu.Unlock()
-	if cachedLinuxManager != "" {
+	if cachedLinuxManager != "" && cachedLinuxManagerPath == pathEnv {
 		return cachedLinuxManager
 	}
 	mgr := "apt"
@@ -146,6 +150,7 @@ func defaultLinuxManager() string {
 		mgr = "pacman"
 	}
 	cachedLinuxManager = mgr
+	cachedLinuxManagerPath = pathEnv
 	return mgr
 }
 
@@ -330,4 +335,73 @@ func DelegatedUpdate(ctx context.Context, a adapters.Adapter, dryRun bool) (adap
 		Success: false,
 		Error:   fmt.Errorf("%w: %s has no resolving owner on %s", adapters.ErrNoResolvingOwner, a.Name(), runtimeGOOSFn()),
 	}, nil
+}
+
+const defaultQueryCacheTTL = 5 * time.Second
+
+type queryCall struct {
+	done chan struct{}
+	out  string
+	err  error
+}
+
+// coalescedQuery deduplicates concurrent executions of an expensive read-only
+// manager listing (e.g. `winget upgrade` or `scoop status`) and caches the
+// result for a short TTL within the same check cycle.
+type coalescedQuery struct {
+	mu       sync.Mutex
+	inflight *queryCall
+	out      string
+	err      error
+	cachedAt time.Time
+	hasCache bool
+}
+
+func (q *coalescedQuery) run(ctx context.Context, fn func(context.Context) (string, error)) (string, error) {
+	q.mu.Lock()
+	if q.hasCache && time.Since(q.cachedAt) < defaultQueryCacheTTL {
+		out, err := q.out, q.err
+		q.mu.Unlock()
+		return out, err
+	}
+	if q.inflight != nil {
+		call := q.inflight
+		q.mu.Unlock()
+		select {
+		case <-call.done:
+			return call.out, call.err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	call := &queryCall{done: make(chan struct{})}
+	q.inflight = call
+	q.mu.Unlock()
+
+	out, err := fn(ctx)
+
+	q.mu.Lock()
+	call.out = out
+	call.err = err
+	if q.inflight == call {
+		q.inflight = nil
+		if err == nil {
+			q.out = out
+			q.err = nil
+			q.cachedAt = time.Now()
+			q.hasCache = true
+		}
+	}
+	close(call.done)
+	q.mu.Unlock()
+	return out, err
+}
+
+func (q *coalescedQuery) invalidate() {
+	q.mu.Lock()
+	q.inflight = nil
+	q.out = ""
+	q.err = nil
+	q.hasCache = false
+	q.mu.Unlock()
 }

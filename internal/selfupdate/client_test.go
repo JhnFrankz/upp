@@ -621,3 +621,37 @@ func TestClient_DownloadClientTimeout(t *testing.T) {
 		}
 	})
 }
+
+func TestNewHTTPClient_PreservesHTTP2AndTimeouts(t *testing.T) {
+	c := newHTTPClient(10 * time.Second)
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport = %T, want *http.Transport", c.Transport)
+	}
+	if !tr.ForceAttemptHTTP2 {
+		t.Error("ForceAttemptHTTP2 = false, want true")
+	}
+	if tr.TLSHandshakeTimeout <= 0 {
+		t.Errorf("TLSHandshakeTimeout = %v, want > 0", tr.TLSHandshakeTimeout)
+	}
+	if tr.IdleConnTimeout <= 0 {
+		t.Errorf("IdleConnTimeout = %v, want > 0", tr.IdleConnTimeout)
+	}
+}
+
+func TestClientGet_RejectsOversizedResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bytes.Repeat([]byte("a"), maxMetaResponseBytes+10))
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client()}
+	_, err := c.get(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("get() error = nil, want size limit error")
+	}
+	if !strings.Contains(err.Error(), "exceeds maximum size") {
+		t.Errorf("err = %v, want 'exceeds maximum size'", err)
+	}
+}

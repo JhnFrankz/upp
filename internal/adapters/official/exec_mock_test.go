@@ -42,8 +42,11 @@ type execFakes struct {
 func resetLinuxManagerCache() {
 	linuxManagerMu.Lock()
 	cachedLinuxManager = ""
+	cachedLinuxManagerPath = ""
 	linuxManagerMu.Unlock()
 	resetGoOwnerCache()
+	wingetUpgradeQuery.invalidate()
+	scoopStatusQuery.invalidate()
 }
 
 // setExecFakes swaps the package exec seam variables (runCmdFn,

@@ -2235,3 +2235,41 @@ func TestGo_LinuxAtomicSwapAndRollback(t *testing.T) {
 		}
 	})
 }
+
+// TestUpdatePackage_PacmanSkipsRemoteSyncAndVercmp verifies that
+// PacmanAdapter.UpdatePackage reads local installed versions via `pacman -Q`
+// without spawning `pacman -Si` or `vercmp`.
+func TestUpdatePackage_PacmanSkipsRemoteSyncAndVercmp(t *testing.T) {
+	var recorded [][]string
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"pacman": true, "vercmp": true},
+		cmdArgs: map[string]fakeResult{
+			"pacman -Q ripgrep":  {stdout: "ripgrep 14.1.0-1\n"},
+			"pacman -Si ripgrep": {stdout: "Version : 14.1.2-1\n"},
+		},
+		shell: map[string]fakeResult{
+			"sudo pacman -S --noconfirm ripgrep": {},
+		},
+	})
+	orig := runCmdArgsFn
+	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+		recorded = append(recorded, append([]string{name}, args...))
+		return orig(ctx, name, args...)
+	}
+
+	res, err := (&PacmanAdapter{}).UpdatePackage(context.Background(), "ripgrep")
+	if err != nil {
+		t.Fatalf("UpdatePackage unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("res.Success = false, want true")
+	}
+	for _, call := range recorded {
+		if len(call) >= 2 && call[0] == "pacman" && call[1] == "-Si" {
+			t.Errorf("unexpected pacman -Si invocation during UpdatePackage: %v", call)
+		}
+		if len(call) >= 1 && call[0] == "vercmp" {
+			t.Errorf("unexpected vercmp invocation during UpdatePackage: %v", call)
+		}
+	}
+}

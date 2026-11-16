@@ -93,13 +93,24 @@ var (
 	defaultDownloadClient = newHTTPClient(downloadTimeout)
 )
 
+const maxMetaResponseBytes = 4 << 20
+
 func newHTTPClient(timeout time.Duration) *http.Client {
+	var tr *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		tr = base.Clone()
+	} else {
+		tr = &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:   true,
+			TLSHandshakeTimeout: 10 * time.Second,
+			IdleConnTimeout:     90 * time.Second,
+		}
+	}
+	tr.DialContext = (&net.Dialer{Timeout: dialTimeout}).DialContext
 	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			Proxy:       http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{Timeout: dialTimeout}).DialContext,
-		},
+		Timeout:       timeout,
+		Transport:     tr,
 		CheckRedirect: checkRedirect,
 	}
 }
@@ -325,7 +336,14 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("selfupdate: download %s failed: HTTP %d", url, resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxMetaResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("selfupdate: download failed: %w", err)
+	}
+	if len(data) > maxMetaResponseBytes {
+		return nil, fmt.Errorf("selfupdate: response from %s exceeds maximum size (%d bytes)", url, maxMetaResponseBytes)
+	}
+	return data, nil
 }
 
 // now returns the injected clock, falling back to the wall clock.
