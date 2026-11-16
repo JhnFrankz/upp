@@ -561,7 +561,7 @@ func TestSelector_ReadFailureFailsClosed(t *testing.T) {
 	}
 }
 
-// TestSelector_ContextCancelRestoresCursor verifies that cancelling the
+// TestSelector_ContextCancelRestoresCursor verifies that canceling the
 // context unblocks a pending read, cancels the selection and restores the
 // cursor even though the input never produces another byte.
 func TestSelector_ContextCancelRestoresCursor(t *testing.T) {

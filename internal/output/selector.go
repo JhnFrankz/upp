@@ -64,7 +64,7 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 }
 
 // ctxReader makes a blocking Read abortable by ctx. A Read pending when ctx
-// is cancelled is abandoned (its goroutine ends with the process or when the
+// is canceled is abandoned (its goroutine ends with the process or when the
 // underlying reader unblocks); callers must not reuse the reader afterwards.
 type ctxReader struct {
 	ctx context.Context
@@ -95,7 +95,7 @@ func (c ctxReader) Read(p []byte) (int, error) {
 }
 
 // RunContext renders the selector and processes keys until Enter (confirm),
-// Esc/q (cancel), ctx is cancelled, or input fails. It fails closed: end of
+// Esc/q (cancel), ctx is canceled, or input fails. It fails closed: end of
 // input or a read error before an explicit Enter cancels the selection
 // instead of confirming the pre-checked tools. For a *os.File reader the terminal is
 // put into raw mode first and restored on every exit path (confirm, cancel,
