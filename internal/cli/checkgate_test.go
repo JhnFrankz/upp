@@ -306,3 +306,55 @@ func TestAuthorizeChecks_CustomAdapterWithPackageCheckerDoesNotPrompt(t *testing
 		t.Fatal("expected CI error for dangerous check command when manager lacks PackageChecker")
 	}
 }
+
+// TestAuthorizeChecks_PrivilegesComeFromCheckCommand pins that the privilege
+// escalation shown to (and weighed by) the gate is the check command's own,
+// not the update command's: a trusted tool that only uses sudo to update must
+// still run a non-sudo medium-risk check under --ci, and a sudo check must be
+// denied even when the update command is unprivileged.
+func TestAuthorizeChecks_PrivilegesComeFromCheckCommand(t *testing.T) {
+	const (
+		mediumCheck = "mytool check && echo ok"
+		sudoCheck   = "sudo mytool check && echo ok"
+	)
+	tests := []struct {
+		name       string
+		check      string
+		updatePriv []string
+		wantRan    bool
+		wantErr    bool
+	}{
+		{name: "sudo only on update does not escalate a non-sudo check", check: mediumCheck, updatePriv: []string{"sudo"}, wantRan: true},
+		{name: "sudo on the check still escalates under --ci", check: sudoCheck, updatePriv: nil, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			spy := &checkGateAdapter{info: adapters.ToolInfo{
+				ID:           "tool",
+				Name:         "tool",
+				Trust:        security.TrustCustomTrusted,
+				UpdatePolicy: adapters.PolicyAlwaysUpdate,
+				Kind:         adapters.KindTool,
+				CheckCommand: tc.check,
+				Privileges:   tc.updatePriv,
+			}}
+			r := output.NewRenderer(io.Discard, false)
+			kept, err := authorizeChecks(&GlobalFlags{CI: true}, []adapters.Adapter{spy}, r, strings.NewReader(""), io.Discard)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected --ci error for a privileged check command")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if _, cerr := kept[0].Check(context.Background()); cerr != nil {
+				t.Fatalf("Check error: %v", cerr)
+			}
+			if spy.checkRan != tc.wantRan {
+				t.Errorf("checkRan = %v, want %v", spy.checkRan, tc.wantRan)
+			}
+		})
+	}
+}
