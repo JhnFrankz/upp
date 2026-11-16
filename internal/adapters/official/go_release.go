@@ -44,14 +44,23 @@ type goDevRelease struct {
 	Files   []goDevFile `json:"files"`
 }
 
+func checkHTTPSRedirect(req *http.Request, _ []*http.Request) error {
+	if req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect to non-HTTPS URL %q", req.URL)
+	}
+	return nil
+}
+
 // defaultGoCheckClient is the shared HTTP client used for checking Go versions and metadata.
 var defaultGoCheckClient = &http.Client{
-	Timeout: adapters.CheckTimeout,
+	Timeout:       adapters.CheckTimeout,
+	CheckRedirect: checkHTTPSRedirect,
 }
 
 // defaultGoDownloadClient is the shared HTTP client used for downloading Go release archives.
 var defaultGoDownloadClient = &http.Client{
-	Timeout: adapters.UpdateTimeout,
+	Timeout:       adapters.UpdateTimeout,
+	CheckRedirect: checkHTTPSRedirect,
 }
 
 // goReleaseURL is the endpoint for Go release metadata.
