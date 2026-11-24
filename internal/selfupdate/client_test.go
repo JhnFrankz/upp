@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -52,31 +51,10 @@ func newReleaseServer(t *testing.T, latestStatus int, latestJSON string, asset, 
 	}))
 }
 
-// newTestClient builds a production-wired Client (NewClient) pointed at
-// ts, with a temp-dir cache path and the deterministic fixedNow clock,
-// and returns the cache path so tests can seed fixtures.
+// newTestClient builds a production-wired Client (NewClient) pointed at ts.
 func newTestClient(t *testing.T, ts *httptest.Server) (*Client, string) {
 	t.Helper()
-	cachePath := filepath.Join(t.TempDir(), "self-update-cache.json")
-	c := NewClient(ts.URL, cachePath)
-	c.Now = func() time.Time { return fixedNow }
-	return c, cachePath
-}
-
-// assertCached verifies the write-through cache at path holds wantTag
-// and is fresh at fixedNow.
-func assertCached(t *testing.T, path, wantTag string) {
-	t.Helper()
-	got, ok := LoadDetectionCache(path)
-	if !ok {
-		t.Fatalf("cache at %s is a miss after write-through", path)
-	}
-	if got.Tag != wantTag {
-		t.Errorf("cached tag = %q, want %q", got.Tag, wantTag)
-	}
-	if !got.Fresh(fixedNow) {
-		t.Errorf("written cache with Fetched %v not fresh at %v", got.Fetched, fixedNow)
-	}
+	return NewClient(ts.URL, ""), ""
 }
 
 func TestCheckRedirectPolicy(t *testing.T) {
@@ -171,127 +149,6 @@ func TestLatestFresh(t *testing.T) {
 		}
 		if got.Tag != "v0.1.1" {
 			t.Errorf("LatestFresh with nil HTTP = %+v, want tag v0.1.1", got)
-		}
-	})
-}
-
-func TestLatestCached(t *testing.T) {
-	t.Run("fresh cache is reused without network", func(t *testing.T) {
-		var reqs atomic.Int32
-		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.2.0"}`, nil, nil, &reqs)
-		defer ts.Close()
-		c, cachePath := newTestClient(t, ts)
-		// 1h old — fresh at fixedNow; tag deliberately differs from the
-		// server's v0.2.0 so a wrong (network) answer is caught.
-		if err := os.WriteFile(cachePath, []byte(`{"version":1,"fetched":"2026-08-12T11:00:00Z","tag":"v0.1.1"}`), 0o644); err != nil {
-			t.Fatalf("seed cache fixture: %v", err)
-		}
-		got, ok := c.LatestCached(context.Background())
-		if !ok {
-			t.Fatal("fresh cache: LatestCached returned false")
-		}
-		if got != "v0.1.1" {
-			t.Errorf("LatestCached = %q, want cached v0.1.1 (server would serve v0.2.0)", got)
-		}
-		if n := reqs.Load(); n != 0 {
-			t.Errorf("fresh cache: %d network requests, want 0", n)
-		}
-	})
-
-	t.Run("stale cache refetches and writes through", func(t *testing.T) {
-		var reqs atomic.Int32
-		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, &reqs)
-		defer ts.Close()
-		c, cachePath := newTestClient(t, ts)
-		// 26h old — stale at fixedNow.
-		if err := os.WriteFile(cachePath, []byte(`{"version":1,"fetched":"2026-08-11T10:00:00Z","tag":"v0.1.0"}`), 0o644); err != nil {
-			t.Fatalf("seed cache fixture: %v", err)
-		}
-		got, ok := c.LatestCached(context.Background())
-		if !ok {
-			t.Fatal("stale cache: LatestCached returned false")
-		}
-		if got != "v0.1.1" {
-			t.Errorf("LatestCached = %q, want fetched v0.1.1", got)
-		}
-		if n := reqs.Load(); n != 1 {
-			t.Errorf("stale cache: %d network requests, want 1", n)
-		}
-		assertCached(t, cachePath, "v0.1.1")
-	})
-
-	t.Run("corrupt cache is a miss and refetches", func(t *testing.T) {
-		var reqs atomic.Int32
-		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, &reqs)
-		defer ts.Close()
-		c, cachePath := newTestClient(t, ts)
-		if err := os.WriteFile(cachePath, []byte("garbage{{{"), 0o644); err != nil {
-			t.Fatalf("seed corrupt fixture: %v", err)
-		}
-		got, ok := c.LatestCached(context.Background())
-		if !ok {
-			t.Fatal("corrupt cache: LatestCached returned false")
-		}
-		if got != "v0.1.1" {
-			t.Errorf("LatestCached = %q, want refetched v0.1.1", got)
-		}
-		if n := reqs.Load(); n != 1 {
-			t.Errorf("corrupt cache: %d network requests, want 1", n)
-		}
-		assertCached(t, cachePath, "v0.1.1")
-	})
-
-	t.Run("api 500 is silent", func(t *testing.T) {
-		ts := newReleaseServer(t, http.StatusInternalServerError, "", nil, nil, nil)
-		defer ts.Close()
-		c, _ := newTestClient(t, ts)
-		if got, ok := c.LatestCached(context.Background()); ok {
-			t.Errorf("LatestCached = (%q, true) on API 500, want silent false", got)
-		}
-	})
-
-	t.Run("malformed body is silent", func(t *testing.T) {
-		ts := newReleaseServer(t, http.StatusOK, "not json", nil, nil, nil)
-		defer ts.Close()
-		c, _ := newTestClient(t, ts)
-		if got, ok := c.LatestCached(context.Background()); ok {
-			t.Errorf("LatestCached = (%q, true) on malformed body, want silent false", got)
-		}
-	})
-
-	t.Run("empty cache path fetches without caching", func(t *testing.T) {
-		var reqs atomic.Int32
-		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, &reqs)
-		defer ts.Close()
-		c := NewClient(ts.URL, "")
-		got, ok := c.LatestCached(context.Background())
-		if !ok {
-			t.Fatal("empty cache path: LatestCached returned false")
-		}
-		if got != "v0.1.1" {
-			t.Errorf("LatestCached = %q, want v0.1.1", got)
-		}
-		if n := reqs.Load(); n != 1 {
-			t.Errorf("empty cache path: %d network requests, want 1", n)
-		}
-	})
-
-	t.Run("cache write failure is silent", func(t *testing.T) {
-		var reqs atomic.Int32
-		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, nil, nil, &reqs)
-		defer ts.Close()
-		// A regular file where the cache's parent directory should be:
-		// SaveDetectionCache's MkdirAll fails, so the write-through fails.
-		blocker := filepath.Join(t.TempDir(), "blocker")
-		if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
-			t.Fatalf("create blocker file: %v", err)
-		}
-		c := NewClient(ts.URL, filepath.Join(blocker, "self-update-cache.json"))
-		if got, ok := c.LatestCached(context.Background()); ok {
-			t.Errorf("LatestCached = (%q, true) despite unwritable cache path, want silent false", got)
-		}
-		if n := reqs.Load(); n != 1 {
-			t.Errorf("cache write failure: %d network requests, want 1 (fetch happened, write failed)", n)
 		}
 	})
 }
@@ -492,13 +349,6 @@ func TestClientTimeouts(t *testing.T) {
 			t.Errorf("error %q is not a timeout error", err)
 		}
 	})
-
-	t.Run("LatestCached stays silent on timeout", func(t *testing.T) {
-		c := &Client{BaseURL: ts.URL, HTTP: &http.Client{Timeout: 50 * time.Millisecond}}
-		if got, ok := c.LatestCached(context.Background()); ok {
-			t.Errorf("LatestCached = (%q, true) on timeout, want silent false", got)
-		}
-	})
 }
 
 func TestClientCancellation(t *testing.T) {
@@ -518,20 +368,6 @@ func TestClientCancellation(t *testing.T) {
 		}
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("LatestFresh: error = %v, want errors.Is context.Canceled", err)
-		}
-		if n := reqs.Load(); n != 0 {
-			t.Errorf("pre-canceled context made %d network requests, want 0", n)
-		}
-	})
-
-	t.Run("LatestCached honors pre-canceled context silently", func(t *testing.T) {
-		reqs.Store(0)
-		c, _ := newTestClient(t, ts)
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		if got, ok := c.LatestCached(ctx); ok {
-			t.Errorf("LatestCached = (%q, true) on canceled context, want silent false", got)
 		}
 		if n := reqs.Load(); n != 0 {
 			t.Errorf("pre-canceled context made %d network requests, want 0", n)

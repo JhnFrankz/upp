@@ -51,9 +51,7 @@ type Release struct {
 // API base (https://api.github.com in production); every path is
 // BaseURL-relative. HTTP is injectable for tests — NewClient installs
 // the production client (10s timeouts, HTTPS-only redirect policy), and
-// a nil HTTP falls back to it. CachePath is the detection-cache file
-// (empty disables caching); Now is the clock for cache freshness (nil
-// falls back to time.Now).
+// a nil HTTP falls back to it.
 //
 // The client remembers the most recently resolved release so Download
 // fetches from that same release (spec R4). A Client is not safe for
@@ -70,8 +68,6 @@ type Client struct {
 	// rely on with a single httptest server.
 	DownloadBaseURL string
 	HTTP            *http.Client
-	CachePath       string
-	Now             func() time.Time
 
 	release Release
 }
@@ -80,12 +76,10 @@ type Client struct {
 // and request timeouts, environment proxies, and the HTTPS-only redirect
 // policy (design D6). Tests construct Client directly with an injected
 // HTTP client instead.
-func NewClient(baseURL, cachePath string) *Client {
+func NewClient(baseURL, _ string) *Client {
 	return &Client{
-		BaseURL:   baseURL,
-		CachePath: cachePath,
-		HTTP:      defaultHTTPClient(),
-		Now:       time.Now,
+		BaseURL: baseURL,
+		HTTP:    defaultHTTPClient(),
 	}
 }
 
@@ -208,43 +202,9 @@ func (c *Client) LatestFresh(ctx context.Context) (Release, error) {
 	return r, nil
 }
 
-// LatestCached returns the latest release tag for the hint path: a fresh
-// cache (< 24h per CacheTTL, decided with the injected Now clock) is
-// reused with no network; otherwise the release is fetched and written
-// through to CachePath. ANY failure — network, parse, or cache write —
-// is silent: it returns false, never an error, so the hint can never
-// fail the run (spec R2: offline silent). An empty CachePath disables
-// caching entirely.
-func (c *Client) LatestCached(ctx context.Context) (string, bool) {
-	if err := ctx.Err(); err != nil {
-		return "", false
-	}
-	now := c.now()
-	if c.CachePath != "" {
-		if cached, ok := LoadDetectionCache(c.CachePath); ok && cached.Fresh(now) {
-			return cached.Tag, true
-		}
-	}
-	r, err := c.fetchLatest(ctx)
-	if err != nil {
-		return "", false
-	}
-	c.release = r
-	if c.CachePath != "" {
-		if err := SaveDetectionCache(c.CachePath, DetectionCache{
-			Version: CacheVersion,
-			Fetched: now,
-			Tag:     r.Tag,
-		}); err != nil {
-			return "", false
-		}
-	}
-	return r.Tag, true
-}
-
 // Download fetches the release asset name and checksums.txt from the
-// same release that LatestFresh (or LatestCached) most recently
-// resolved, both over HTTPS. It streams the asset directly to a temporary
+// same release that LatestFresh most recently resolved, both over HTTPS.
+// It streams the asset directly to a temporary
 // file on disk and returns the file path and checksums bytes.
 func (c *Client) Download(ctx context.Context, name string) (archivePath string, checksums []byte, err error) {
 	if err := ctx.Err(); err != nil {
@@ -356,12 +316,4 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("selfupdate: response from %s exceeds maximum size (%d bytes)", url, maxMetaResponseBytes)
 	}
 	return data, nil
-}
-
-// now returns the injected clock, falling back to the wall clock.
-func (c *Client) now() time.Time {
-	if c.Now != nil {
-		return c.Now()
-	}
-	return time.Now()
 }
