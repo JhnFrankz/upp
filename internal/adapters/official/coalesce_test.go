@@ -298,3 +298,61 @@ func TestDelegatedCheck_PreservesCurrentVersionWhenUpToDate(t *testing.T) {
 		t.Errorf("got %+v, want {CurrentVersion: 2.45.0, LatestVersion: 2.45.0, UpdateAvailable: false}", info)
 	}
 }
+
+func TestBrewCoalesceAndScoopErrorsAndWingetLtVersion(t *testing.T) {
+	t.Run("brew CheckPackage coalesces concurrent calls for same pkg", func(t *testing.T) {
+		var calls atomic.Int32
+		setExecFakes(t, execFakes{
+			goos:     "darwin",
+			lookPath: map[string]bool{"brew": true},
+		})
+		orig := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "brew" && len(args) == 3 && args[0] == "outdated" && args[1] == "--json" && args[2] == "gh" {
+				calls.Add(1)
+				time.Sleep(15 * time.Millisecond)
+				return `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`, "", nil
+			}
+			return orig(ctx, name, args...)
+		}
+
+		b := &BrewAdapter{}
+		var wg sync.WaitGroup
+		wg.Add(3)
+		for i := 0; i < 3; i++ {
+			go func() {
+				defer wg.Done()
+				_, _ = b.CheckPackage(context.Background(), "gh")
+			}()
+		}
+		wg.Wait()
+		if got := calls.Load(); got != 1 {
+			t.Errorf("brew outdated invoked %d times, want 1", got)
+		}
+	})
+
+	t.Run("scoop Check surfaces command errors instead of caching empty output", func(t *testing.T) {
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"scoop": true},
+			cmdArgs: map[string]fakeResult{
+				"scoop status": {err: errors.New("scoop failed"), stderr: "network error"},
+			},
+		})
+		if _, err := (&ScoopAdapter{}).Check(context.Background()); err == nil {
+			t.Fatal("expected ScoopAdapter.Check error, got nil")
+		}
+		if _, err := (&ScoopAdapter{}).CheckPackage(context.Background(), "gh"); err == nil {
+			t.Fatal("expected ScoopAdapter.CheckPackage error, got nil")
+		}
+	})
+
+	t.Run("parseWingetPackageUpgradeOutput handles '< X.Y.Z' installed version", func(t *testing.T) {
+		out := "Name    Id          Version    Available  Source\n" +
+			"-------------------------------------------------\n" +
+			"Git     Git.Git     < 2.40.0   2.45.0     winget\n"
+		cur, lat, found := parseWingetPackageUpgradeOutput(out, "Git.Git")
+		if !found || cur != "2.40.0" || lat != "2.45.0" {
+			t.Errorf("got (%q, %q, %v), want (2.40.0, 2.45.0, true)", cur, lat, found)
+		}
+	})
+}

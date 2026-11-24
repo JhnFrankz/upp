@@ -14,11 +14,10 @@ type ScoopAdapter struct{}
 
 var scoopStatusQuery coalescedQuery
 
-func scoopStatusOutput(ctx context.Context) string {
-	out, _ := scoopStatusQuery.run(ctx, func(c context.Context) (string, error) {
-		return commandOutput(c, "scoop", "status"), nil
+func scoopStatusOutput(ctx context.Context) (string, error) {
+	return scoopStatusQuery.run(ctx, func(c context.Context) (string, error) {
+		return commandOutputErr(c, "scoop", "status")
 	})
-	return out
 }
 
 // scoopSelfUpdateCmd is scoop's real self-update command — declared by Info()
@@ -47,7 +46,11 @@ func (a *ScoopAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// current-only and reports no availability, no error.
 	current := "unknown"
 	latest := "unknown"
-	if out := scoopStatusOutput(ctx); out != "" {
+	out, err := scoopStatusOutput(ctx)
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	if out != "" {
 		if cur, lat, ok := parseScoopStatusOutput(out); ok {
 			current = cur
 			latest = lat
@@ -67,7 +70,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}
 
 	before := "unknown"
-	if out := scoopStatusOutput(ctx); out != "" {
+	if out, err := scoopStatusOutput(ctx); err == nil && out != "" {
 		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
 			before = cur
 		}
@@ -107,7 +110,7 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}
 
 	after := before
-	if out := scoopStatusOutput(ctx); out != "" {
+	if out, err := scoopStatusOutput(ctx); err == nil && out != "" {
 		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
 			after = cur
 		}
@@ -129,7 +132,11 @@ func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.U
 	current := "unknown"
 	latest := "unknown"
 	found := false
-	if out := scoopStatusOutput(ctx); out != "" {
+	out, err := scoopStatusOutput(ctx)
+	if err != nil {
+		return adapters.UpdateInfo{}, err
+	}
+	if out != "" {
 		if cur, lat, ok := parseScoopPackageStatusOutput(out, pkg); ok {
 			current = cur
 			latest = lat

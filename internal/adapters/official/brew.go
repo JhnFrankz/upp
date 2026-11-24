@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -11,6 +12,40 @@ import (
 
 // BrewAdapter manages Homebrew packages on Linux and macOS.
 type BrewAdapter struct{}
+
+var (
+	brewOutdatedMu      sync.Mutex
+	brewOutdatedQueries = map[string]*coalescedQuery{}
+)
+
+func brewOutdatedQueryFor(pkg string) *coalescedQuery {
+	brewOutdatedMu.Lock()
+	defer brewOutdatedMu.Unlock()
+	q, ok := brewOutdatedQueries[pkg]
+	if !ok {
+		q = &coalescedQuery{}
+		brewOutdatedQueries[pkg] = q
+	}
+	return q
+}
+
+func invalidateBrewOutdated(pkg string) {
+	brewOutdatedMu.Lock()
+	q := brewOutdatedQueries[pkg]
+	brewOutdatedMu.Unlock()
+	if q != nil {
+		q.invalidate()
+	}
+}
+
+func resetBrewOutdatedCache() {
+	brewOutdatedMu.Lock()
+	for _, q := range brewOutdatedQueries {
+		q.invalidate()
+	}
+	brewOutdatedQueries = map[string]*coalescedQuery{}
+	brewOutdatedMu.Unlock()
+}
 
 // brewSelfUpdateCmd is brew's real self-update command — declared by Info()
 // and executed by Update() (design D2 single source of truth).
@@ -55,7 +90,9 @@ func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Up
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
 	}
-	stdout, err := commandOutputErr(ctx, "brew", "outdated", "--json", pkg)
+	stdout, err := brewOutdatedQueryFor(pkg).run(ctx, func(c context.Context) (string, error) {
+		return commandOutputErr(c, "brew", "outdated", "--json", pkg)
+	})
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -83,6 +120,7 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "upgrade", pkg)
+	invalidateBrewOutdated(pkg)
 	if err != nil {
 		return adapters.Result{
 			Success: false,
@@ -137,6 +175,7 @@ func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	// intentionally avoided — it is non-canonical and is a known portable-ruby
 	// footgun (Homebrew's ruby shims make it error-prone).
 	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "update")
+	resetBrewOutdatedCache()
 	if err != nil {
 		return adapters.Result{
 			Success: false,

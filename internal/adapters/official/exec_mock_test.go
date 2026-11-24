@@ -47,6 +47,7 @@ func resetLinuxManagerCache() {
 	resetGoOwnerCache()
 	wingetUpgradeQuery.invalidate()
 	scoopStatusQuery.invalidate()
+	resetBrewOutdatedCache()
 }
 
 // setExecFakes swaps the package exec seam variables (runCmdFn,
