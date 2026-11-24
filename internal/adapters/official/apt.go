@@ -14,11 +14,11 @@ type AptAdapter struct{}
 
 // aptSelfUpdateCmd is apt's real self-update command — declared by Info() and
 // executed by Update() (design D2 single source of truth).
-const aptSelfUpdateCmd = "sudo apt install --only-upgrade apt"
+const aptSelfUpdateCmd = "sudo apt install -y --only-upgrade apt"
 
 // aptPackageUpdateTemplate is apt's per-package update command template; the
 // PackagePlaceholder is rendered per owned package by UpdatePackage().
-const aptPackageUpdateTemplate = "sudo apt install --only-upgrade <pkg>"
+const aptPackageUpdateTemplate = "sudo apt install -y --only-upgrade <pkg>"
 
 func (a *AptAdapter) Name() string { return "apt" }
 
@@ -105,7 +105,7 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 
 	before := a.installedVersion(ctx, pkg)
 
-	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "--only-upgrade", pkg)
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "-y", "--only-upgrade", pkg)
 	if err != nil {
 		return adapters.Result{
 			Success:    false,
@@ -161,7 +161,7 @@ func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	// `apt upgrade` is intentionally avoided). Stays sudo-gated: the row means
 	// "apt package stale" (distro-managed, often intentional). Check() stays
 	// root-free and reports real Installed vs Candidate availability.
-	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "--only-upgrade", "apt")
+	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "-y", "--only-upgrade", "apt")
 	if err != nil {
 		return adapters.Result{
 			Success:    false,

@@ -630,3 +630,19 @@ func TestSelfUpdate_TempDirectoryCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestStdinIsTTY_DevNullIsFalse(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	orig := os.Stdin
+	os.Stdin = f
+	defer func() { os.Stdin = orig }()
+
+	if stdinIsTTY() {
+		t.Errorf("stdinIsTTY() on %s = true, want false", os.DevNull)
+	}
+}

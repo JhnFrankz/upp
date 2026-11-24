@@ -30,25 +30,32 @@ var resolveOwnerFn = ResolveOwner
 // leaf functions (runCmd, runCmdArgs, lookPath) delegate to the vars, so both
 // adapters and wrappers stay hermetic when a test swaps the seam.
 
+func execShellWithTimeout(ctx context.Context, command string, timeout time.Duration) (stdout, stderr string, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if runtimeGOOSFn() == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		// Own process group so the timeout can kill shell grandchildren
+		// (curl|tar, sudo apt, brew...) too — the direct child alone is
+		// not enough for the compound commands every adapter runs.
+		adapters.Setpgid(cmd)
+	}
+	return adapters.RunCommandWithTimeout(ctx, cmd)
+}
+
 var (
 	runCmdFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		ctx, cancel := context.WithTimeout(ctx, adapters.UpdateTimeout)
-		defer cancel()
-
-		var cmd *exec.Cmd
-		if runtimeGOOSFn() == "windows" {
-			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
-		} else {
-			cmd = exec.CommandContext(ctx, "sh", "-c", command)
-			// Own process group so the timeout can kill shell grandchildren
-			// (curl|tar, sudo apt, brew...) too — the direct child alone is
-			// not enough for the compound commands every adapter runs.
-			adapters.Setpgid(cmd)
-		}
-		return adapters.RunCommandWithTimeout(ctx, cmd)
+		return execShellWithTimeout(ctx, command, adapters.UpdateTimeout)
+	}
+	runCmdCheckFn = func(ctx context.Context, command string) (stdout, stderr string, err error) {
+		return execShellWithTimeout(ctx, command, adapters.CheckTimeout)
 	}
 	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
 		if ctx == nil {
@@ -76,8 +83,15 @@ var (
 		ctx, cancel := context.WithTimeout(ctx, adapters.UpdateTimeout)
 		defer cancel()
 
+		goos := runtimeGOOSFn()
+		var prepErr error
+		name, args, prepErr = prepareSudoUpdate(ctx, goos, name, args)
+		if prepErr != nil {
+			return "", "", prepErr
+		}
+
 		var cmd *exec.Cmd
-		if runtimeGOOSFn() == "windows" {
+		if goos == "windows" {
 			cmd = exec.CommandContext(ctx, name, args...)
 		} else {
 			cmd = exec.CommandContext(ctx, name, args...)
@@ -93,6 +107,16 @@ var (
 		return err == nil
 	}
 )
+
+func prepareSudoUpdate(ctx context.Context, goos, name string, args []string) (string, []string, error) {
+	if goos == "windows" || name != "sudo" {
+		return name, args, nil
+	}
+	if err := adapters.EnsureSudoAuthForOS(ctx, goos); err != nil {
+		return "", nil, err
+	}
+	return name, adapters.PrepareSudoArgsForOS(goos, name, args), nil
+}
 
 // runCmd executes a shell command and returns stdout, stderr, and any error.
 // The command runs via the platform's default shell.
@@ -219,7 +243,17 @@ func commandOutputErr(ctx context.Context, name string, args ...string) (string,
 // it to decide availability. The failure label is the explicit tool name,
 // not the command's first token (a wrapper or shell builtin).
 func shellOutputErr(ctx context.Context, command, tool string) (string, error) {
-	stdout, stderr, err := runCmdFn(ctx, command)
+	return shellOutputErrWith(runCmdFn, ctx, command, tool)
+}
+
+// shellOutputErrCheck runs a read-only shell check command bounded by
+// CheckTimeout (via runCmdCheckFn) rather than UpdateTimeout.
+func shellOutputErrCheck(ctx context.Context, command, tool string) (string, error) {
+	return shellOutputErrWith(runCmdCheckFn, ctx, command, tool)
+}
+
+func shellOutputErrWith(execFn func(context.Context, string) (string, string, error), ctx context.Context, command, tool string) (string, error) {
+	stdout, stderr, err := execFn(ctx, command)
 	var retErr error
 	if err != nil {
 		retErr = commandFailureErr(tool, stderr, err)
@@ -378,23 +412,48 @@ func (q *coalescedQuery) run(ctx context.Context, fn func(context.Context) (stri
 	q.inflight = call
 	q.mu.Unlock()
 
-	out, err := fn(ctx)
+	// Detach cancellation from caller A so an early caller abort does not kill
+	// the shared query for still-waiting callers, while bounding total runtime.
+	// Run fn in a goroutine so caller A also unblocks immediately on ctx.Done().
+	go func() {
+		fnCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), adapters.CheckTimeout)
+		defer cancel()
 
-	q.mu.Lock()
-	call.out = out
-	call.err = err
-	if q.inflight == call {
-		q.inflight = nil
-		if err == nil {
-			q.out = out
-			q.err = nil
-			q.cachedAt = time.Now()
-			q.hasCache = true
-		}
+		var (
+			out      string
+			err      error
+			finished bool
+		)
+		defer func() {
+			if rec := recover(); rec != nil || !finished {
+				err = errors.New("coalesced query panicked")
+			}
+			q.mu.Lock()
+			call.out = out
+			call.err = err
+			if q.inflight == call {
+				q.inflight = nil
+				if finished && err == nil {
+					q.out = out
+					q.err = nil
+					q.cachedAt = time.Now()
+					q.hasCache = true
+				}
+			}
+			close(call.done)
+			q.mu.Unlock()
+		}()
+
+		out, err = fn(fnCtx)
+		finished = true
+	}()
+
+	select {
+	case <-call.done:
+		return call.out, call.err
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	close(call.done)
-	q.mu.Unlock()
-	return out, err
 }
 
 func (q *coalescedQuery) invalidate() {

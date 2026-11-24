@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"golang.org/x/term"
 )
 
 // LogPresenter defines the interface for emitting error and warning messages.
@@ -78,11 +80,7 @@ func isTerminal(w io.Writer) bool {
 	if !ok {
 		return false
 	}
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // --- Status indicators ---

@@ -533,7 +533,7 @@ func TestPlan_PlannedUpdateFields(t *testing.T) {
 		}
 		wantManagerID := official.AdapterByName("gh").Info().Manager[platform.OSLinux]
 		wantPkgName := official.AdapterByName("gh").Info().ManagerPackage[platform.OSLinux]
-		wantRiskCmd := "sudo apt install --only-upgrade gh"
+		wantRiskCmd := "sudo apt install -y --only-upgrade gh"
 		if wantManagerID == "pacman" {
 			wantRiskCmd = "sudo pacman -S --noconfirm github-cli"
 		}
@@ -909,9 +909,11 @@ func TestResolveEffectiveUpdatePolicy(t *testing.T) {
 			t.Fatal("official go adapter not found")
 		}
 
-		// On Linux, go is standalone (no manager), returns its declared policy (PolicyAlwaysUpdate)
-		if got := ResolveEffectiveUpdatePolicy(goTool, platform.OSLinux); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("go policy on Linux (standalone) = %v, want PolicyAlwaysUpdate", got)
+		// On Linux, go returns its effective declared/managed policy (PolicyAlwaysUpdate
+		// for /usr/local/go, PolicyGated when owned by apt/pacman or unmanaged).
+		wantGoLinux := goTool.Info().UpdatePolicy
+		if got := ResolveEffectiveUpdatePolicy(goTool, platform.OSLinux); got != wantGoLinux {
+			t.Errorf("go policy on Linux = %v, want %v", got, wantGoLinux)
 		}
 
 		// On macOS, go is owned by brew (PolicyAlwaysUpdate)
@@ -1096,7 +1098,7 @@ func TestPlan_RowClassRiskCommands(t *testing.T) {
 			all:       []adapters.Adapter{apt},
 			id:        "apt",
 			toolName:  "APT Package Manager",
-			wantRisk:  "sudo apt install --only-upgrade apt",
+			wantRisk:  "sudo apt install -y --only-upgrade apt",
 			wantMgrID: "",
 			wantPrivs: []string{"sudo"},
 		},
@@ -1272,7 +1274,7 @@ func TestPlan_RiskCommandEqualsExecutedDeclaration(t *testing.T) {
 	gh := official.AdapterByName("gh")
 	ghLinuxMgr := gh.Info().Manager[platform.OSLinux]
 	ghLinuxPkg := gh.Info().ManagerPackage[platform.OSLinux]
-	ghLinuxLiteral := "sudo apt install --only-upgrade gh"
+	ghLinuxLiteral := "sudo apt install -y --only-upgrade gh"
 	if ghLinuxMgr == "pacman" {
 		ghLinuxLiteral = "sudo pacman -S --noconfirm github-cli"
 	}
@@ -1521,8 +1523,8 @@ func TestPlan_GoLinuxOwnership(t *testing.T) {
 	if up.UpdatePolicy != adapters.PolicyGated {
 		t.Errorf("UpdatePolicy = %v, want PolicyGated", up.UpdatePolicy)
 	}
-	if up.RiskCommand != "sudo apt install --only-upgrade golang-go" {
-		t.Errorf("RiskCommand = %q, want \"sudo apt install --only-upgrade golang-go\"", up.RiskCommand)
+	if up.RiskCommand != "sudo apt install -y --only-upgrade golang-go" {
+		t.Errorf("RiskCommand = %q, want \"sudo apt install -y --only-upgrade golang-go\"", up.RiskCommand)
 	}
 }
 

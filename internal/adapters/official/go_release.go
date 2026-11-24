@@ -44,7 +44,10 @@ type goDevRelease struct {
 	Files   []goDevFile `json:"files"`
 }
 
-func checkHTTPSRedirect(req *http.Request, _ []*http.Request) error {
+func checkHTTPSRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
 	if req.URL.Scheme != "https" {
 		return fmt.Errorf("refusing redirect to non-HTTPS URL %q", req.URL)
 	}
@@ -131,9 +134,11 @@ func fetchGoDevVersion(ctx context.Context) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status %d from go.dev", resp.StatusCode)
 	}
-	buf := make([]byte, 512)
-	n, _ := resp.Body.Read(buf)
-	firstLine, _, _ := strings.Cut(string(buf[:n]), "\n")
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return "", err
+	}
+	firstLine, _, _ := strings.Cut(string(data), "\n")
 	line := strings.TrimSpace(firstLine)
 	return line, nil
 }

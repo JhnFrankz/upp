@@ -32,6 +32,7 @@ func TestSelector_KeyHandling(t *testing.T) {
 		input      string
 		wantSel    []string
 		wantCancel bool
+		wantErr    error
 	}{
 		{
 			name:    "enter CR confirms all pre-checked",
@@ -87,6 +88,7 @@ func TestSelector_KeyHandling(t *testing.T) {
 			name:       "ctrl+c cancels",
 			input:      "\x03",
 			wantCancel: true,
+			wantErr:    context.Canceled,
 		},
 		{
 			name:       "ctrl+d cancels",
@@ -97,6 +99,7 @@ func TestSelector_KeyHandling(t *testing.T) {
 			name:       "ctrl+c after interaction cancels",
 			input:      "\x1b[B \x03",
 			wantCancel: true,
+			wantErr:    context.Canceled,
 		},
 		{
 			name:       "ctrl+d after interaction cancels",
@@ -124,8 +127,8 @@ func TestSelector_KeyHandling(t *testing.T) {
 			var buf bytes.Buffer
 			sel := NewCheckboxSelector(&buf, strings.NewReader(tt.input), opts)
 			res, err := sel.Run()
-			if err != nil {
-				t.Fatalf("Run() error: %v", err)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Run() error = %v, want %v", err, tt.wantErr)
 			}
 			if res.Canceled != tt.wantCancel {
 				t.Errorf("Canceled = %v, want %v", res.Canceled, tt.wantCancel)
@@ -294,12 +297,13 @@ func TestSelector_RawMode_MakeRawOnceAndRestoreOnConfirm(t *testing.T) {
 
 func TestSelector_RawMode_RestoreOnCancel(t *testing.T) {
 	for _, tt := range []struct {
-		name  string
-		input string
+		name    string
+		input   string
+		wantErr error
 	}{
 		{name: "esc", input: "\x1b"},
 		{name: "q", input: "q"},
-		{name: "ctrl+c", input: "\x03"},
+		{name: "ctrl+c", input: "\x03", wantErr: context.Canceled},
 		{name: "ctrl+d", input: "\x04"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -320,8 +324,8 @@ func TestSelector_RawMode_RestoreOnCancel(t *testing.T) {
 
 			sel := NewCheckboxSelector(&buf, r, []SelectOption{{ID: "brew", Label: "brew"}})
 			res, err := sel.Run()
-			if err != nil {
-				t.Fatalf("Run() error: %v", err)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Run() error = %v, want %v", err, tt.wantErr)
 			}
 			if !res.Canceled {
 				t.Errorf("Run must report canceled for input %q", tt.input)
@@ -667,4 +671,72 @@ func TestInPlaceFramesDisableLineWrap(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestSelector_EmptyOptionsSpaceDoesNotPanic(t *testing.T) {
+	var buf bytes.Buffer
+	res, err := NewCheckboxSelector(&buf, strings.NewReader(" \r"), nil).Run()
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if res.Canceled || len(res.Selected) != 0 {
+		t.Errorf("unexpected result: %+v", res)
+	}
+}
+
+func TestSelector_RawModeNoColorUsesCRLF(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() error: %v", err)
+	}
+	defer func() { _ = r.Close() }()
+	_, _ = w.WriteString("\r")
+	_ = w.Close()
+
+	oldMakeRaw, oldRestore := makeRawFn, restoreTerm
+	makeRawFn = func(int) (*term.State, error) { return &term.State{}, nil }
+	restoreTerm = func(int, *term.State) error { return nil }
+	defer func() { makeRawFn, restoreTerm = oldMakeRaw, oldRestore }()
+
+	var buf bytes.Buffer
+	opts := []SelectOption{{ID: "a", Label: "a", Group: "grp"}}
+	if _, err := NewCheckboxSelector(&buf, r, opts).WithColor(false).Run(); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "\r\n") {
+		t.Errorf("raw mode without color must emit CRLF, got %q", out)
+	}
+	// Every newline in raw mode must be preceded by \r (no staircase).
+	if strings.ReplaceAll(out, "\r\n", "") != strings.ReplaceAll(strings.ReplaceAll(out, "\r\n", ""), "\n", "") {
+		t.Errorf("found bare LF without CR in raw mode output: %q", out)
+	}
+}
+
+func TestSelector_SplitArrowOverSlowPipe(t *testing.T) {
+	opts := []SelectOption{
+		{ID: "brew", Label: "brew"},
+		{ID: "npm", Label: "npm"},
+	}
+	pr, pw := io.Pipe()
+	defer func() { _ = pr.Close() }()
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte{0x1b})
+		time.Sleep(5 * time.Millisecond)
+		_, _ = pw.Write([]byte("[B \r"))
+	}()
+
+	var buf bytes.Buffer
+	res, err := NewCheckboxSelector(&buf, pr, opts).Run()
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if res.Canceled {
+		t.Fatalf("split arrow sequence canceled selector unexpectedly")
+	}
+	if !slices.Equal(res.Selected, []string{"brew"}) {
+		t.Errorf("Selected = %v, want [brew] (npm deselected)", res.Selected)
+	}
 }

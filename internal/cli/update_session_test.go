@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -262,5 +263,20 @@ func TestUnconsentedCheckAdapter_Unwrap(t *testing.T) {
 		t.Fatal("unconsentedCheckAdapter does not implement Unwrap()")
 	} else if unwrapped.Unwrap() != fake {
 		t.Errorf("expected unwrapped adapter %v, got %v", fake, unwrapped.Unwrap())
+	}
+}
+
+func TestUpdateSession_RunInteractive_CtrlCPropagatesCanceled(t *testing.T) {
+	var buf bytes.Buffer
+	r := output.NewRenderer(&buf, false)
+	fake := &fakeUpdateAdapter{
+		name:   "tool-interactive",
+		policy: adapters.PolicyAlwaysUpdate,
+		trust:  security.TrustOfficial,
+	}
+	sess := NewUpdateSession(context.Background(), &GlobalFlags{}, &UpdateFlags{}, r, nil, []adapters.Adapter{fake}, platform.OSLinux, strings.NewReader("\x03"), &buf)
+	err := sess.RunInteractive([]adapters.Adapter{fake})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunInteractive error = %v, want context.Canceled", err)
 	}
 }

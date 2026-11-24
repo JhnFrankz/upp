@@ -42,6 +42,11 @@ func defaultShellExecWithTimeout(ctx context.Context, command string, timeout ti
 	if runtimeGOOSFn() == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
+		if CommandUsesSudo(command) {
+			if err := EnsureSudoAuth(ctx); err != nil {
+				return "", "", err
+			}
+		}
 		cmd = exec.CommandContext(ctx, "sh", "-c", command)
 		// Own process group so the timeout can kill shell grandchildren too.
 		setpgid(cmd)

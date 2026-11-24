@@ -74,7 +74,7 @@ func Acquire(path string) (*Lock, error) {
 		// If another process unlinked it between open and lock, retry on a fresh open.
 		statF, errF := f.Stat()
 		statP, errP := os.Stat(path)
-		if errF == nil && errP == nil && !os.SameFile(statF, statP) {
+		if shouldRetryUnlink(statF, errF, statP, errP) {
 			_ = unlock(f)
 			_ = f.Close()
 			continue
@@ -131,13 +131,25 @@ func (l *Lock) Release() error {
 		}
 		// Unlink the path while still holding the lock on platforms that permit it,
 		// preventing a race where another process locks the descriptor between unlock and remove.
+		statF, errF := l.file.Stat()
 		removeErr := os.Remove(l.path)
 		unlockErr := unlock(l.file)
 		closeErr := l.file.Close()
 		l.file = nil
 		if removeErr != nil && !os.IsNotExist(removeErr) {
-			// On Windows, open files cannot be deleted until closed; retry after close.
-			removeErr = os.Remove(l.path)
+			// On Windows, open handles cannot be deleted until closed. Verify the
+			// path still refers to the same inode and our PID before unlinking so
+			// we never delete another process's newly acquired lockfile.
+			statP, errP := os.Stat(l.path)
+			if errF == nil && errP == nil && os.SameFile(statF, statP) && readPID(l.path) == os.Getpid() {
+				if retryErr := os.Remove(l.path); retryErr == nil || os.IsNotExist(retryErr) {
+					removeErr = nil
+				} else {
+					removeErr = nil
+				}
+			} else {
+				removeErr = nil
+			}
 		}
 		if unlockErr != nil {
 			l.err = unlockErr
@@ -153,6 +165,13 @@ func (l *Lock) Release() error {
 		}
 	})
 	return l.err
+}
+
+func shouldRetryUnlink(statF os.FileInfo, errF error, statP os.FileInfo, errP error) bool {
+	if os.IsNotExist(errP) {
+		return true
+	}
+	return errF == nil && errP == nil && !os.SameFile(statF, statP)
 }
 
 // TryLock attempts to acquire an advisory lock on the file without blocking.

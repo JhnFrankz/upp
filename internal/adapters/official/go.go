@@ -258,6 +258,21 @@ var (
 		Command: goLinuxUpdateCmd,
 	}
 
+	// goInfoUnmanaged is returned when Go is installed outside any supported
+	// manager or standard /usr/local/go path (e.g. non-standard Linux binary,
+	// macOS without brew, Windows without winget). PolicyGated prevents
+	// engine.Plan from scheduling an update that always fails.
+	goInfoUnmanaged = adapters.ToolInfo{
+		ID:             "go",
+		Name:           "Go",
+		Platforms:      platformsLinuxMacOSWindows,
+		Trust:          security.TrustOfficial,
+		UpdatePolicy:   adapters.PolicyGated,
+		Kind:           adapters.KindTool,
+		Manager:        goManager,
+		ManagerPackage: goManagerPackage,
+	}
+
 	goManagerApt        = map[string]string{"linux": "apt", "macos": "brew", "windows": "winget"}
 	goManagerPackageApt = map[string]string{"linux": "golang-go", "macos": "golang", "windows": "GoLang.Go"}
 	goInfoApt           = adapters.ToolInfo{
@@ -301,7 +316,19 @@ func resetGoOwnerCache() {
 }
 
 func (a *GoAdapter) Info() adapters.ToolInfo {
-	if runtimeGOOSFn() != "linux" {
+	switch runtimeGOOSFn() {
+	case "darwin":
+		if !lookPath("brew") {
+			return goInfoUnmanaged
+		}
+		return goInfo
+	case "windows":
+		if !lookPath("winget") {
+			return goInfoUnmanaged
+		}
+		return goInfo
+	case "linux":
+	default:
 		return goInfo
 	}
 	pathEnv := os.Getenv("PATH")
@@ -347,8 +374,10 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 			info.Command = ""
 			cachedGoToolInfo = info
 		}
-	} else {
+	} else if isStandardGoPath(binPath) {
 		cachedGoToolInfo = goInfo
+	} else {
+		cachedGoToolInfo = goInfoUnmanaged
 	}
 	cachedGoToolInfoPath = pathEnv
 	cachedGoToolInfoBin = binPath

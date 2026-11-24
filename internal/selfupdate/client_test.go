@@ -655,3 +655,10 @@ func TestClientGet_RejectsOversizedResponse(t *testing.T) {
 		t.Errorf("err = %v, want 'exceeds maximum size'", err)
 	}
 }
+
+func TestCheckRedirect_LimitsHops(t *testing.T) {
+	httpsReq := &http.Request{URL: &url.URL{Scheme: "https", Host: "example.com"}}
+	if err := checkRedirect(httpsReq, make([]*http.Request, 10)); err == nil {
+		t.Fatal("checkRedirect with 10 hops = nil, want error")
+	}
+}
