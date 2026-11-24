@@ -47,7 +47,6 @@ const (
 	pacmanInstalledCmd = "bash -o pipefail -c 'pacman -Q pacman 2>/dev/null | awk \"{print \\$2}\"'"
 	pacmanCandidateCmd = "bash -o pipefail -c 'pacman -Si pacman 2>/dev/null | grep -E \"^Version\" | head -1 | awk \"{print \\$3}\"'"
 	nvmCurrentCmd      = "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'"
-	nvmRemoteCmd       = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'"
 )
 
 // aptPolicyCmd builds the exact `apt-cache policy <pkg>` shell command that
@@ -948,8 +947,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "v20.11.0"},
-					nvmRemoteCmd:  {stdout: "v22.0.0"},
+					nvmCheckCmd: {stdout: "CUR=v20.11.0\nv22.0.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "v22.0.0", UpdateAvailable: true},
@@ -960,8 +958,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: ""},
-					nvmRemoteCmd:  {stdout: "v22.0.0"},
+					nvmCheckCmd: {stdout: "CUR=\nv22.0.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "unknown", LatestVersion: "v22.0.0", UpdateAvailable: false},
@@ -972,8 +969,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "v20.11.0"},
-					nvmRemoteCmd:  {stdout: "v20.11.0"},
+					nvmCheckCmd: {stdout: "CUR=v20.11.0\nv20.11.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "v20.11.0", UpdateAvailable: false},
@@ -986,8 +982,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "v26.7.0"},
-					nvmRemoteCmd:  {stdout: "v24.19.0"},
+					nvmCheckCmd: {stdout: "CUR=v26.7.0\nv24.19.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v26.7.0", LatestVersion: "v24.19.0", UpdateAvailable: false},
@@ -1000,8 +995,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "v20.11.0"},
-					nvmRemoteCmd:  {stdout: "20.11.0"},
+					nvmCheckCmd: {stdout: "CUR=v20.11.0\n20.11.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "20.11.0", UpdateAvailable: false},
@@ -1014,8 +1008,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "v26.7.0"},
-					nvmRemoteCmd:  {stdout: "stable"},
+					nvmCheckCmd: {stdout: "CUR=v26.7.0\nstable"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v26.7.0", LatestVersion: "stable", UpdateAvailable: false},
@@ -1027,8 +1020,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "dev"},
-					nvmRemoteCmd:  {stdout: "v22.0.0"},
+					nvmCheckCmd: {stdout: "CUR=dev\nv22.0.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "dev", LatestVersion: "v22.0.0", UpdateAvailable: false},
@@ -1043,8 +1035,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {stdout: "v20.11.0"},
-					nvmRemoteCmd:  {stdout: "v22.3.0"},
+					nvmCheckCmd: {stdout: "CUR=v20.11.0\nv22.3.0"},
 				},
 			},
 			want: adapters.UpdateInfo{CurrentVersion: "v20.11.0", LatestVersion: "v22.3.0", UpdateAvailable: true},
@@ -1055,8 +1046,7 @@ func TestCheck(t *testing.T) {
 			setup:   nvmInstalledSetup,
 			fakes: execFakes{
 				shell: map[string]fakeResult{
-					nvmCurrentCmd: {err: errors.New("nvm: command not found")},
-					nvmRemoteCmd:  {err: errors.New("nvm: command not found")},
+					nvmCheckCmd: {err: errors.New("nvm: command not found")},
 				},
 			},
 			wantErr:         true,

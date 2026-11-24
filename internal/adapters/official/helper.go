@@ -329,7 +329,17 @@ func DelegatedCheck(ctx context.Context, a adapters.Adapter, current string) (ad
 			if pkg == "" {
 				return adapters.UpdateInfo{}, fmt.Errorf("%w: %s has no manager package on %s", adapters.ErrNoManagerPackage, a.Name(), runtimeGOOSFn())
 			}
-			return checker.CheckPackage(ctx, pkg)
+			info, err := checker.CheckPackage(ctx, pkg)
+			if err != nil {
+				return adapters.UpdateInfo{}, err
+			}
+			if info.CurrentVersion == "" && current != "" {
+				info.CurrentVersion = current
+			}
+			if !info.UpdateAvailable && info.LatestVersion == "" && info.CurrentVersion != "" {
+				info.LatestVersion = info.CurrentVersion
+			}
+			return info, nil
 		}
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: %s's manager %s does not support per-package checks", adapters.ErrUnsupportedPackageCheck, a.Name(), owner.Name())
 	}

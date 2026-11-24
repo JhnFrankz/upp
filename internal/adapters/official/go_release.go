@@ -295,14 +295,11 @@ func extractGoTarball(archivePath, destDir string) error {
 			if mode == 0 {
 				mode = 0644
 			}
-			if err := archive.ExtractToFileWithLimit(targetPath, tr, mode, fileLimit); err != nil {
+			written, err := archive.ExtractToFileWithLimitN(targetPath, tr, mode, fileLimit)
+			if err != nil {
 				return err
 			}
-			fi, err := os.Stat(targetPath)
-			if err != nil {
-				return fmt.Errorf("stat extracted file %s: %w", targetPath, err)
-			}
-			totalExtracted += fi.Size()
+			totalExtracted += written
 		case tar.TypeSymlink:
 			if err := archive.ValidateSymlinkTarget(hdr.Linkname); err != nil {
 				return fmt.Errorf("unsupported or unsafe symlink target: %s", hdr.Linkname)

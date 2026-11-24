@@ -38,34 +38,28 @@ func (a *NVMAdapter) Detect() bool {
 	return false
 }
 
+const nvmCheckCmd = "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && printf \"CUR=%s\\n\" \"$(nvm current)\" && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'"
+
 func (a *NVMAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: nvm is not installed", adapters.ErrNotInstalled)
 	}
 
-	// Get current node version via nvm. nvm is bash-only, so run through
-	// bash explicitly (POSIX sh — dash/ash — lacks `source`); honor
-	// NVM_DIR installs with a fallback to ~/.nvm.
-	stdout, err := shellOutputErrCheck(ctx, "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
+	// Source nvm.sh once to fetch both current node version and latest LTS.
+	// pipefail makes a failed nvm ls-remote surface as an error instead of
+	// an empty awk result. On multi-LTS setups nvm appends an alias line
+	// ("lts/* -> lts/jod (-> v22.3.0)") after the real versions; grep filters
+	// to actual vX.Y.Z lines so the last one is the newest LTS.
+	stdout, err := shellOutputErrCheck(ctx, nvmCheckCmd, "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
-	current := strings.TrimSpace(stdout)
+	curLine, latestRaw, _ := strings.Cut(stdout, "\n")
+	current := strings.TrimSpace(strings.TrimPrefix(curLine, "CUR="))
 	if current == "" {
 		current = "unknown"
 	}
-
-	// Get latest stable version. pipefail makes a failed nvm ls-remote
-	// surface as an error instead of an empty awk result. On multi-LTS
-	// setups nvm appends an alias line ("lts/* -> lts/jod (-> v22.3.0)")
-	// after the real versions; grep filters to actual vX.Y.Z lines so the
-	// last one is the newest LTS — tail -1 alone would pick the alias and
-	// silently miss real updates.
-	stdout, err = shellOutputErrCheck(ctx, "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'", "nvm")
-	if err != nil {
-		return adapters.UpdateInfo{}, err
-	}
-	latest := strings.TrimSpace(stdout)
+	latest := strings.TrimSpace(latestRaw)
 	if latest == "" {
 		latest = "unknown"
 	}

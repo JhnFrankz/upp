@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1537,5 +1538,68 @@ func TestDiagnose_ToolPaths_DuplicateAdaptersPrioritizesDetecting(t *testing.T) 
 	}
 	if !strings.Contains(nvmRes.Message, "detected via environment") {
 		t.Errorf("expected message containing 'detected via environment', got: %s", nvmRes.Message)
+	}
+}
+
+func TestDefaultHTTPGet_UsesHEAD(t *testing.T) {
+	var method string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	status, err := defaultHTTPGet(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("defaultHTTPGet error: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if method != http.MethodHead {
+		t.Errorf("method = %q, want HEAD", method)
+	}
+}
+
+func TestDiagnose_OverlapsNetworkWithLocalChecks(t *testing.T) {
+	localEntered := make(chan struct{})
+	netEntered := make(chan struct{})
+	var localOnce, netOnce sync.Once
+	var overlapped bool
+
+	deps := DoctorDeps{
+		ConfigPath: func() (string, error) { return "/nonexistent/config.toml", nil },
+		ConfigDir:  func() (string, error) { return "/nonexistent/cfg", nil },
+		CacheDir:   func() (string, error) { return "/nonexistent/cache", nil },
+		LockPath:   func() (string, error) { return "/nonexistent/upp.lock", nil },
+		LoadConfig: func() (*config.Config, error) { return config.DefaultConfig(), nil },
+		Platform:   platform.Platform{OS: platform.OSLinux, Arch: "x86_64"},
+		LookPath: func(string) (string, error) {
+			localOnce.Do(func() {
+				close(localEntered)
+				select {
+				case <-netEntered:
+					overlapped = true
+				case <-time.After(150 * time.Millisecond):
+				}
+			})
+			return "", os.ErrNotExist
+		},
+		FindAllPaths: func(string) []string { return nil },
+		HTTPGet: func(ctx context.Context, url string) (int, error) {
+			netOnce.Do(func() {
+				close(netEntered)
+				select {
+				case <-localEntered:
+				case <-time.After(150 * time.Millisecond):
+				}
+			})
+			return 200, nil
+		},
+	}
+
+	_ = Diagnose(context.Background(), deps)
+	if !overlapped {
+		t.Error("expected checkNetwork to overlap concurrently with local checks")
 	}
 }

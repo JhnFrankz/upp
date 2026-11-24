@@ -113,3 +113,16 @@ func TestExtractToFileWithLimit(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractToFileWithLimitN_ReturnsWrittenBytes(t *testing.T) {
+	tempDir := t.TempDir()
+	targetPath := filepath.Join(tempDir, "counted.bin")
+	content := []byte("exact byte count")
+	n, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader(content), 0644, 1024)
+	if err != nil {
+		t.Fatalf("ExtractToFileWithLimitN error: %v", err)
+	}
+	if n != int64(len(content)) {
+		t.Errorf("written = %d, want %d", n, len(content))
+	}
+}

@@ -208,18 +208,27 @@ func ExtractToFile(targetPath string, r io.Reader, mode os.FileMode) error {
 // bounding extraction to at most maxBytes. If the copied stream exceeds maxBytes,
 // the partial file is removed and ErrDecompressionLimit is returned.
 func ExtractToFileWithLimit(targetPath string, r io.Reader, mode os.FileMode, maxBytes int64) error {
+	_, err := ExtractToFileWithLimitN(targetPath, r, mode, maxBytes)
+	return err
+}
+
+// ExtractToFileWithLimitN writes the content of r to targetPath with the given
+// file mode, bounding extraction to at most maxBytes, and returns the exact
+// number of bytes written so callers can track cumulative size without an extra
+// os.Stat syscall per extracted file.
+func ExtractToFileWithLimitN(targetPath string, r io.Reader, mode os.FileMode, maxBytes int64) (int64, error) {
 	if r == nil {
-		return errors.New("archive: reader is nil")
+		return 0, errors.New("archive: reader is nil")
 	}
 	if maxBytes < 0 {
 		maxBytes = MaxExtractFileSize
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-		return err
+		return 0, err
 	}
 	outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	bufPtr := bufferpool.Get()
 	defer bufferpool.Put(bufPtr)
@@ -234,15 +243,15 @@ func ExtractToFileWithLimit(targetPath string, r io.Reader, mode os.FileMode, ma
 
 	if copyErr != nil {
 		_ = os.Remove(targetPath)
-		return copyErr
+		return 0, copyErr
 	}
 	if written > maxBytes {
 		_ = os.Remove(targetPath)
-		return fmt.Errorf("%w: extracted size exceeds %d bytes", ErrDecompressionLimit, maxBytes)
+		return 0, fmt.Errorf("%w: extracted size exceeds %d bytes", ErrDecompressionLimit, maxBytes)
 	}
 	if closeErr != nil {
 		_ = os.Remove(targetPath)
-		return closeErr
+		return 0, closeErr
 	}
-	return nil
+	return written, nil
 }
