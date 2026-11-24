@@ -25,10 +25,13 @@ func (a *GoAdapter) Detect() bool {
 }
 
 func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
+	return a.linuxOwnerFor(goBinaryPathFn())
+}
+
+func (a *GoAdapter) linuxOwnerFor(bin string) (adapters.Adapter, string) {
 	if runtimeGOOSFn() != "linux" {
 		return nil, ""
 	}
-	bin := goBinaryPathFn()
 	if bin == "/usr/bin/go" || strings.HasPrefix(bin, "/usr/bin/") || bin == "/bin/go" || strings.HasPrefix(bin, "/bin/") {
 		if lookPath("apt") {
 			return AdapterByName("apt"), "golang-go"
@@ -306,7 +309,6 @@ var (
 	cachedGoToolInfo     adapters.ToolInfo
 	cachedGoToolInfoOK   bool
 	cachedGoToolInfoPath string
-	cachedGoToolInfoBin  string
 )
 
 func resetGoOwnerCache() {
@@ -314,7 +316,6 @@ func resetGoOwnerCache() {
 	cachedGoToolInfoOK = false
 	cachedGoToolInfo = adapters.ToolInfo{}
 	cachedGoToolInfoPath = ""
-	cachedGoToolInfoBin = ""
 	goLinuxOwnerMu.Unlock()
 }
 
@@ -335,10 +336,9 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		return goInfo
 	}
 	pathEnv := os.Getenv("PATH")
-	binPath := goBinaryPathFn()
 
 	goLinuxOwnerMu.RLock()
-	if cachedGoToolInfoOK && cachedGoToolInfoPath == pathEnv && cachedGoToolInfoBin == binPath {
+	if cachedGoToolInfoOK && cachedGoToolInfoPath == pathEnv {
 		info := cachedGoToolInfo
 		goLinuxOwnerMu.RUnlock()
 		return info
@@ -347,11 +347,12 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 
 	goLinuxOwnerMu.Lock()
 	defer goLinuxOwnerMu.Unlock()
-	if cachedGoToolInfoOK && cachedGoToolInfoPath == pathEnv && cachedGoToolInfoBin == binPath {
+	if cachedGoToolInfoOK && cachedGoToolInfoPath == pathEnv {
 		return cachedGoToolInfo
 	}
+	binPath := goBinaryPathFn()
 
-	if owner, pkg := a.linuxOwner(); owner != nil {
+	if owner, pkg := a.linuxOwnerFor(binPath); owner != nil {
 		switch owner.Name() {
 		case "apt":
 			cachedGoToolInfo = goInfoApt
@@ -383,7 +384,6 @@ func (a *GoAdapter) Info() adapters.ToolInfo {
 		cachedGoToolInfo = goInfoUnmanaged
 	}
 	cachedGoToolInfoPath = pathEnv
-	cachedGoToolInfoBin = binPath
 	cachedGoToolInfoOK = true
 	return cachedGoToolInfo
 }

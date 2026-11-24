@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/platform"
@@ -46,27 +47,43 @@ func (a *UvAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 		current = "unknown"
 	}
 
+	var (
+		selfOut, selfErrStr string
+		selfErr             error
+		toolOut, toolErrStr string
+		toolErr             error
+		wg                  sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		selfOut, selfErrStr, selfErr = runCmdArgs(ctx, "uv", "self", "update", "--dry-run")
+	}()
+	go func() {
+		defer wg.Done()
+		toolOut, toolErrStr, toolErr = runCmdArgs(ctx, "uv", "tool", "list", "--outdated")
+	}()
+	wg.Wait()
+
 	latest := current
 	selfUpdateAvailable := false
-	stdout, stderr, err := runCmdArgs(ctx, "uv", "self", "update", "--dry-run")
-	if err != nil {
-		if !isExternalManagerError(err, stdout+" "+stderr) {
-			return adapters.UpdateInfo{}, commandFailureErr("uv", stderr, err)
+	if selfErr != nil {
+		if !isExternalManagerError(selfErr, selfOut+" "+selfErrStr) {
+			return adapters.UpdateInfo{}, commandFailureErr("uv", selfErrStr, selfErr)
 		}
 		selfUpdateAvailable = false
 	} else {
-		combined := stdout + " " + stderr
+		combined := selfOut + " " + selfErrStr
 		selfUpdateAvailable = parseUvSelfUpdateOutput(combined)
 		if selfUpdateAvailable {
 			latest = extractUvLatestVersion(combined, current)
 		}
 	}
 
-	stdout, stderr, err = runCmdArgs(ctx, "uv", "tool", "list", "--outdated")
-	if err != nil {
-		return adapters.UpdateInfo{}, commandFailureErr("uv", stderr, err)
+	if toolErr != nil {
+		return adapters.UpdateInfo{}, commandFailureErr("uv", toolErrStr, toolErr)
 	}
-	toolsUpdateAvailable := parseUvToolListOutdatedOutput(stdout)
+	toolsUpdateAvailable := parseUvToolListOutdatedOutput(toolOut)
 
 	updateAvailable := selfUpdateAvailable || toolsUpdateAvailable
 

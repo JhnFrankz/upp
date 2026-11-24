@@ -218,7 +218,7 @@ func TestNVMCheck_UsesCheckTimeoutSeam(t *testing.T) {
 	checkCalls := 0
 	runCmdCheckFn = func(ctx context.Context, command string) (string, string, error) {
 		checkCalls++
-		return "v22.0.0", "", nil
+		return "CUR=v20.11.0\nv22.0.0", "", nil
 	}
 
 	// Ensure Detect() returns true via temporary NVM_DIR.
@@ -228,11 +228,74 @@ func TestNVMCheck_UsesCheckTimeoutSeam(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := (&NVMAdapter{}).Check(context.Background()); err != nil {
+	info, err := (&NVMAdapter{}).Check(context.Background())
+	if err != nil {
 		t.Fatalf("Check error: %v", err)
 	}
-	if checkCalls != 2 {
-		t.Errorf("runCmdCheckFn called %d times, want 2", checkCalls)
+	if checkCalls != 1 {
+		t.Errorf("runCmdCheckFn called %d times, want 1", checkCalls)
+	}
+	if info.CurrentVersion != "v20.11.0" || info.LatestVersion != "v22.0.0" || !info.UpdateAvailable {
+		t.Errorf("got %+v, want v20.11.0 -> v22.0.0 (UpdateAvailable=true)", info)
+	}
+}
+
+func TestUvCheck_RunsSelfAndToolsConcurrently(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"uv": true},
+	})
+	orig := runCmdArgsFn
+	var arrived atomic.Int32
+	bothEntered := make(chan struct{})
+	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+		if name == "uv" && len(args) == 1 && args[0] == "--version" {
+			return "uv 0.5.0", "", nil
+		}
+		if name == "uv" && len(args) >= 2 && (args[0] == "self" || args[0] == "tool") {
+			if arrived.Add(1) == 2 {
+				close(bothEntered)
+			}
+			select {
+			case <-bothEntered:
+			case <-time.After(500 * time.Millisecond):
+				return "", "", errors.New("uv checks did not run concurrently")
+			}
+			if args[0] == "self" {
+				return "Would update uv from 0.5.0 to 0.5.1", "", nil
+			}
+			return "", "", nil
+		}
+		return orig(ctx, name, args...)
+	}
+
+	info, err := (&UvAdapter{}).Check(context.Background())
+	if err != nil {
+		t.Fatalf("UvAdapter.Check error: %v", err)
+	}
+	if !info.UpdateAvailable {
+		t.Errorf("expected UpdateAvailable=true, got %+v", info)
+	}
+}
+
+func TestGoAdapterInfo_NoBinaryLookupOnCacheHitAndSingleOnMiss(t *testing.T) {
+	var binCalls atomic.Int32
+	setExecFakes(t, execFakes{
+		goos:     "linux",
+		lookPath: map[string]bool{"go": true, "apt": true},
+	})
+	goBinaryPathFn = func() string {
+		binCalls.Add(1)
+		return "/usr/bin/go"
+	}
+	t.Setenv("PATH", "/usr/bin")
+
+	_ = (&GoAdapter{}).Info()
+	if got := binCalls.Load(); got != 1 {
+		t.Fatalf("cache miss called goBinaryPathFn %d times, want 1", got)
+	}
+	_ = (&GoAdapter{}).Info()
+	if got := binCalls.Load(); got != 1 {
+		t.Fatalf("cache hit called goBinaryPathFn %d times total, want 1", got)
 	}
 }
 
