@@ -24,10 +24,6 @@ func (a *GoAdapter) Detect() bool {
 	return lookPath("go")
 }
 
-func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
-	return a.linuxOwnerFor(goBinaryPathFn())
-}
-
 func (a *GoAdapter) linuxOwnerFor(bin string) (adapters.Adapter, string) {
 	if runtimeGOOSFn() != "linux" {
 		return nil, ""
