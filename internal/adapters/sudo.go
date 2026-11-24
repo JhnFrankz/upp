@@ -51,7 +51,12 @@ func CommandUsesSudo(command string) bool {
 // EnsureSudoAuth pre-authenticates sudo credentials on the foreground TTY
 // before spawning a Setpgid background-pgrp child, preventing SIGTTIN hangs.
 func EnsureSudoAuth(ctx context.Context) error {
-	if runtimeGOOSFn() == "windows" || !stdinIsTerminalFn() {
+	return EnsureSudoAuthForOS(ctx, runtimeGOOSFn())
+}
+
+// EnsureSudoAuthForOS behaves like EnsureSudoAuth for the specified OS name.
+func EnsureSudoAuthForOS(ctx context.Context, goos string) error {
+	if goos == "windows" || !stdinIsTerminalFn() {
 		return nil
 	}
 	if err := sudoInteractiveAuthFn(ctx); err != nil {
@@ -64,7 +69,12 @@ func EnsureSudoAuth(ctx context.Context) error {
 // unless non-interactive flags are already present, so background-pgrp children
 // fail fast instead of attempting to read from /dev/tty.
 func PrepareSudoArgs(name string, args []string) []string {
-	if runtimeGOOSFn() == "windows" || name != "sudo" {
+	return PrepareSudoArgsForOS(runtimeGOOSFn(), name, args)
+}
+
+// PrepareSudoArgsForOS behaves like PrepareSudoArgs for the specified OS name.
+func PrepareSudoArgsForOS(goos, name string, args []string) []string {
+	if goos == "windows" || name != "sudo" {
 		return args
 	}
 	for _, a := range args {

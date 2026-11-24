@@ -112,10 +112,10 @@ func prepareSudoUpdate(ctx context.Context, goos, name string, args []string) (s
 	if goos == "windows" || name != "sudo" {
 		return name, args, nil
 	}
-	if err := adapters.EnsureSudoAuth(ctx); err != nil {
+	if err := adapters.EnsureSudoAuthForOS(ctx, goos); err != nil {
 		return "", nil, err
 	}
-	return name, adapters.PrepareSudoArgs(name, args), nil
+	return name, adapters.PrepareSudoArgsForOS(goos, name, args), nil
 }
 
 // runCmd executes a shell command and returns stdout, stderr, and any error.

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,15 +131,25 @@ func (l *Lock) Release() error {
 		}
 		// Unlink the path while still holding the lock on platforms that permit it,
 		// preventing a race where another process locks the descriptor between unlock and remove.
+		statF, errF := l.file.Stat()
 		removeErr := os.Remove(l.path)
 		unlockErr := unlock(l.file)
 		closeErr := l.file.Close()
 		l.file = nil
-		if runtime.GOOS == "windows" && removeErr != nil && !os.IsNotExist(removeErr) {
-			// On Windows, open handles cannot be deleted until closed; do not
-			// remove after Close() because another process could acquire l.path
-			// in between. Stale lockfiles with dead PIDs are safely reclaimed.
-			removeErr = nil
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			// On Windows, open handles cannot be deleted until closed. Verify the
+			// path still refers to the same inode and our PID before unlinking so
+			// we never delete another process's newly acquired lockfile.
+			statP, errP := os.Stat(l.path)
+			if errF == nil && errP == nil && os.SameFile(statF, statP) && readPID(l.path) == os.Getpid() {
+				if retryErr := os.Remove(l.path); retryErr == nil || os.IsNotExist(retryErr) {
+					removeErr = nil
+				} else {
+					removeErr = nil
+				}
+			} else {
+				removeErr = nil
+			}
 		}
 		if unlockErr != nil {
 			l.err = unlockErr
