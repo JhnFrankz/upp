@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/JhnFrankz/upp/internal/lock"
 	"github.com/JhnFrankz/upp/internal/output"
@@ -206,8 +207,7 @@ func confirmReplace(r output.SelfUpdatePresenter, stdin io.Reader, current, late
 	return false
 }
 
-// stdinIsTTY reports whether stdin is a character device (a terminal).
+// stdinIsTTY reports whether stdin is an interactive terminal.
 func stdinIsTTY() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }

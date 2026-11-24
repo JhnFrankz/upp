@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -323,5 +324,17 @@ func TestRenderer_ConcurrentThreadSafety(t *testing.T) {
 	wg.Wait()
 	if buf.Len() == 0 {
 		t.Error("expected non-empty output from concurrent operations")
+	}
+}
+
+func TestIsTerminal_DevNullIsFalse(t *testing.T) {
+	f, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	if isTerminal(f) {
+		t.Errorf("isTerminal(%s) = true, want false", os.DevNull)
 	}
 }
