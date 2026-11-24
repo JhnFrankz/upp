@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,7 +75,7 @@ func Acquire(path string) (*Lock, error) {
 		// If another process unlinked it between open and lock, retry on a fresh open.
 		statF, errF := f.Stat()
 		statP, errP := os.Stat(path)
-		if errF == nil && errP == nil && !os.SameFile(statF, statP) {
+		if shouldRetryUnlink(statF, errF, statP, errP) {
 			_ = unlock(f)
 			_ = f.Close()
 			continue
@@ -135,9 +136,11 @@ func (l *Lock) Release() error {
 		unlockErr := unlock(l.file)
 		closeErr := l.file.Close()
 		l.file = nil
-		if removeErr != nil && !os.IsNotExist(removeErr) {
-			// On Windows, open files cannot be deleted until closed; retry after close.
-			removeErr = os.Remove(l.path)
+		if runtime.GOOS == "windows" && removeErr != nil && !os.IsNotExist(removeErr) {
+			// On Windows, open handles cannot be deleted until closed; do not
+			// remove after Close() because another process could acquire l.path
+			// in between. Stale lockfiles with dead PIDs are safely reclaimed.
+			removeErr = nil
 		}
 		if unlockErr != nil {
 			l.err = unlockErr
@@ -153,6 +156,13 @@ func (l *Lock) Release() error {
 		}
 	})
 	return l.err
+}
+
+func shouldRetryUnlink(statF os.FileInfo, errF error, statP os.FileInfo, errP error) bool {
+	if os.IsNotExist(errP) {
+		return true
+	}
+	return errF == nil && errP == nil && !os.SameFile(statF, statP)
 }
 
 // TryLock attempts to acquire an advisory lock on the file without blocking.

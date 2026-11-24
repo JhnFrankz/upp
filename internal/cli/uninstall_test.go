@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -564,5 +565,48 @@ func TestUninstall_DefaultCacheDirUsesConfig(t *testing.T) {
 	expectedCacheDir, _ := config.CacheDir()
 	if capturedCacheDir != expectedCacheDir {
 		t.Errorf("captured cache dir %q, want %q", capturedCacheDir, expectedCacheDir)
+	}
+}
+
+func TestUninstall_ReleasesLockBeforeExecute(t *testing.T) {
+	tmpDir := t.TempDir()
+	lockPath := filepath.Join(tmpDir, "cache", "upp.lock")
+	cacheDir := filepath.Join(tmpDir, "cache")
+
+	var buf bytes.Buffer
+	reacquiredDuringExecute := false
+	deps := uninstallDeps{
+		execPath:  func() (string, error) { return filepath.Join(tmpDir, "upp"), nil },
+		configDir: func() (string, error) { return filepath.Join(tmpDir, "cfg"), nil },
+		cacheDir:  func() (string, error) { return cacheDir, nil },
+		isTTY:     func() bool { return true },
+		acquireLock: func() (*lock.Lock, error) {
+			return lock.Acquire(lockPath)
+		},
+		discover: func(execPath, configDir, cDir string) ([]uninstall.Target, error) {
+			return []uninstall.Target{
+				{Type: uninstall.TargetCache, Path: cDir, Exists: true},
+			}, nil
+		},
+		remove: func(string) error { return nil },
+		removeAll: func(p string) error {
+			if p == cacheDir {
+				l2, err := lock.Acquire(lockPath)
+				if err != nil {
+					return err
+				}
+				reacquiredDuringExecute = true
+				_ = l2.Release()
+			}
+			return nil
+		},
+	}
+
+	err := runUninstall(context.Background(), &GlobalFlags{}, UninstallFlags{Yes: true}, &buf, deps)
+	if err != nil {
+		t.Fatalf("runUninstall unexpected error: %v", err)
+	}
+	if !reacquiredDuringExecute {
+		t.Error("expected lock to be released before removeAll(cacheDir) runs")
 	}
 }
