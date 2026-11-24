@@ -909,9 +909,11 @@ func TestResolveEffectiveUpdatePolicy(t *testing.T) {
 			t.Fatal("official go adapter not found")
 		}
 
-		// On Linux, go is standalone (no manager), returns its declared policy (PolicyAlwaysUpdate)
-		if got := ResolveEffectiveUpdatePolicy(goTool, platform.OSLinux); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("go policy on Linux (standalone) = %v, want PolicyAlwaysUpdate", got)
+		// On Linux, go returns its effective declared/managed policy (PolicyAlwaysUpdate
+		// for /usr/local/go, PolicyGated when owned by apt/pacman or unmanaged).
+		wantGoLinux := goTool.Info().UpdatePolicy
+		if got := ResolveEffectiveUpdatePolicy(goTool, platform.OSLinux); got != wantGoLinux {
+			t.Errorf("go policy on Linux = %v, want %v", got, wantGoLinux)
 		}
 
 		// On macOS, go is owned by brew (PolicyAlwaysUpdate)

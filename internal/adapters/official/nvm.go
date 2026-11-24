@@ -46,7 +46,7 @@ func (a *NVMAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// Get current node version via nvm. nvm is bash-only, so run through
 	// bash explicitly (POSIX sh — dash/ash — lacks `source`); honor
 	// NVM_DIR installs with a fallback to ~/.nvm.
-	stdout, err := shellOutputErr(ctx, "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
+	stdout, err := shellOutputErrCheck(ctx, "bash -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm current'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}
@@ -61,7 +61,7 @@ func (a *NVMAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	// after the real versions; grep filters to actual vX.Y.Z lines so the
 	// last one is the newest LTS — tail -1 alone would pick the alias and
 	// silently miss real updates.
-	stdout, err = shellOutputErr(ctx, "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'", "nvm")
+	stdout, err = shellOutputErrCheck(ctx, "bash -o pipefail -c 'source \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm ls-remote --lts | grep -E \"^[[:space:]]*v[0-9]\" | tail -1 | awk \"{print \\$1}\"'", "nvm")
 	if err != nil {
 		return adapters.UpdateInfo{}, err
 	}

@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -127,6 +128,9 @@ func defaultHTTPClient() *http.Client {
 // → api.github.com, github.com → objects.githubusercontent.com) stay on
 // HTTPS and pass.
 func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("selfupdate: stopped after 10 redirects")
+	}
 	if req.URL.Scheme != "https" {
 		return fmt.Errorf("selfupdate: refusing redirect to non-HTTPS URL %q", req.URL)
 	}

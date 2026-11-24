@@ -58,6 +58,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 	resetLinuxManagerCache()
 
 	origRunCmd := runCmdFn
+	origRunCmdCheck := runCmdCheckFn
 	origRunCmdArgs := runCmdArgsFn
 	origRunCmdArgsUpdate := runCmdArgsUpdateFn
 	origLookPath := lookPathFn
@@ -80,6 +81,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 		r := f.shell[command]
 		return r.stdout, r.stderr, r.err
 	}
+	runCmdCheckFn = runCmdFn
 	runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
 		key := name
 		if len(args) > 0 {
@@ -229,6 +231,7 @@ func setExecFakes(t *testing.T, f execFakes) {
 
 	t.Cleanup(func() {
 		runCmdFn = origRunCmd
+		runCmdCheckFn = origRunCmdCheck
 		runCmdArgsFn = origRunCmdArgs
 		runCmdArgsUpdateFn = origRunCmdArgsUpdate
 		lookPathFn = origLookPath
