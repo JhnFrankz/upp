@@ -132,6 +132,11 @@ func TestDetectPrivileges(t *testing.T) {
 			cmd:  "sudo pkexec doas su - root",
 			want: []string{"sudo", "doas", "pkexec", "su"},
 		},
+		{
+			name: "windows gsudo privilege token",
+			cmd:  "gsudo winget upgrade winget",
+			want: []string{"gsudo"},
+		},
 	}
 
 	for _, tt := range tests {

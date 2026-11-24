@@ -128,11 +128,11 @@ func ClassifyCommand(cmd string) RiskLevel {
 		}
 	}
 
-	// 2. Pattern matching — pipe to shell is always high risk.
+	// 2. Pattern matching — pipe to shell or process substitution is always high risk.
 	// Evaluated before medium-risk keywords so compound commands with medium-risk
 	// verbs that pipe into a shell (e.g., npm uninstall -g x && curl ... | bash)
 	// correctly evaluate to RiskHigh.
-	if hasPipeToShell(cmd) {
+	if hasPipeToShell(cmd) || hasProcessSubstitution(cmd) {
 		return RiskHigh
 	}
 
@@ -162,17 +162,44 @@ func CheckNeedsConsent(checkCmd string) bool {
 	return checkCmd != "" && ClassifyCommand(checkCmd) != RiskLow
 }
 
+// hasProcessSubstitution detects bash/zsh process substitution (<(...) or >(...)).
+func hasProcessSubstitution(cmd string) bool {
+	return strings.Contains(cmd, "<(") || strings.Contains(cmd, ">(")
+}
+
 // hasCommandChaining detects command chaining operators and generic shell pipelines.
 func hasCommandChaining(cmd string) bool {
-	if !strings.ContainsAny(cmd, "&|;$`") {
+	if !strings.ContainsAny(cmd, "&|;$`\n") {
 		return false
 	}
-	return strings.Contains(cmd, "&&") ||
+	return strings.ContainsRune(cmd, '\n') ||
+		strings.Contains(cmd, "&&") ||
 		strings.Contains(cmd, "||") ||
 		strings.Contains(cmd, ";") ||
 		strings.Contains(cmd, "$(") ||
 		hasPipe(cmd) ||
+		hasSingleAmpersand(cmd) ||
 		(strings.Contains(cmd, "`") && strings.Count(cmd, "`") >= 2)
+}
+
+// hasSingleAmpersand detects background command execution (&) while ignoring
+// &&, |&, >&, and <& redirections.
+func hasSingleAmpersand(cmd string) bool {
+	n := len(cmd)
+	for i := 0; i < n; i++ {
+		if cmd[i] != '&' {
+			continue
+		}
+		if i+1 < n && cmd[i+1] == '&' {
+			i++
+			continue
+		}
+		if i > 0 && (cmd[i-1] == '>' || cmd[i-1] == '<' || cmd[i-1] == '|') {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // hasPipe detects whether a command contains a pipe operator (|),
@@ -193,9 +220,11 @@ func hasPipe(cmd string) bool {
 }
 
 var rePipeShell = regexp.MustCompile(
-	`(?i)^(?:\s*(?:sudo|doas|pkexec)\s+)?` +
+	`(?i)^(?:\s*(?:sudo|gsudo|doas|pkexec)\s+)?` +
 		`(?:\s*['"]?(?:[\w.:/\\ -]+[/\\])?env(?:\.exe)?['"]?(?:\s+-\S+)*\s+)?` +
-		`['"]?(?:[\w.:/\\ -]+[/\\])?` +
+		`(?:[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S*)\s+)*` +
+		`(?:(?:command|exec|builtin)\s+)*` +
+		`\\?['"]?(?:[\w.:/\\ -]+[/\\])?` +
 		`(?:sh|bash|zsh|fish|dash|ksh|ash|powershell|pwsh|cmd|python3|python|node|ruby|perl|xargs)` +
 		`(?:\.exe)?['"]?(?:$|[\s;&|<>'"])`,
 )

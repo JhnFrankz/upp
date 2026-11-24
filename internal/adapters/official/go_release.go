@@ -54,6 +54,18 @@ func checkHTTPSRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+const maxGoMetaBytes = 4 << 20
+
+var maxGoDownloadBytes int64 = 512 << 20
+
+func isSafeReleaseFilename(name string) bool {
+	return name != "" &&
+		name != "." &&
+		name != ".." &&
+		!strings.ContainsAny(name, "/\\") &&
+		filepath.Base(name) == name
+}
+
 // defaultGoCheckClient is the shared HTTP client used for checking Go versions and metadata.
 var defaultGoCheckClient = &http.Client{
 	Timeout:       adapters.CheckTimeout,
@@ -166,7 +178,7 @@ func fetchGoRelease(ctx context.Context, goos, goarch string) (GoRelease, error)
 	}
 
 	var releases []goDevRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxGoMetaBytes)).Decode(&releases); err != nil {
 		return GoRelease{}, fmt.Errorf("failed to decode go releases: %w", err)
 	}
 
@@ -176,6 +188,9 @@ func fetchGoRelease(ctx context.Context, goos, goarch string) (GoRelease, error)
 		}
 		for _, f := range r.Files {
 			if f.OS == goos && f.Arch == goarch && f.Kind == "archive" {
+				if !isSafeReleaseFilename(f.Filename) {
+					return GoRelease{}, fmt.Errorf("unsafe Go release filename %q", f.Filename)
+				}
 				return GoRelease{
 					Version:  r.Version,
 					Filename: f.Filename,
@@ -219,12 +234,16 @@ func downloadAndVerifyGo(ctx context.Context, rel GoRelease, destPath string) er
 	bufPtr := bufferpool.Get()
 	defer bufferpool.Put(bufPtr)
 
-	_, copyErr := io.CopyBuffer(mw, resp.Body, *bufPtr)
+	written, copyErr := io.CopyBuffer(mw, io.LimitReader(resp.Body, maxGoDownloadBytes+1), *bufPtr)
 	closeErr := f.Close()
 
 	if copyErr != nil {
 		_ = os.Remove(destPath)
 		return copyErr
+	}
+	if written > maxGoDownloadBytes {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("go archive exceeds maximum download size (%d bytes)", maxGoDownloadBytes)
 	}
 	if closeErr != nil {
 		_ = os.Remove(destPath)

@@ -98,3 +98,19 @@ func TestFetchGoDevVersion_ReadsAcrossChunksAndPropagatesError(t *testing.T) {
 		}
 	})
 }
+
+func TestFetchGoRelease_RejectsUnsafeFilename(t *testing.T) {
+	origTransport := defaultGoCheckClient.Transport
+	defer func() { defaultGoCheckClient.Transport = origTransport }()
+
+	defaultGoCheckClient.Transport = stubRoundTripper(func(*http.Request) (*http.Response, error) {
+		body := `[{"version":"go1.27.4","stable":true,"files":[{"filename":"../../evil.tar.gz","os":"linux","arch":"amd64","kind":"archive","sha256":"abc"}]}]`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(&chunkedBody{chunks: []string{body}}),
+		}, nil
+	})
+	if _, err := fetchGoRelease(context.Background(), "linux", "amd64"); err == nil {
+		t.Fatal("fetchGoRelease accepted traversal filename, want error")
+	}
+}

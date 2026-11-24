@@ -96,6 +96,8 @@ var (
 
 const maxMetaResponseBytes = 4 << 20
 
+var maxDownloadAssetBytes int64 = 256 << 20
+
 func newHTTPClient(timeout time.Duration) *http.Client {
 	var tr *http.Transport
 	if base, ok := http.DefaultTransport.(*http.Transport); ok {
@@ -182,7 +184,7 @@ func (c *Client) fetchLatest(ctx context.Context) (Release, error) {
 	var body struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxMetaResponseBytes)).Decode(&body); err != nil {
 		return Release{}, fmt.Errorf("selfupdate: latest release lookup failed: decoding response: %w", err)
 	}
 	if body.TagName == "" {
@@ -294,10 +296,16 @@ func (c *Client) Download(ctx context.Context, name string) (archivePath string,
 	defer bufferpool.Put(bufPtr)
 	buf := *bufPtr
 
-	if _, copyErr := io.CopyBuffer(tmpFile, resp.Body, buf); copyErr != nil {
+	written, copyErr := io.CopyBuffer(tmpFile, io.LimitReader(resp.Body, maxDownloadAssetBytes+1), buf)
+	if copyErr != nil {
 		closed = true
 		_ = tmpFile.Close()
 		return "", nil, fmt.Errorf("selfupdate: write asset: %w", copyErr)
+	}
+	if written > maxDownloadAssetBytes {
+		closed = true
+		_ = tmpFile.Close()
+		return "", nil, fmt.Errorf("selfupdate: asset exceeds maximum download size (%d bytes)", maxDownloadAssetBytes)
 	}
 
 	closed = true

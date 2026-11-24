@@ -299,6 +299,33 @@ func TestGoAdapterInfo_NoBinaryLookupOnCacheHitAndSingleOnMiss(t *testing.T) {
 	}
 }
 
+func TestPackageAdapters_RejectLeadingDashPackageName(t *testing.T) {
+	setExecFakes(t, execFakes{
+		lookPath: map[string]bool{"apt": true, "pacman": true, "brew": true, "winget": true, "scoop": true},
+	})
+	mgrs := []adapters.Adapter{
+		&AptAdapter{},
+		&PacmanAdapter{},
+		&BrewAdapter{},
+		&WingetAdapter{},
+		&ScoopAdapter{},
+	}
+	for _, m := range mgrs {
+		t.Run(m.Name(), func(t *testing.T) {
+			if pc, ok := m.(adapters.PackageChecker); ok {
+				if _, err := pc.CheckPackage(context.Background(), "--flag"); err == nil {
+					t.Errorf("%s.CheckPackage(--flag) = nil, want error", m.Name())
+				}
+			}
+			if pu, ok := m.(adapters.PackageUpdater); ok {
+				if _, err := pu.UpdatePackage(context.Background(), "-evil"); err == nil {
+					t.Errorf("%s.UpdatePackage(-evil) = nil, want error", m.Name())
+				}
+			}
+		})
+	}
+}
+
 func TestGoAdapter_UnmanagedInfoIsPolicyGated(t *testing.T) {
 	tests := []struct {
 		name    string

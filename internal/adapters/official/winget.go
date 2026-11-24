@@ -82,6 +82,9 @@ func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
 	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	stdout, err := wingetUpgradeOutput(ctx)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
@@ -102,6 +105,9 @@ func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.
 func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("%w: winget is not installed", adapters.ErrNotInstalled)
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.Result{Success: false, Error: err}, err
 	}
 
 	before := "unknown"

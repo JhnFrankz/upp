@@ -150,6 +150,9 @@ func (a *PacmanAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: pacman is not installed", adapters.ErrNotInstalled)
 	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 
 	qOut := commandOutput(ctx, "pacman", "-Q", pkg)
 	current := parsePacmanQOutput(qOut)
@@ -198,6 +201,9 @@ func (a *PacmanAdapter) CurrentVersion(ctx context.Context) (string, error) {
 func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("%w: pacman is not installed", adapters.ErrNotInstalled)
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.Result{Success: false, Error: err}, err
 	}
 
 	before := a.installedVersion(ctx, pkg)

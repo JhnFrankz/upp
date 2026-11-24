@@ -662,3 +662,29 @@ func TestCheckRedirect_LimitsHops(t *testing.T) {
 		t.Fatal("checkRedirect with 10 hops = nil, want error")
 	}
 }
+
+func TestClientDownload_RejectsOversizedAsset(t *testing.T) {
+	origMax := maxDownloadAssetBytes
+	maxDownloadAssetBytes = 32
+	defer func() { maxDownloadAssetBytes = origMax }()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "latest"):
+			_, _ = w.Write([]byte(`{"tag_name":"v1.0.0"}`))
+		case strings.HasSuffix(r.URL.Path, "checksums.txt"):
+			_, _ = w.Write([]byte("deadbeef  upp.tar.gz\n"))
+		default:
+			_, _ = w.Write(bytes.Repeat([]byte("A"), 64))
+		}
+	}))
+	defer ts.Close()
+
+	c := &Client{BaseURL: ts.URL, DownloadBaseURL: ts.URL, HTTP: ts.Client()}
+	if _, err := c.LatestFresh(context.Background()); err != nil {
+		t.Fatalf("LatestFresh error: %v", err)
+	}
+	if _, _, err := c.Download(context.Background(), "upp.tar.gz"); err == nil {
+		t.Fatal("Download() error = nil for oversized asset, want error")
+	}
+}

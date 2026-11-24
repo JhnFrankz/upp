@@ -118,6 +118,15 @@ func prepareSudoUpdate(ctx context.Context, goos, name string, args []string) (s
 	return name, adapters.PrepareSudoArgsForOS(goos, name, args), nil
 }
 
+// validatePackageName rejects empty or option-like ('-' prefixed) package names
+// so a misconfigured package string cannot inject CLI flags into package managers.
+func validatePackageName(pkg string) error {
+	if pkg == "" || strings.HasPrefix(pkg, "-") {
+		return fmt.Errorf("invalid package name %q: must not be empty or start with '-'", pkg)
+	}
+	return nil
+}
+
 // runCmd executes a shell command and returns stdout, stderr, and any error.
 // The command runs via the platform's default shell.
 // Delegates to the runCmdFn seam variable.

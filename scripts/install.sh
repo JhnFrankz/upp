@@ -74,9 +74,6 @@ detect_platform() {
         aarch64|arm64)
             arch="arm64"
             ;;
-        armv7l|armhf)
-            arch="arm"
-            ;;
         *)
             error "Unsupported architecture: $arch"
             ;;
@@ -94,7 +91,7 @@ resolve_tag() {
 
     local api_url="https://api.github.com/repos/${REPO}/releases/latest"
     local tag
-    tag=$(curl -fsSL "$api_url" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+    tag=$(curl -fsSL --proto '=https' --tlsv1.2 "$api_url" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
 
     if [ -z "$tag" ]; then
         error "Could not determine the latest release tag."
@@ -117,10 +114,9 @@ verify_checksum() {
     local file="$1" checksums="$2" name="$3"
     local expected actual
 
-    expected=$(grep -F "${name}" "$checksums" 2>/dev/null | awk '{print $1}' | head -n1)
+    expected=$(awk -v name="$name" '$2 == name || $2 == ("*" name) { print $1; exit }' "$checksums" 2>/dev/null)
     if [ -z "$expected" ]; then
-        warn "No checksum entry for ${name}, skipping verification."
-        return 0
+        error "No checksum entry found for ${name} in checksums.txt"
     fi
 
     if command -v sha256sum >/dev/null 2>&1; then
@@ -134,6 +130,14 @@ verify_checksum() {
     fi
     info "Checksum verified."
 }
+
+TMP_DIR=""
+cleanup_tmp() {
+    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
+        rm -rf "$TMP_DIR"
+    fi
+}
+trap cleanup_tmp EXIT
 
 # Download and install binary
 install_binary() {
@@ -154,24 +158,23 @@ install_binary() {
     local download_url="${base_url}/${asset}"
     local checksum_url="${base_url}/checksums.txt"
 
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
+    TMP_DIR=$(mktemp -d)
+    local tmp_dir="$TMP_DIR"
     local tmp_asset="${tmp_dir}/${asset}"
     local tmp_checksums="${tmp_dir}/checksums.txt"
 
     info "Downloading ${asset} (${tag})..."
     info "URL: ${download_url}"
 
-    if ! curl -fsSL -o "$tmp_asset" "$download_url"; then
+    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp_asset" "$download_url"; then
         error "Failed to download ${download_url}"
     fi
 
-    if curl -fsSL -o "$tmp_checksums" "$checksum_url"; then
-        info "Verifying checksum..."
-        verify_checksum "$tmp_asset" "$tmp_checksums" "$asset"
-    else
-        warn "No checksums.txt found, skipping verification."
+    if ! curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp_checksums" "$checksum_url"; then
+        error "Failed to download ${checksum_url}; refusing unverified binary."
     fi
+    info "Verifying checksum..."
+    verify_checksum "$tmp_asset" "$tmp_checksums" "$asset"
 
     # Extract the binary from the archive
     local stage="${tmp_dir}/stage"
