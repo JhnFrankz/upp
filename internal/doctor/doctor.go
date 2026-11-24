@@ -160,6 +160,13 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 	if ctx.Err() != nil {
 		return results
 	}
+	// Overlap network probes with local storage/lock/manager/path checks while
+	// preserving deterministic output ordering by appending netCh at the end.
+	netCh := make(chan []CheckResult, 1)
+	go func() {
+		netCh <- checkNetwork(ctx, nil, deps)
+	}()
+
 	results = checkStorageAndConfig(results, deps)
 	if ctx.Err() != nil {
 		return results
@@ -176,7 +183,7 @@ func Diagnose(ctx context.Context, deps DoctorDeps) []CheckResult {
 	if ctx.Err() != nil {
 		return results
 	}
-	results = checkNetwork(ctx, results, deps)
+	results = append(results, <-netCh...)
 
 	return results
 }

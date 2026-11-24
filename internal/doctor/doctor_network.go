@@ -15,7 +15,7 @@ var defaultDoctorHTTPClient = &http.Client{
 }
 
 func defaultHTTPGet(ctx context.Context, url string) (int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return 0, err
 	}
