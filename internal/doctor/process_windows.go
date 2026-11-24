@@ -4,6 +4,7 @@ package doctor
 
 import (
 	"errors"
+	"os"
 
 	"golang.org/x/sys/windows"
 )
