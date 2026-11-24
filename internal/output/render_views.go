@@ -97,7 +97,7 @@ func (r *Renderer) ListTools(groups []Group) {
 	defer r.mu.Unlock()
 	w := tabwriter.NewWriter(r.w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-		r.cyan("ID"), "Name", "Status", "Version")
+		"ID", "Name", "Status", "Version")
 
 	for _, g := range groups {
 		if g.Header != "" {

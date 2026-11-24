@@ -50,7 +50,8 @@ func FilterAdapters(adapterList []adapters.Adapter, only []string) []adapters.Ad
 			name := a.Name()
 			id := a.Info().ID
 			for _, want := range only {
-				if strings.EqualFold(name, want) || strings.EqualFold(id, want) {
+				want = strings.TrimSpace(want)
+				if want != "" && (strings.EqualFold(name, want) || strings.EqualFold(id, want)) {
 					filtered = append(filtered, a)
 					break
 				}

@@ -49,6 +49,9 @@ func getPathDirs() []string {
 	cachedPathDirs = make([]string, 0, len(rawDirs))
 	seenDirs := make(map[string]struct{}, len(rawDirs))
 	for _, d := range rawDirs {
+		if d == "" {
+			continue
+		}
 		cleaned := filepath.Clean(d)
 		if _, seen := seenDirs[cleaned]; !seen {
 			seenDirs[cleaned] = struct{}{}

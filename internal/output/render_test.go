@@ -267,8 +267,14 @@ func TestRenderer_ErrorAndWarning(t *testing.T) {
 
 	buf.Reset()
 	r.Warning("potential issue")
-	if !strings.Contains(buf.String(), "⚠️  potential issue") {
+	if !strings.Contains(buf.String(), "[!] potential issue") {
 		t.Errorf("Warning() output missing expected content, got: %s", buf.String())
+	}
+
+	buf.Reset()
+	NewRendererForced(&buf, false, true, false, false).Warning("potential issue")
+	if !strings.Contains(buf.String(), "⚠️  potential issue") {
+		t.Errorf("Warning() with emoji=true missing expected content, got: %s", buf.String())
 	}
 }
 
@@ -336,5 +342,18 @@ func TestIsTerminal_DevNullIsFalse(t *testing.T) {
 
 	if isTerminal(f) {
 		t.Errorf("isTerminal(%s) = true, want false", os.DevNull)
+	}
+}
+
+func TestRendererWarning_RespectsNoEmoji(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, false, false, false, false)
+	r.Warning("watch out")
+	got := buf.String()
+	if strings.Contains(got, "⚠️") {
+		t.Errorf("Warning with emoji=false leaked emoji: %q", got)
+	}
+	if !strings.HasPrefix(got, "[!] ") {
+		t.Errorf("Warning with emoji=false = %q, want '[!] ' prefix", got)
 	}
 }
