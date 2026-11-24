@@ -1,7 +1,6 @@
 package output
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -63,50 +63,95 @@ func (s *CheckboxSelector) Run() (SelectResult, error) {
 	return s.RunContext(context.Background())
 }
 
-// ctxReader makes a blocking Read abortable by ctx. A Read pending when ctx
-// is canceled is abandoned (its goroutine ends with the process or when the
-// underlying reader unblocks); callers must not reuse the reader afterwards.
-type ctxReader struct {
-	ctx context.Context
-	r   io.Reader
+const escSequenceWait = 25 * time.Millisecond
+
+type readByteMsg struct {
+	b   byte
+	err error
 }
 
-func (c ctxReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
+// bytePump reads bytes from r on one persistent goroutine so RunContext can
+// wait on ctx.Done() and short escape-sequence timeouts without spawning a
+// goroutine per keystroke. A Read blocked when ctx cancels is abandoned until
+// the process exits or r unblocks.
+type bytePump struct {
+	ch   chan readByteMsg
+	stop chan struct{}
+}
+
+func newBytePump(r io.Reader) *bytePump {
+	p := &bytePump{
+		ch:   make(chan readByteMsg, 64),
+		stop: make(chan struct{}),
 	}
-	type result struct {
-		n   int
-		err error
-	}
-	ch := make(chan result, 1)
-	buf := make([]byte, len(p))
 	go func() {
-		n, err := c.r.Read(buf)
-		ch <- result{n, err}
+		var buf [64]byte
+		for {
+			n, err := r.Read(buf[:])
+			for i := 0; i < n; i++ {
+				select {
+				case p.ch <- readByteMsg{b: buf[i]}:
+				case <-p.stop:
+					return
+				}
+			}
+			if err != nil {
+				select {
+				case p.ch <- readByteMsg{err: err}:
+				case <-p.stop:
+				}
+				return
+			}
+		}
 	}()
+	return p
+}
+
+func (p *bytePump) close() { close(p.stop) }
+
+func (p *bytePump) next(ctx context.Context) (byte, error) {
 	select {
-	case res := <-ch:
-		copy(p, buf[:res.n])
-		return res.n, res.err
-	case <-c.ctx.Done():
-		return 0, c.ctx.Err()
+	case msg := <-p.ch:
+		return msg.b, msg.err
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+func (p *bytePump) nextTimeout(ctx context.Context, d time.Duration) (byte, bool, error) {
+	select {
+	case msg := <-p.ch:
+		return msg.b, true, msg.err
+	default:
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case msg := <-p.ch:
+		return msg.b, true, msg.err
+	case <-timer.C:
+		return 0, false, nil
+	case <-ctx.Done():
+		return 0, false, ctx.Err()
 	}
 }
 
 // RunContext renders the selector and processes keys until Enter (confirm),
 // Esc/q (cancel), ctx is canceled, or input fails. It fails closed: end of
 // input or a read error before an explicit Enter cancels the selection
-// instead of confirming the pre-checked tools. For a *os.File reader the terminal is
-// put into raw mode first and restored on every exit path (confirm, cancel,
+// instead of confirming the pre-checked tools. Ctrl-C (0x03) returns
+// context.Canceled so callers exit with 130. For a *os.File reader the terminal
+// is put into raw mode first and restored on every exit path (confirm, cancel,
 // error, panic) via defer — the threat-matrix contract for terminal state.
 // Non-File readers (bytes.Buffer in tests, pipes) skip raw mode entirely.
 func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error) {
+	rawMode := false
 	if f, ok := s.r.(*os.File); ok {
 		state, err := makeRawFn(int(f.Fd()))
 		if err != nil {
 			return SelectResult{}, fmt.Errorf("raw mode: %w", err)
 		}
+		rawMode = true
 		defer func() { _ = restoreTerm(int(f.Fd()), state) }()
 	}
 
@@ -142,6 +187,10 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 			sb.WriteString("A\r")
 		}
 
+		newline := "\n"
+		if rawMode {
+			newline = "\r\n"
+		}
 		currentLines := 0
 		lastGroup := ""
 		for i, opt := range s.opts {
@@ -153,7 +202,7 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 					sb.WriteString("\r\x1b[K")
 				}
 				sb.WriteString(opt.Group)
-				sb.WriteByte('\n')
+				sb.WriteString(newline)
 				currentLines++
 				lastGroup = opt.Group
 			}
@@ -193,7 +242,7 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 					sb.WriteString(opt.Version)
 				}
 			}
-			sb.WriteByte('\n')
+			sb.WriteString(newline)
 			currentLines++
 		}
 		linesRendered = currentLines
@@ -213,10 +262,11 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 		return ids
 	}
 
-	br := bufio.NewReader(ctxReader{ctx: ctx, r: s.r})
 	render()
+	pump := newBytePump(s.r)
+	defer pump.close()
 	for {
-		b, err := br.ReadByte()
+		b, err := pump.next(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return SelectResult{Canceled: true}, nil
@@ -227,7 +277,9 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 		case '\r', '\n':
 			return SelectResult{Selected: collect()}, nil
 		case ' ':
-			selected[cursor] = !selected[cursor]
+			if len(selected) > 0 {
+				selected[cursor] = !selected[cursor]
+			}
 		case 'a':
 			for i := range selected {
 				selected[i] = true
@@ -236,23 +288,32 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 			for i := range selected {
 				selected[i] = false
 			}
-		case 0x03, 0x04, 'q':
+		case 0x03:
+			return SelectResult{Canceled: true}, context.Canceled
+		case 0x04, 'q':
 			return SelectResult{Canceled: true}, nil
 		case 0x1b:
 			// Escape either starts an arrow sequence (\x1b[A / \x1b[B) or
-			// cancels on its own (raw-mode terminals send bare \x1b for Esc).
-			// If no subsequent bytes were received in the same burst (br.Buffered() == 0),
-			// cancel immediately without blocking on a synchronous Peek/Read.
-			if br.Buffered() == 0 {
-				return SelectResult{Canceled: true}, nil
-			}
-			next, err := br.Peek(1)
-			if err != nil || next[0] != '[' {
-				return SelectResult{Canceled: true}, nil
-			}
-			_, _ = br.ReadByte() // consume '['
-			arrow, err := br.ReadByte()
+			// cancels on its own. Wait briefly so split SSH/tmux bursts still
+			// register as arrows without hanging bare Esc.
+			next, ok, err := pump.nextTimeout(ctx, escSequenceWait)
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return SelectResult{Canceled: true}, nil
+				}
+				return SelectResult{Canceled: true}, err
+			}
+			if !ok || next != '[' {
+				return SelectResult{Canceled: true}, nil
+			}
+			arrow, ok, err := pump.nextTimeout(ctx, escSequenceWait)
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return SelectResult{Canceled: true}, nil
+				}
+				return SelectResult{Canceled: true}, err
+			}
+			if !ok {
 				return SelectResult{Canceled: true}, nil
 			}
 			switch arrow {

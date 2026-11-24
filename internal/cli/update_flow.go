@@ -247,17 +247,19 @@ func runUpdateInteractive(s *UpdateSession, filteredAdapters []adapters.Adapter)
 		return nil
 	}
 
-	selector := s.Selector
-	if selector == nil {
-		selector = func(opts []output.SelectOption) ([]string, bool) {
-			res, err := output.NewCheckboxSelector(s.Out, s.In, opts).RunContext(s.Ctx)
-			if err != nil {
-				return nil, true
-			}
-			return res.Selected, res.Canceled
+	var (
+		selected []string
+		canceled bool
+	)
+	if s.Selector != nil {
+		selected, canceled = s.Selector(pending)
+	} else {
+		res, err := output.NewCheckboxSelector(s.Out, s.In, pending).RunContext(s.Ctx)
+		if err != nil {
+			return err
 		}
+		selected, canceled = res.Selected, res.Canceled
 	}
-	selected, canceled := selector(pending)
 	if canceled {
 		s.Renderer.UpdateCancelled()
 		return nil
