@@ -18,12 +18,16 @@ func (a *GhAdapter) Detect() bool {
 	return lookPath("gh")
 }
 
+func (a *GhAdapter) CurrentVersion(ctx context.Context) (string, error) {
+	return extractVersion(commandOutput(ctx, "gh", "--version")), nil
+}
+
 func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: gh is not installed", adapters.ErrNotInstalled)
 	}
 
-	current := extractVersion(commandOutput(ctx, "gh", "--version"))
+	current, _ := a.CurrentVersion(ctx)
 	return DelegatedCheck(ctx, a, current)
 }
 

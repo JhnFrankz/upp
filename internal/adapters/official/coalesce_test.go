@@ -280,3 +280,21 @@ func TestGoAdapter_UnmanagedInfoIsPolicyGated(t *testing.T) {
 		})
 	}
 }
+
+func TestDelegatedCheck_PreservesCurrentVersionWhenUpToDate(t *testing.T) {
+	setExecFakes(t, execFakes{
+		goos:     "darwin",
+		lookPath: map[string]bool{"gh": true, "brew": true},
+		cmdArgs: map[string]fakeResult{
+			"gh --version":            {stdout: "gh version 2.45.0 (2024-01-01)"},
+			"brew outdated --json gh": {stdout: "[]"},
+		},
+	})
+	info, err := (&GhAdapter{}).Check(context.Background())
+	if err != nil {
+		t.Fatalf("Check error: %v", err)
+	}
+	if info.CurrentVersion != "2.45.0" || info.LatestVersion != "2.45.0" || info.UpdateAvailable {
+		t.Errorf("got %+v, want {CurrentVersion: 2.45.0, LatestVersion: 2.45.0, UpdateAvailable: false}", info)
+	}
+}

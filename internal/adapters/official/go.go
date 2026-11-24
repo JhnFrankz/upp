@@ -40,13 +40,16 @@ func (a *GoAdapter) linuxOwner() (adapters.Adapter, string) {
 	return nil, ""
 }
 
+func (a *GoAdapter) CurrentVersion(ctx context.Context) (string, error) {
+	return extractGoVersion(commandOutput(ctx, "go", "version")), nil
+}
+
 func (a *GoAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: go is not installed", adapters.ErrNotInstalled)
 	}
 
-	current := commandOutput(ctx, "go", "version")
-	current = extractGoVersion(current)
+	current, _ := a.CurrentVersion(ctx)
 
 	plat, _ := platform.NormalizeOS(runtimeGOOSFn())
 	if owner := resolveOwnerForAdapter(a, plat); owner != nil {

@@ -137,6 +137,47 @@ func TestOwnedCheckerAdapter_FallbackToBaseCheck(t *testing.T) {
 	}
 }
 
+type mockAdapterWithCurrentVersion struct {
+	mockAdapterForChecker
+	current string
+}
+
+func (m *mockAdapterWithCurrentVersion) CurrentVersion(context.Context) (string, error) {
+	return m.current, nil
+}
+
+func TestOwnedCheckerAdapter_AvoidsDoubleCheckPackage(t *testing.T) {
+	base := &mockAdapterWithCurrentVersion{
+		mockAdapterForChecker: mockAdapterForChecker{
+			info: adapters.ToolInfo{ID: "gh", Name: "gh"},
+		},
+		current: "2.45.0",
+	}
+	mgr := &mockManagerChecker{
+		pkgInfo: adapters.UpdateInfo{},
+		pkgErr:  nil,
+	}
+	wrapper := &ownedCheckerAdapter{
+		Adapter: base,
+		checker: mgr,
+		pkg:     "gh",
+	}
+
+	info, err := wrapper.Check(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mgr.checkPkgCalls != 1 {
+		t.Errorf("CheckPackage called %d times, want 1", mgr.checkPkgCalls)
+	}
+	if base.checkCalls != 0 {
+		t.Errorf("base.Check called %d times, want 0 (must use CurrentVersion without re-running CheckPackage)", base.checkCalls)
+	}
+	if info.CurrentVersion != "2.45.0" || info.LatestVersion != "2.45.0" || info.UpdateAvailable {
+		t.Errorf("got %+v, want {CurrentVersion: 2.45.0, LatestVersion: 2.45.0, UpdateAvailable: false}", info)
+	}
+}
+
 func TestPrepareCheckAdapters_TableDriven(t *testing.T) {
 	mgr := &mockManagerChecker{
 		mockAdapterForChecker: mockAdapterForChecker{

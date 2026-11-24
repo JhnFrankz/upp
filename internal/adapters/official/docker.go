@@ -18,12 +18,16 @@ func (a *DockerAdapter) Detect() bool {
 	return lookPath("docker")
 }
 
+func (a *DockerAdapter) CurrentVersion(ctx context.Context) (string, error) {
+	return extractVersion(commandOutput(ctx, "docker", "--version")), nil
+}
+
 func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: docker is not installed", adapters.ErrNotInstalled)
 	}
 
-	current := extractVersion(commandOutput(ctx, "docker", "--version"))
+	current, _ := a.CurrentVersion(ctx)
 	return DelegatedCheck(ctx, a, current)
 }
 

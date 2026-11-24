@@ -22,6 +22,19 @@ func (o *ownedCheckerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, e
 	if info != (adapters.UpdateInfo{}) {
 		return info, nil
 	}
+	if vp, ok := o.Adapter.(interface {
+		CurrentVersion(context.Context) (string, error)
+	}); ok {
+		cur, cerr := vp.CurrentVersion(ctx)
+		if cerr != nil {
+			return adapters.UpdateInfo{}, cerr
+		}
+		return adapters.UpdateInfo{
+			CurrentVersion:  cur,
+			LatestVersion:   cur,
+			UpdateAvailable: false,
+		}, nil
+	}
 	return o.Adapter.Check(ctx)
 }
 
