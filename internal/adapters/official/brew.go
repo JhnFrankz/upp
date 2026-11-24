@@ -90,6 +90,9 @@ func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Up
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
 	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	stdout, err := brewOutdatedQueryFor(pkg).run(ctx, func(c context.Context) (string, error) {
 		return commandOutputErr(c, "brew", "outdated", "--json", pkg)
 	})
@@ -112,6 +115,9 @@ func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Up
 func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("%w: brew is not installed", adapters.ErrNotInstalled)
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.Result{Success: false, Error: err}, err
 	}
 
 	before := "unknown"

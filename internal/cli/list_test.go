@@ -3,10 +3,13 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
+	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
@@ -223,5 +226,35 @@ func TestRunList_UnknownOnlyToolWarning(t *testing.T) {
 
 	if !strings.Contains(strings.ToLower(errOut), `warning: tool "unknown-tool" not found`) {
 		t.Errorf("expected stderr to contain warning: tool %q not found, got: %q", "unknown-tool", errOut)
+	}
+}
+
+func TestRunList_CustomWithManagerCheckerDoesNotSkipCheck(t *testing.T) {
+	probeHome(t)
+	binDir := t.TempDir()
+	for _, name := range []string{"owned-tool", "owned-tool.exe"} {
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", binDir)
+
+	mgr := &fakeCheckerManager{}
+	ca, err := adapters.NewCustomAdapter("owned-tool", "owned-tool update", "curl -s https://example.com/x.sh | bash", false, mgr)
+	if err != nil {
+		t.Fatalf("NewCustomAdapter error: %v", err)
+	}
+	deps := listDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter {
+			return []adapters.Adapter{mgr, ca}
+		},
+	}
+	out := withCapturedStdout(func() {
+		if err := runList(context.Background(), &GlobalFlags{}, deps); err != nil {
+			t.Fatalf("runList error: %v", err)
+		}
+	})
+	if !strings.Contains(out, "1.0") {
+		t.Errorf("expected list output to include CheckPackage version 1.0, got:\n%s", out)
 	}
 }

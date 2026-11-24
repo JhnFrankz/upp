@@ -128,6 +128,9 @@ func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.U
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: scoop is not installed", adapters.ErrNotInstalled)
 	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 
 	current := "unknown"
 	latest := "unknown"
@@ -155,6 +158,9 @@ func (a *ScoopAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.U
 func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("%w: scoop is not installed", adapters.ErrNotInstalled)
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.Result{Success: false, Error: err}, err
 	}
 
 	before := "unknown"

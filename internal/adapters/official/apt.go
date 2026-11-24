@@ -79,6 +79,9 @@ func (a *AptAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Upd
 	if !a.Detect() {
 		return adapters.UpdateInfo{}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
 	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.UpdateInfo{}, err
+	}
 	stdout, err := commandOutputErrFor(ctx, "apt", "apt-cache", "policy", pkg)
 	if err != nil {
 		return adapters.UpdateInfo{}, err
@@ -101,6 +104,9 @@ func (a *AptAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Upd
 func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("%w: apt is not installed", adapters.ErrNotInstalled)
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return adapters.Result{Success: false, Error: err}, err
 	}
 
 	before := a.installedVersion(ctx, pkg)

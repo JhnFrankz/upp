@@ -210,7 +210,7 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 
 			toolID := oc.ToolID
 			toolName := oc.ToolName
-			trust := security.TrustOfficial
+			trust := security.TrustCustomUntrusted
 			var privileges []string
 			var command string
 			var kind adapters.Kind

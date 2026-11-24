@@ -590,3 +590,14 @@ func TestAdapters_UnnormalizedOSResolution(t *testing.T) {
 		t.Errorf("ResolveOwner(gh, DARWIN) = %v, want brew", ghDarwinUpper)
 	}
 }
+
+func TestFilterAdapters_TrimsWhitespaceOnSmallOnly(t *testing.T) {
+	list := []adapters.Adapter{
+		&dummyAdapter{name: "brew"},
+		&dummyAdapter{name: "npm"},
+	}
+	got := FilterAdapters(list, []string{" brew "})
+	if len(got) != 1 || got[0].Name() != "brew" {
+		t.Errorf("FilterAdapters with padded --only = %v, want [brew]", got)
+	}
+}

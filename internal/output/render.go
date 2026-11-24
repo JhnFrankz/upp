@@ -190,5 +190,9 @@ func (r *Renderer) Error(msg string) {
 func (r *Renderer) Warning(msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	_, _ = fmt.Fprintf(r.w, "⚠️  %s\n", r.yellow(msg))
+	prefix := "[!]"
+	if r.emoji {
+		prefix = "⚠️ "
+	}
+	_, _ = fmt.Fprintf(r.w, "%s %s\n", prefix, r.yellow(msg))
 }

@@ -3,6 +3,7 @@
 package doctor
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -15,7 +16,7 @@ func defaultProcessAlive(pid int) bool {
 	const da = windows.PROCESS_QUERY_LIMITED_INFORMATION
 	h, err := windows.OpenProcess(da, false, uint32(pid))
 	if err != nil {
-		return false
+		return errors.Is(err, windows.ERROR_ACCESS_DENIED)
 	}
 	defer windows.CloseHandle(h)
 

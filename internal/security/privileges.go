@@ -8,6 +8,7 @@ import (
 
 var (
 	reSudo   = regexp.MustCompile(`(?i)\bsudo\b`)
+	reGsudo  = regexp.MustCompile(`(?i)\bgsudo\b`)
 	reDoas   = regexp.MustCompile(`(?i)\bdoas\b`)
 	rePkexec = regexp.MustCompile(`(?i)\bpkexec\b`)
 	reSu     = regexp.MustCompile(`(?i)\bsu\b`)
@@ -23,6 +24,9 @@ func DetectPrivileges(cmd string) []string {
 
 	if platform.ContainsFold(cmd, "sudo") && reSudo.MatchString(cmd) {
 		privs = append(privs, "sudo")
+	}
+	if platform.ContainsFold(cmd, "gsudo") && reGsudo.MatchString(cmd) {
+		privs = append(privs, "gsudo")
 	}
 	if platform.ContainsFold(cmd, "doas") && reDoas.MatchString(cmd) {
 		privs = append(privs, "doas")

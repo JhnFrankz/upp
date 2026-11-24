@@ -119,7 +119,7 @@ func verifyChecksum(archivePath string, checksums []byte, name string) error {
 			return fmt.Errorf("%w: malformed checksum entry for %s", ErrChecksumMismatch, name)
 		}
 		if !bytes.EqualFold(sumBytes, wantBuf[:]) {
-			return fmt.Errorf("%w: %s: checksum %s, want %s", ErrChecksumMismatch, name, string(sumBytes), string(wantBuf[:]))
+			return fmt.Errorf("%w: %s: got checksum %s, want %s", ErrChecksumMismatch, name, string(wantBuf[:]), string(sumBytes))
 		}
 		return nil
 	}

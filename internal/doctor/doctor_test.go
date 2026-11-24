@@ -1603,3 +1603,29 @@ func TestDiagnose_OverlapsNetworkWithLocalChecks(t *testing.T) {
 		t.Error("expected checkNetwork to overlap concurrently with local checks")
 	}
 }
+
+func TestGetPathDirs_SkipsEmptySegmentsWithoutDot(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin::/bin:")
+	dirs := getPathDirs()
+	for _, d := range dirs {
+		if d == "." || d == "" {
+			t.Errorf("getPathDirs() produced %q from empty PATH segment in %v", d, dirs)
+		}
+	}
+}
+
+func TestRemoveLockHintForOS(t *testing.T) {
+	if got := removeLockHintForOS("windows", `C:\tmp\upp.lock`); !strings.Contains(got, "Remove-Item") {
+		t.Errorf("windows hint = %q, want PowerShell Remove-Item", got)
+	}
+	if got := removeLockHintForOS("linux", "/tmp/upp.lock"); !strings.Contains(got, "rm /tmp/upp.lock") {
+		t.Errorf("linux hint = %q, want rm /tmp/upp.lock", got)
+	}
+}
+
+func TestCheckLockOpenError_ENOENTReturnsOK(t *testing.T) {
+	res := lockOpenErrorResult("/tmp/upp.lock", os.ErrNotExist)
+	if res.Status != SeverityOK {
+		t.Errorf("status = %v, want SeverityOK on concurrent lock removal", res.Status)
+	}
+}

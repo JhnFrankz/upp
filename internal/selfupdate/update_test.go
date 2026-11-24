@@ -972,3 +972,19 @@ func TestReplace(t *testing.T) {
 		assertNoTempLeftovers(t, dir)
 	})
 }
+
+func TestVerifyChecksum_ErrorLabelsActualVsExpected(t *testing.T) {
+	dir := t.TempDir()
+	assetPath := filepath.Join(dir, "upp-linux-amd64.tar.gz")
+	if err := os.WriteFile(assetPath, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	expectedHex := strings.Repeat("a", 64)
+	err := verifyChecksum(assetPath, []byte(expectedHex+"  upp-linux-amd64.tar.gz\n"), "upp-linux-amd64.tar.gz")
+	if err == nil {
+		t.Fatal("expected checksum mismatch error")
+	}
+	if !strings.Contains(err.Error(), "want "+expectedHex) {
+		t.Errorf("checksum error has swapped expected/actual labels: %v", err)
+	}
+}

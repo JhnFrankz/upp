@@ -417,3 +417,24 @@ func TestRenderer_ViewPresenterInterfaces(t *testing.T) {
 		t.Errorf("ViewPresenter test failed, got: %s", buf.String())
 	}
 }
+
+func TestListTools_ColorColumnAlignment(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRendererForced(&buf, true, true, false, false)
+	r.ListTools([]Group{{Items: []ListEntry{
+		{ID: "brew", Name: "Homebrew", Status: StatusCurrent, Version: "4.1.0"},
+	}}})
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected 2 lines, got %q", buf.String())
+	}
+	stripANSI := func(s string) string {
+		s = strings.ReplaceAll(s, "\x1b[36m", "")
+		return strings.ReplaceAll(s, "\x1b[0m", "")
+	}
+	headerCol := strings.Index(stripANSI(lines[0]), "Name")
+	rowCol := strings.Index(stripANSI(lines[1]), "Homebrew")
+	if headerCol != rowCol {
+		t.Errorf("tabwriter misaligned Name column in color mode: header=%d, row=%d\n%s", headerCol, rowCol, buf.String())
+	}
+}
