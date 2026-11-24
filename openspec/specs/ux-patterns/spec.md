@@ -240,8 +240,8 @@ The brew manager row MUST render as current in interactive TTY `upp update` pre-
 | brew current on board | TTY, brew check completes | `upp update` pre-check | brew line flips to ✓ up-to-date (current); no `current → new` shown |
 | brew pending in selector | TTY, board settled, brew current (`UpdateAvailable=false`) | CheckboxSelector renders | brew listed in the pending selector (planned unconditionally by `PolicyAlwaysUpdate`) |
 | bun pending in selector | TTY, board settled, bun current (`UpdateAvailable=false`) | CheckboxSelector renders | bun listed in the pending selector |
-| brew dry-run current | brew enabled, `--dry-run` | `upp update -n` | brew row shows current; no planned action (no `-n` signal exists) |
-| apt dry-run planned | apt candidate > installed | `upp update -n` | apt row shows planned `sudo apt install --only-upgrade apt` action |
+| brew dry-run current | brew enabled, `--dry-run` | `upp update -n` | brew row reports planned `brew update` action (PolicyAlwaysUpdate) |
+| apt dry-run planned | apt candidate > installed | `upp update -n` | apt row shows planned `sudo apt install -y --only-upgrade apt` action |
 | winget dry-run planned | winget upgrade lists winget itself | `upp update -n` | winget row shows planned `winget upgrade winget` action |
 | brew list version | brew installed, Homebrew 4.x | `upp list` | brew row shows its own version (e.g. 4.x.y) |
 
@@ -251,11 +251,11 @@ The brew manager row MUST render as current in interactive TTY `upp update` pre-
 `upp uninstall` MUST render clean, structured terminal feedback across execution modes:
 - `--dry-run`: Renders a dry-run header followed by indented planned removals for binary, backups, configuration directory, and cache directory using standard status indicators.
 - Default Execution: Renders each successfully removed target with its target type and path (suppressed under `--quiet`). On full success, outputs "upp has been successfully uninstalled.".
-- Warnings on Failure: If any target cannot be unlinked due to OS permissions, renders a warning with the manual remediation command (`sudo rm -rf <path>`) and returns non-zero error.
+- Warnings on Failure: If any target cannot be unlinked due to OS permissions, renders a warning with the OS- and target-appropriate manual remediation command (e.g. `sudo rm -f <file>` / `sudo rm -rf <dir>` on Unix, `Remove-Item -Force` on Windows) and returns non-zero error.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
 | Dry run output | Binary and config exist | `upp uninstall --dry-run` | Shows header "Dry run — no files will be removed" and list of candidate paths |
 | Full removal output | All targets writable | `upp uninstall` | Shows removed items and "upp has been successfully uninstalled." |
 | Quiet mode output | All targets writable | `upp uninstall -q` | Suppresses per-target removal lines; shows completion message |
-| Warning on unwritable | Root-owned binary | `upp uninstall` | Outputs warning with `sudo rm -rf /usr/local/bin/upp` and returns error |
+| Warning on unwritable | Root-owned binary | `upp uninstall` | Outputs warning with `sudo rm -f /usr/local/bin/upp` (or `Remove-Item -Force` on Windows) and returns error |
