@@ -15,7 +15,7 @@ import (
 // runCmd/runCmdArgs. A mismatch between key and production command is a test
 // failure, never a silent fake miss.
 const (
-	aptUpdateCmd      = "sudo apt install --only-upgrade apt"
+	aptUpdateCmd      = "sudo apt install -y --only-upgrade apt"
 	pacmanUpdateCmd   = "sudo pacman -S --noconfirm pacman"
 	brewUpdateCmd     = "brew update"
 	npmUpdateCmd      = "npm update -g"
@@ -414,8 +414,8 @@ func TestUpdate(t *testing.T) {
 				lookPath: map[string]bool{"gh": true, "apt": true},
 				cmdArgs:  map[string]fakeResult{"gh": {stdout: "gh version 2.45.0 (2024-05-30)"}},
 				shell: map[string]fakeResult{
-					aptInstalledCmd:                      {stdout: "2.4.0"},
-					"sudo apt install --only-upgrade gh": failIfRun, // dry-run must never exec the update cmd
+					aptInstalledCmd:                         {stdout: "2.4.0"},
+					"sudo apt install -y --only-upgrade gh": failIfRun, // dry-run must never exec the update cmd
 				},
 			},
 			dryRun: true,
@@ -432,7 +432,7 @@ func TestUpdate(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {err: errors.New("apt: lock held")},
+					"sudo apt install -y --only-upgrade gh": {err: errors.New("apt: lock held")},
 				},
 			},
 			want:      adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -449,7 +449,7 @@ func TestUpdate(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {stderr: "E: Unable to acquire the dpkg frontend lock"},
+					"sudo apt install -y --only-upgrade gh": {stderr: "E: Unable to acquire the dpkg frontend lock"},
 				},
 			},
 			want:      adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -466,7 +466,7 @@ func TestUpdate(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {},
+					"sudo apt install -y --only-upgrade gh": {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -532,7 +532,7 @@ func TestUpdate(t *testing.T) {
 				cmdArgs:  map[string]fakeResult{"docker": {stdout: "Docker version 26.1.4, build 5650f9b"}},
 				shell: map[string]fakeResult{
 					aptInstalledCmd: {stdout: "2.4.0"},
-					"sudo apt install --only-upgrade docker-ce": failIfRun,
+					"sudo apt install -y --only-upgrade docker-ce": failIfRun,
 				},
 			},
 			dryRun: true,
@@ -549,7 +549,7 @@ func TestUpdate(t *testing.T) {
 					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade docker-ce": {err: errors.New("apt: lock held")},
+					"sudo apt install -y --only-upgrade docker-ce": {err: errors.New("apt: lock held")},
 				},
 			},
 			want:      adapters.Result{Success: false, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
@@ -566,7 +566,7 @@ func TestUpdate(t *testing.T) {
 					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade docker-ce": {stderr: "E: Unable to acquire the dpkg frontend lock"},
+					"sudo apt install -y --only-upgrade docker-ce": {stderr: "E: Unable to acquire the dpkg frontend lock"},
 				},
 			},
 			want:      adapters.Result{Success: false, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
@@ -583,7 +583,7 @@ func TestUpdate(t *testing.T) {
 					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade docker-ce": {},
+					"sudo apt install -y --only-upgrade docker-ce": {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
@@ -736,7 +736,7 @@ func TestUpdate(t *testing.T) {
 				goBinaryPath: "/usr/bin/go",
 				lookPath:     map[string]bool{"go": true, "apt": true},
 				cmdArgs:      map[string]fakeResult{"go": {stdout: "go version go1.22.0 linux/amd64"}},
-				shell:        map[string]fakeResult{"sudo apt install --only-upgrade golang-go": {}},
+				shell:        map[string]fakeResult{"sudo apt install -y --only-upgrade golang-go": {}},
 			},
 			want: adapters.Result{Success: true, Before: "unknown", After: "unknown", Privileges: sudo},
 		},
@@ -1194,7 +1194,7 @@ func TestUpdateDelegation(t *testing.T) {
 	tests := []updateCase{
 		// gh on Linux owned by apt (Gated): delegated apt.UpdatePackage("gh") runs, so
 		// the result carries gh's package versions + sudo. gh's own
-		// "sudo apt install --only-upgrade gh" command is executed.
+		// "sudo apt install -y --only-upgrade gh" command is executed.
 		{
 			name:    "gh/linux-delegates-to-apt",
 			newAdpt: func() adapters.Adapter { return &GhAdapter{} },
@@ -1206,7 +1206,7 @@ func TestUpdateDelegation(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {},
+					"sudo apt install -y --only-upgrade gh": {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -1240,7 +1240,7 @@ func TestUpdateDelegation(t *testing.T) {
 					"apt-cache policy docker-ce": {stdout: "docker-ce:\n  Installed: 26.1.4\n  Candidate: 26.1.4\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade docker-ce": {},
+					"sudo apt install -y --only-upgrade docker-ce": {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "26.1.4", After: "26.1.4", Privileges: sudo},
@@ -1307,7 +1307,7 @@ func TestUpdateDelegation(t *testing.T) {
 
 // TestUpdatePackage covers the WU3 manager-group bulk privileged executor
 // (design D3): apt/brew/winget each run the per-package update COMMAND for one
-// owned package (e.g. `sudo apt install --only-upgrade gh`, `brew upgrade gh`,
+// owned package (e.g. `sudo apt install -y --only-upgrade gh`, `brew upgrade gh`,
 // `winget upgrade gh`). This is NOT the manager's self-only Update() — it
 // upgrades the owned package. Every row is hermetic (setExecFakes, no real
 // subprocess). The before/after version is the PACKAGE's authentic version
@@ -1325,7 +1325,7 @@ func TestUpdatePackage(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {},
+					"sudo apt install -y --only-upgrade gh": {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -1339,7 +1339,7 @@ func TestUpdatePackage(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {err: errors.New("sudo: command not found")},
+					"sudo apt install -y --only-upgrade gh": {err: errors.New("sudo: command not found")},
 				},
 			},
 			want: adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -1353,7 +1353,7 @@ func TestUpdatePackage(t *testing.T) {
 					"apt-cache policy gh": {stdout: "gh:\n  Installed: 2.45.0\n  Candidate: 2.46.0\n"},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {stderr: "E: Unable to locate package gh"},
+					"sudo apt install -y --only-upgrade gh": {stderr: "E: Unable to locate package gh"},
 				},
 			},
 			want: adapters.Result{Success: false, Before: "2.45.0", After: "2.45.0", Privileges: sudo},
@@ -1367,7 +1367,7 @@ func TestUpdatePackage(t *testing.T) {
 					"apt-cache policy gh": {err: errors.New("apt-cache failed")},
 				},
 				shell: map[string]fakeResult{
-					"sudo apt install --only-upgrade gh": {},
+					"sudo apt install -y --only-upgrade gh": {},
 				},
 			},
 			want: adapters.Result{Success: true, Before: "unknown", After: "unknown", Privileges: sudo},
@@ -1547,7 +1547,7 @@ func TestUpdatePackage_AuthenticVersionProgression(t *testing.T) {
 		setExecFakes(t, execFakes{
 			lookPath: map[string]bool{"apt": true},
 			shell: map[string]fakeResult{
-				"sudo apt install --only-upgrade gh": {},
+				"sudo apt install -y --only-upgrade gh": {},
 			},
 		})
 		origRunCmdArgs := runCmdArgsFn
@@ -1789,7 +1789,7 @@ func TestUpdatePackage_StructuredArgumentSecurity(t *testing.T) {
 			name:     "apt",
 			newAdpt:  func() adapters.Adapter { return &AptAdapter{} },
 			wantBin:  "sudo",
-			wantArgs: []string{"apt", "install", "--only-upgrade", payload},
+			wantArgs: []string{"apt", "install", "-y", "--only-upgrade", payload},
 		},
 		{
 			name:     "pacman",

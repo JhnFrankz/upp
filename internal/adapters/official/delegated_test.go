@@ -196,7 +196,7 @@ func TestDelegatedUpdate_Success(t *testing.T) {
 	setExecFakes(t, execFakes{
 		goos:     "linux",
 		lookPath: map[string]bool{"gh": true, "apt": true},
-		shell:    map[string]fakeResult{"sudo apt install --only-upgrade gh": {}},
+		shell:    map[string]fakeResult{"sudo apt install -y --only-upgrade gh": {}},
 	})
 
 	res, err := DelegatedUpdate(context.Background(), &GhAdapter{}, false)
@@ -354,7 +354,7 @@ func TestDelegatedUpdate_UnregisteredAdapterWithDeclaredManager(t *testing.T) {
 	setExecFakes(t, execFakes{
 		goos:     "linux",
 		lookPath: map[string]bool{"apt": true},
-		shell:    map[string]fakeResult{"sudo apt install --only-upgrade custom-package": {}},
+		shell:    map[string]fakeResult{"sudo apt install -y --only-upgrade custom-package": {}},
 	})
 
 	res, err := DelegatedUpdate(context.Background(), &dummyCustomTool{}, false)

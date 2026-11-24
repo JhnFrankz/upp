@@ -76,8 +76,15 @@ var (
 		ctx, cancel := context.WithTimeout(ctx, adapters.UpdateTimeout)
 		defer cancel()
 
+		goos := runtimeGOOSFn()
+		var prepErr error
+		name, args, prepErr = prepareSudoUpdate(ctx, goos, name, args)
+		if prepErr != nil {
+			return "", "", prepErr
+		}
+
 		var cmd *exec.Cmd
-		if runtimeGOOSFn() == "windows" {
+		if goos == "windows" {
 			cmd = exec.CommandContext(ctx, name, args...)
 		} else {
 			cmd = exec.CommandContext(ctx, name, args...)
@@ -93,6 +100,16 @@ var (
 		return err == nil
 	}
 )
+
+func prepareSudoUpdate(ctx context.Context, goos, name string, args []string) (string, []string, error) {
+	if goos == "windows" || name != "sudo" {
+		return name, args, nil
+	}
+	if err := adapters.EnsureSudoAuth(ctx); err != nil {
+		return "", nil, err
+	}
+	return name, adapters.PrepareSudoArgs(name, args), nil
+}
 
 // runCmd executes a shell command and returns stdout, stderr, and any error.
 // The command runs via the platform's default shell.

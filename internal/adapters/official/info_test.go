@@ -70,7 +70,7 @@ func TestInfo(t *testing.T) {
 func TestManagerCommandDeclarations(t *testing.T) {
 	// Package managers and their pinned per-package command templates.
 	packageManagers := map[string]string{
-		"apt":    "sudo apt install --only-upgrade <pkg>",
+		"apt":    "sudo apt install -y --only-upgrade <pkg>",
 		"brew":   "brew upgrade <pkg>",
 		"winget": "winget upgrade <pkg>",
 		"pacman": "sudo pacman -S --noconfirm <pkg>",
