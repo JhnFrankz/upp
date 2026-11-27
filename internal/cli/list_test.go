@@ -224,8 +224,8 @@ func TestRunList_UnknownOnlyToolWarning(t *testing.T) {
 		})
 	})
 
-	if !strings.Contains(strings.ToLower(errOut), `warning: tool "unknown-tool" not found`) {
-		t.Errorf("expected stderr to contain warning: tool %q not found, got: %q", "unknown-tool", errOut)
+	if !strings.Contains(errOut, `tool "unknown-tool" not found`) || !strings.Contains(errOut, "[!]") {
+		t.Errorf("expected stderr to contain Renderer.Warning for %q, got: %q", "unknown-tool", errOut)
 	}
 }
 

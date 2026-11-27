@@ -610,3 +610,17 @@ func TestUninstall_ReleasesLockBeforeExecute(t *testing.T) {
 		t.Error("expected lock to be released before removeAll(cacheDir) runs")
 	}
 }
+
+func TestUninstallCommand_DryRunShorthand(t *testing.T) {
+	cmd := NewUninstallCommand(&GlobalFlags{})
+	if err := cmd.Flags().Parse([]string{"-n"}); err != nil {
+		t.Fatalf("expected -n shorthand to parse on uninstall, got: %v", err)
+	}
+	dryRun, err := cmd.Flags().GetBool("dry-run")
+	if err != nil {
+		t.Fatalf("GetBool(dry-run) error: %v", err)
+	}
+	if !dryRun {
+		t.Error("expected -n to set --dry-run=true")
+	}
+}

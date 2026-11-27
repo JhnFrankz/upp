@@ -46,6 +46,21 @@ func readConfirmation(in io.Reader) (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
+// confirmYesNo reads one answer line from in and reports whether the user
+// explicitly confirmed with "y" or "yes" (case-insensitive). Returns io.EOF if
+// input ends before any byte is read.
+func confirmYesNo(in io.Reader) (bool, error) {
+	if in == nil {
+		in = os.Stdin
+	}
+	response, err := readConfirmation(in)
+	if err != nil {
+		return false, io.EOF
+	}
+	norm := strings.ToLower(strings.TrimSpace(response))
+	return norm == "y" || norm == "yes", nil
+}
+
 // NewInitCommand creates the `upp init` command.
 func NewInitCommand(gf *GlobalFlags) *cobra.Command {
 	return &cobra.Command{
@@ -130,23 +145,19 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		_, _ = fmt.Fprintln(out)
 		_, _ = fmt.Fprintln(out, "  Config already exists. Overwrite with new detection?")
 		_, _ = fmt.Fprint(out, "  [y/N] ")
-		var response string
+		var confirmed bool
 		if deps.scanPrompt != nil {
-			response = deps.scanPrompt()
+			norm := strings.ToLower(strings.TrimSpace(deps.scanPrompt()))
+			confirmed = norm == "y" || norm == "yes"
 		} else {
-			in := deps.in
-			if in == nil {
-				in = os.Stdin
-			}
 			var err error
-			response, err = readConfirmation(in)
+			confirmed, err = confirmYesNo(deps.in)
 			if err != nil {
 				_, _ = fmt.Fprintln(out)
-				return fmt.Errorf("%w: rerun `upp init` interactively to confirm the overwrite", err)
+				return fmt.Errorf("%w: rerun `upp init` interactively to confirm the overwrite", ErrInitNonInteractive)
 			}
 		}
-		norm := strings.ToLower(strings.TrimSpace(response))
-		if norm != "y" && norm != "yes" {
+		if !confirmed {
 			_, _ = fmt.Fprintln(out, "  Canceled.")
 			return nil
 		}

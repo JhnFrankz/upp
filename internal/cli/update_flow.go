@@ -15,7 +15,11 @@ import (
 func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) error {
 	total := len(filteredAdapters)
 	if total == 0 {
-		s.Renderer.UpdateSummary(output.Summary{Results: nil, DryRun: s.UpdateFlags.DryRun})
+		if len(ParseFilter(s.GlobalFlags.Only)) > 0 {
+			s.Renderer.NoToolsMatchFilter(s.GlobalFlags.Only)
+		} else {
+			s.Renderer.NoToolsConfigured()
+		}
 		return nil
 	}
 
@@ -51,6 +55,8 @@ func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) 
 
 	results := make([]output.ToolResult, total)
 	hasFailure := false
+	updateIndex := 0
+	updateTotal := len(plan.Updates)
 
 	for i, a := range filteredAdapters {
 		if err := s.Ctx.Err(); err != nil {
@@ -84,10 +90,12 @@ func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) 
 				continue
 			}
 
+			updateIndex++
+
 			// Dry run: show the planned action only, never execute it.
 			if s.UpdateFlags.DryRun {
-				if !s.GlobalFlags.Quiet && total > 1 {
-					s.Renderer.Progress("Updating", i+1, total, info.Name)
+				if !s.GlobalFlags.Quiet && updateTotal > 1 {
+					s.Renderer.Progress("Updating", updateIndex, updateTotal, info.Name)
 				}
 				if oc.UpdateAvailable {
 					if oc.CurrentVersion != "" && oc.LatestVersion != "" {
@@ -102,7 +110,7 @@ func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) 
 					results[i] = output.ToolResult{
 						Name:    info.Name,
 						Status:  output.StatusAvailable,
-						Version: fmt.Sprintf("%s → %s", oc.CurrentVersion, oc.LatestVersion),
+						Version: formatSelectorVersion(oc.CurrentVersion, oc.LatestVersion),
 					}
 				} else {
 					// Reaching this branch means the row IS in plan.Updates
@@ -126,7 +134,7 @@ func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) 
 			// The shared executor owns confirm + risk + privilege parity with
 			// the interactive path (design D2/D3); the plan's PlannedUpdate is
 			// the source of policy, not a re-derivation here.
-			res := s.ExecutePlannedUpdate(u, a, i+1, total)
+			res := s.ExecutePlannedUpdate(u, a, updateIndex, updateTotal)
 			s.Renderer.ToolLine(res)
 			results[i] = res
 			if results[i].Status == output.StatusFailed {
@@ -212,27 +220,44 @@ func runUpdateInteractive(s *UpdateSession, filteredAdapters []adapters.Adapter)
 		}
 	}
 
+	ownedGroupByID := make(map[string]string, len(plan.Updates))
+	pendingOwnedByGroup := make(map[string]bool)
+	for _, u := range plan.Updates {
+		a, ok := adapterMap[u.ToolID]
+		if !ok || a.Info().Kind == adapters.KindManager {
+			continue
+		}
+		var group string
+		if u.ManagerID != "" && presentManagers[u.ManagerID] {
+			if mgr, ok := adapterMap[u.ManagerID]; ok {
+				group = mgr.Info().Name
+			}
+		}
+		if group == "" {
+			group = engine.OwnerGroupLabelWithManagers(a, s.OSName, presentManagers, s.allAdaptersArg()...)
+		}
+		if group != "" {
+			ownedGroupByID[u.ToolID] = group
+			pendingOwnedByGroup[group] = true
+		}
+	}
+
 	pending := make([]output.SelectOption, 0, len(plan.Updates))
 	for _, u := range plan.Updates {
 		label := u.ToolName
 		if label == "" {
 			label = u.ToolID
 		}
-		var group string
-		if a, ok := adapterMap[u.ToolID]; ok && a.Info().Kind != adapters.KindManager {
-			if u.ManagerID != "" && presentManagers[u.ManagerID] {
-				if mgr, ok := adapterMap[u.ManagerID]; ok {
-					group = mgr.Info().Name
-				}
-			}
-			if group == "" {
-				group = engine.OwnerGroupLabelWithManagers(a, s.OSName, presentManagers, s.allAdaptersArg()...)
+		group := ownedGroupByID[u.ToolID]
+		if a, ok := adapterMap[u.ToolID]; ok && a.Info().Kind == adapters.KindManager {
+			if mgrName := a.Info().Name; pendingOwnedByGroup[mgrName] {
+				group = mgrName
 			}
 		}
 		pending = append(pending, output.SelectOption{
 			ID:      u.ToolID,
 			Label:   label,
-			Version: fmt.Sprintf("%s → %s", u.CurrentVersion, u.LatestVersion),
+			Version: formatSelectorVersion(u.CurrentVersion, u.LatestVersion),
 			Group:   group,
 		})
 	}
@@ -362,6 +387,20 @@ func (s *UpdateSession) RunInteractive(filteredAdapters []adapters.Adapter) erro
 	}
 	s.ensureDefaults()
 	return runUpdateInteractive(s, filteredAdapters)
+}
+
+// formatSelectorVersion formats a version string for display in selector
+// options and dry-run results. It renders "current → latest" only when both
+// values are non-empty and distinct, falling back to current or
+// "update available".
+func formatSelectorVersion(current, latest string) string {
+	if current != "" && latest != "" && current != latest {
+		return fmt.Sprintf("%s → %s", current, latest)
+	}
+	if current != "" {
+		return current
+	}
+	return "update available"
 }
 
 // outcomeSelectionID returns the canonical selection identity carried by a

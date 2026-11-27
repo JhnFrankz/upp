@@ -97,6 +97,10 @@ func (a *WingetAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.
 	}, nil
 }
 
+func (a *WingetAdapter) installedVersion(ctx context.Context, pkg string) string {
+	return parseWingetPackageListOutput(commandOutput(ctx, "winget", "list", pkg), pkg)
+}
+
 // UpdatePackage runs the per-package update command for an owned tool under
 // winget (e.g. `winget upgrade gh`), via winget's executor. This is the
 // manager-group bulk path (design D3): it upgrades the owned PACKAGE, NOT
@@ -113,6 +117,8 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 	before := "unknown"
 	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
 		before = info.CurrentVersion
+	} else if v := a.installedVersion(ctx, pkg); v != "" {
+		before = v
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", pkg)
@@ -138,8 +144,8 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 	}
 
 	after := before
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		after = info.CurrentVersion
+	if v := a.installedVersion(ctx, pkg); v != "" {
+		after = v
 	}
 
 	return adapters.Result{

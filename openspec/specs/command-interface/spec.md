@@ -136,14 +136,14 @@ Execution across tools and manager groups MUST maintain per-tool error isolation
 
 The `list` and `update` commands MUST delegate tool adapter discovery, resolution, check dispatching, and update plan formulation to `engine.Engine`.
 
-1. `upp list` MUST invoke `engine.Resolve(filter)` to obtain active, enabled adapters for the current platform and render the resulting groups via `output.GroupByOwner`.
+1. `upp list` MUST invoke `engine.Resolve(filter)` to obtain active, enabled adapters for the current platform and render the resulting groups via `engine.GroupByOwner`.
 2. `upp update` MUST invoke `engine.Resolve(filter)` for tool discovery, `engine.Check(ctx, adapters, onProgress)` for concurrent version checking, and `engine.Plan(outcomes, filter)` for update action formulation.
 3. The presentation layer (`internal/cli`) MUST consume pure domain models (`CheckProgress`, `CheckOutcome`, `UpdatePlan`) emitted by the engine and map them to presentation renderers (`output.CheckBoard`, `output.Renderer`, `output.CheckboxSelector`) without altering command flags (`--quiet`/`-q`, `--verbose`/`-v`, `--ci`, `--only`, `--dry-run`/`-n`), visual layouts, exit codes, or interactive selection workflows.
 4. Tool execution and security confirmation (`security.ConfirmAction`) MUST remain in the CLI presentation layer.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| List command delegation | Host platform with enabled tools | `upp list` | Invokes `engine.Resolve(filter)` to obtain active adapters and renders table via `output.GroupByOwner` |
+| List command delegation | Host platform with enabled tools | `upp list` | Invokes `engine.Resolve(filter)` to obtain active adapters and renders table via `engine.GroupByOwner` |
 | Update command delegation | Host platform with enabled tools | `upp update` | Invokes `engine.Resolve()`, `engine.Check()`, and `engine.Plan()`, bridging progress to `output.CheckBoard` |
 | Flag preservation | Command passed `-q`, `-v`, `--ci`, `--only` | Command execution | Flags parsed by CLI and passed as domain `Filter` to engine; visual flags applied to CLI renderer |
 | Exit code preservation | Update encounters failed check or unconfirmed CI risk | Command execution | Command exits with non-zero status identical to previous behavior |
@@ -153,13 +153,13 @@ The `list` and `update` commands MUST delegate tool adapter discovery, resolutio
 
 `upp --help` and `upp help` MUST group commands into exactly two labeled sections:
 1. `Commands`: `list`, `update`
-2. `Maintenance`: `init`, `self-update`, `uninstall`
+2. `Maintenance`: `init`, `self-update`, `uninstall`, `doctor`
 
 The former `Config Commands` group MUST NOT exist. The cobra `completion` built-in MUST be hidden from help output.
 
 | Scenario | GIVEN | WHEN | THEN |
 |----------|-------|------|------|
-| Simplified help groups | Root command invoked | `upp --help` | Commands grouped under `Commands` (`list`, `update`) and `Maintenance` (`init`, `self-update`, `uninstall`); `Config Commands` is absent |
+| Simplified help groups | Root command invoked | `upp --help` | Commands grouped under `Commands` (`list`, `update`) and `Maintenance` (`init`, `self-update`, `uninstall`, `doctor`); `Config Commands` is absent |
 | Help subcommand | Root command invoked | `upp help` | Same 2-group structure as `upp --help` |
 | Completion hidden | Root command built | `upp --help` | `completion` not listed in help output |
 | Pruned commands absent | Root command invoked | `upp --help` | Neither `check`, `export`, nor `import` appears in any group |

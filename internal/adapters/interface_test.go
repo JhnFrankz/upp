@@ -37,8 +37,8 @@ func TestRenderPackageCommand(t *testing.T) {
 			want:     "mgr --flag gh --other <pkg>",
 		},
 		{
-			name:     "placeholder-curlies-replaced",
-			template: "scoop update {{.Package}}",
+			name:     "scoop-placeholder-replaced",
+			template: "scoop update <pkg>",
 			pkg:      "neovim",
 			want:     "scoop update neovim",
 		},

@@ -116,9 +116,6 @@ func RenderPackageCommand(template, pkg string) string {
 	if strings.Contains(template, PackagePlaceholder) {
 		return strings.Replace(template, PackagePlaceholder, pkg, 1)
 	}
-	if strings.Contains(template, "{{.Package}}") {
-		return strings.Replace(template, "{{.Package}}", pkg, 1)
-	}
 	return template + " " + pkg
 }
 

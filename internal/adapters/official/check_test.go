@@ -1941,6 +1941,93 @@ git        2.43.0     2.44.0
 	}
 }
 
+func TestParseInstalledVersionParsers(t *testing.T) {
+	t.Run("brew list --versions", func(t *testing.T) {
+		tests := []struct {
+			name string
+			out  string
+			pkg  string
+			want string
+		}{
+			{name: "single-version", out: "gh 2.46.0\n", pkg: "gh", want: "2.46.0"},
+			{name: "multiple-kegs-picks-latest", out: "gh 2.45.0 2.46.0_1\n", pkg: "gh", want: "2.46.0_1"},
+			{name: "empty", out: "", pkg: "gh", want: ""},
+			{name: "mismatch", out: "git 2.44.0\n", pkg: "gh", want: ""},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := parseBrewListVersionsOutput(tt.out, tt.pkg); got != tt.want {
+					t.Errorf("parseBrewListVersionsOutput(%q, %q) = %q, want %q", tt.out, tt.pkg, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("winget list", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			out   string
+			pkgID string
+			want  string
+		}{
+			{
+				name:  "up-to-date-no-available-col",
+				out:   "Name        Id          Version  Source\n---------------------------------------\nGitHub CLI  GitHub.cli  2.46.0   winget\n",
+				pkgID: "gh",
+				want:  "2.46.0",
+			},
+			{
+				name:  "less-than-prefix",
+				out:   "Name  Id       Version   Source\n-------------------------------\nGit   Git.Git  < 2.45.0  winget\n",
+				pkgID: "Git.Git",
+				want:  "2.45.0",
+			},
+			{
+				name:  "absent",
+				out:   "No installed package found matching input criteria.\n",
+				pkgID: "gh",
+				want:  "",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := parseWingetPackageListOutput(tt.out, tt.pkgID); got != tt.want {
+					t.Errorf("parseWingetPackageListOutput(%q, %q) = %q, want %q", tt.out, tt.pkgID, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("scoop list", func(t *testing.T) {
+		tests := []struct {
+			name string
+			out  string
+			pkg  string
+			want string
+		}{
+			{
+				name: "installed-app",
+				out:  "Installed apps:\n\nName   Version  Source  Updated\n----   -------  ------  -------\ngh     2.46.0   main    2024-05-01\n",
+				pkg:  "gh",
+				want: "2.46.0",
+			},
+			{
+				name: "absent",
+				out:  "Installed apps:\n",
+				pkg:  "gh",
+				want: "",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := parseScoopListOutput(tt.out, tt.pkg); got != tt.want {
+					t.Errorf("parseScoopListOutput(%q, %q) = %q, want %q", tt.out, tt.pkg, got, tt.want)
+				}
+			})
+		}
+	})
+}
+
 func TestScoopCheckPackage_Execution(t *testing.T) {
 	scoop := &ScoopAdapter{}
 	fixture := "Name       Installed  Latest\n----       ---------  ------\nneovim     0.9.0      0.10.0\n"

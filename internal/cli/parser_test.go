@@ -122,10 +122,10 @@ func TestFilterTools_UnknownToolWarning(t *testing.T) {
 
 	result := FilterTools(tools, onlyList, &stderr)
 
-	// Warning should be written to stderr
+	// Warning should be written to stderr via Renderer.Warning
 	warning := stderr.String()
-	if !strings.Contains(warning, "nonexistent") {
-		t.Errorf("expected warning about 'nonexistent', got: %q", warning)
+	if !strings.Contains(warning, "nonexistent") || !strings.Contains(warning, "[!]") {
+		t.Errorf("expected Renderer.Warning about 'nonexistent' with '[!]' prefix, got: %q", warning)
 	}
 
 	// Only brew should be in result
@@ -360,5 +360,38 @@ func TestSelfUpdateCommand_UnknownFlagRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown flag") {
 		t.Errorf("rejection should mention the unknown flag, got: %v", err)
+	}
+}
+
+func TestConfirmYesNo(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    bool
+		wantEOF bool
+	}{
+		{name: "lowercase y", input: "y\n", want: true},
+		{name: "lowercase yes", input: "yes\n", want: true},
+		{name: "uppercase Y with whitespace", input: "  Y  \n", want: true},
+		{name: "uppercase YES", input: "YES\n", want: true},
+		{name: "lowercase n", input: "n\n", want: false},
+		{name: "empty enter", input: "\n", want: false},
+		{name: "immediate EOF", input: "", want: false, wantEOF: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := confirmYesNo(strings.NewReader(tt.input))
+			if tt.wantEOF {
+				if err == nil {
+					t.Fatal("expected EOF error, got nil")
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("confirmYesNo(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }

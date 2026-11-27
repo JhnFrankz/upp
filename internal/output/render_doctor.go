@@ -44,25 +44,13 @@ type DiagnosticPresenter interface {
 var _ DiagnosticPresenter = (*Renderer)(nil)
 
 func (r *Renderer) doctorIcon(s DiagnosticSeverity) string {
-	if !r.color {
-		switch s {
-		case DiagnosticSeverityOK:
-			return doctorIconOKPlain
-		case DiagnosticSeverityWarn:
-			return doctorIconWarnPlain
-		case DiagnosticSeverityError:
-			return doctorIconErrorPlain
-		default:
-			return doctorIconUnknown
-		}
-	}
 	switch s {
 	case DiagnosticSeverityOK:
-		return doctorIconOKColor
+		return r.colorize("32", doctorIconOKPlain)
 	case DiagnosticSeverityWarn:
-		return doctorIconWarnColor
+		return r.colorize("33", doctorIconWarnPlain)
 	case DiagnosticSeverityError:
-		return doctorIconErrorColor
+		return r.colorize("31", doctorIconErrorPlain)
 	default:
 		return doctorIconUnknown
 	}
@@ -172,7 +160,7 @@ func (r *Renderer) DoctorResults(results []DiagnosticResult, quiet, verbose bool
 				sb.WriteByte('\n')
 			}
 
-			if verbose && item.Detail != "" {
+			if verbose && !quiet && item.Detail != "" {
 				rem := item.Detail
 				for len(rem) > 0 {
 					var line string

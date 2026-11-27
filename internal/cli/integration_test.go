@@ -633,9 +633,9 @@ func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
 	})
 
 	// With all tools disabled there is nothing to query: the dry-run
-	// summary reports the honest "not installed" outcome.
-	if !strings.Contains(output, "All tools not installed. Nothing to do.") {
-		t.Errorf("all-disabled config dry run should show the nothing-to-do message, got: %q", output)
+	// reports the empty-config state.
+	if !strings.Contains(output, "no tools configured.") {
+		t.Errorf("all-disabled config dry run should show the no-tools-configured message, got: %q", output)
 	}
 }
 

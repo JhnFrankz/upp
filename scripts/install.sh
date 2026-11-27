@@ -91,7 +91,7 @@ resolve_tag() {
 
     local api_url="https://api.github.com/repos/${REPO}/releases/latest"
     local tag
-    tag=$(curl -fsSL --proto '=https' --tlsv1.2 "$api_url" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+    tag=$(curl -fsSL --proto '=https' --tlsv1.2 "$api_url" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
 
     if [ -z "$tag" ]; then
         error "Could not determine the latest release tag."
@@ -195,21 +195,44 @@ install_binary() {
         chmod +x "$tmp_file"
     fi
 
-    # Create install directory if it doesn't exist
+    # Create install directory if it doesn't exist and preflight writability
     mkdir -p "$INSTALL_DIR"
+    if [ ! -w "$INSTALL_DIR" ]; then
+        error "Install directory is not writable: ${INSTALL_DIR}"
+    fi
 
     # Install binary
     local install_path="${INSTALL_DIR}/${BINARY}${ext}"
+    local staged_path="${install_path}.new.$$"
+    local backup_path=""
+
+    # Stage onto target filesystem before touching any existing binary
+    if ! cp "$tmp_file" "$staged_path"; then
+        rm -f "$staged_path"
+        error "Failed to stage ${BINARY} into ${INSTALL_DIR}"
+    fi
+    if [ "$os" != "windows" ]; then
+        chmod +x "$staged_path"
+    fi
 
     # Backup existing binary if present
     if [ -f "$install_path" ]; then
-        local backup_path
         backup_path="${install_path}.backup.$(date +%s)"
         warn "Backing up existing binary to ${backup_path}"
-        mv "$install_path" "$backup_path"
+        if ! mv "$install_path" "$backup_path"; then
+            rm -f "$staged_path"
+            error "Failed to back up existing binary to ${backup_path}"
+        fi
     fi
 
-    mv "$tmp_file" "$install_path"
+    if ! mv "$staged_path" "$install_path"; then
+        rm -f "$staged_path"
+        if [ -n "$backup_path" ] && [ -f "$backup_path" ]; then
+            warn "Install failed; rolling back ${backup_path} to ${install_path}"
+            mv "$backup_path" "$install_path" || warn "Rollback failed; backup remains at ${backup_path}"
+        fi
+        error "Failed to install ${BINARY} to ${install_path}"
+    fi
     info "Installed ${BINARY} to ${install_path}"
 
     # Clean up
