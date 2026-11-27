@@ -75,7 +75,7 @@ func BenchmarkEngine_Check_Scaling(b *testing.B) {
 		for _, workers := range workerCounts {
 			name := fmt.Sprintf("Tools-%d/Workers-%d", tools, workers)
 			b.Run(name, func(b *testing.B) {
-				eng := New(cfg, "linux", WithWorkerCount(workers))
+				eng := New(cfg, "linux", WithConcurrency(workers))
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -97,7 +97,7 @@ func BenchmarkEngine_Check_ProgressContention(b *testing.B) {
 	const totalTools = 50
 
 	mockAdapters := createBenchAdapters(totalTools, 10*time.Microsecond)
-	eng := New(cfg, "linux", WithWorkerCount(16))
+	eng := New(cfg, "linux", WithConcurrency(16))
 
 	b.Run("NoProgress", func(b *testing.B) {
 		b.ReportAllocs()
@@ -137,7 +137,7 @@ func BenchmarkEngine_Check_Allocations(b *testing.B) {
 	const totalTools = 20
 
 	mockAdapters := createBenchAdapters(totalTools, 0)
-	eng := New(cfg, "linux", WithWorkerCount(8))
+	eng := New(cfg, "linux", WithConcurrency(8))
 
 	// Assert allocations per cycle are bounded and measurable
 	allocs := testing.AllocsPerRun(10, func() {

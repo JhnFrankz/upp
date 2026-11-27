@@ -7,17 +7,18 @@ import (
 	"github.com/JhnFrankz/upp/internal/platform"
 )
 
-func TestAllToolNames(t *testing.T) {
-	names := AllToolNames()
-	if len(names) != 14 {
-		t.Fatalf("AllToolNames() length = %d, want 14", len(names))
+func TestCanonicalManagerIDs(t *testing.T) {
+	ids := CanonicalManagerIDs()
+	want := []string{"apt", "brew", "pacman", "winget", "scoop"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("CanonicalManagerIDs() = %v, want %v", ids, want)
 	}
 
 	// Verify defensive copy
-	names[0] = "mutated"
-	fresh := AllToolNames()
+	ids[0] = "mutated"
+	fresh := CanonicalManagerIDs()
 	if fresh[0] == "mutated" {
-		t.Errorf("AllToolNames() did not return a defensive copy")
+		t.Errorf("CanonicalManagerIDs() did not return a defensive copy")
 	}
 }
 

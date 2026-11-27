@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/platform"
 )
 
 // ownedCheckerAdapter delegates Check to a PackageChecker for an owned tool.
@@ -48,9 +47,10 @@ func PrepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdap
 	if len(allAdapters) > 0 {
 		list = allAdapters[0]
 	}
-	canonOS := osName
-	if norm, err := platform.NormalizeOS(osName); err == nil {
-		canonOS = norm
+	canonOS := normalizeOSName(osName)
+	var idx adapterIndex
+	if len(list) > 0 {
+		idx = buildAdapterIndex(list)
 	}
 
 	result := make([]adapters.Adapter, len(adapterList))
@@ -68,11 +68,17 @@ func PrepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdap
 			result[i] = a
 			continue
 		}
-		owner := resolvingOwnerSlice(a, osName, list)
-		if owner != nil && info.Manager != nil && (info.Manager[osName] != "" || info.Manager[canonOS] != "") {
+		var owner adapters.Adapter
+		if list != nil {
+			if idx != nil {
+				owner = resolvingOwnerIndex(a, info, osName, canonOS, idx)
+			}
+		} else {
+			owner = resolvingOwnerSlice(a, osName, nil)
+		}
+		if owner != nil && lookupOSMap(info.Manager, osName, canonOS) != "" {
 			if checker, ok := owner.(adapters.PackageChecker); ok {
-				pkg := OwnedPackage(a, osName)
-				if pkg != "" {
+				if pkg := lookupOSMap(info.ManagerPackage, osName, canonOS); pkg != "" {
 					result[i] = &ownedCheckerAdapter{
 						Adapter: a,
 						checker: checker,
@@ -90,12 +96,8 @@ func PrepareCheckAdapters(adapterList []adapters.Adapter, osName string, allAdap
 // PrepareCheckAdapters wraps owned tools whose managers provide a PackageChecker,
 // using the engine's configured OS and adapter list.
 func (e *Engine) PrepareCheckAdapters(adapterList []adapters.Adapter) []adapters.Adapter {
-	if e.adapters != nil {
-		return PrepareCheckAdapters(adapterList, e.osName, e.adapters)
-	}
-	allAdapters, _ := e.Resolve(Filter{})
-	if len(allAdapters) > 0 {
-		return PrepareCheckAdapters(adapterList, e.osName, allAdapters)
+	if all := e.allAdapters(); len(all) > 0 || e.adapters != nil {
+		return PrepareCheckAdapters(adapterList, e.osName, all)
 	}
 	return PrepareCheckAdapters(adapterList, e.osName)
 }

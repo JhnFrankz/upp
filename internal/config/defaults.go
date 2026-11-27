@@ -29,10 +29,3 @@ func ApplyDefaults(cfg *Config) {
 		}
 	}
 }
-
-// DefaultConfigWithDefaults returns a config pre-populated with platform catalog defaults.
-func DefaultConfigWithDefaults() *Config {
-	cfg := DefaultConfig()
-	ApplyDefaults(cfg)
-	return cfg
-}

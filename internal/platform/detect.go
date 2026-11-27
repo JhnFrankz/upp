@@ -16,9 +16,8 @@ const (
 
 // Arch constants for supported CPU architectures.
 const (
-	ArchX86_64  = "x86_64"
-	ArchAarch64 = "aarch64"
-	ArchArm64   = "arm64"
+	ArchX86_64 = "x86_64"
+	ArchArm64  = "arm64"
 )
 
 // Platform represents the detected runtime environment.
@@ -84,14 +83,4 @@ func Detect() (Platform, error) {
 		OS:   os,
 		Arch: NormalizeArch(runtime.GOARCH),
 	}, nil
-}
-
-// MustDetect returns the current platform or panics if unsupported.
-// Use only in main/entry points where failure is fatal.
-func MustDetect() Platform {
-	p, err := Detect()
-	if err != nil {
-		panic(err)
-	}
-	return p
 }

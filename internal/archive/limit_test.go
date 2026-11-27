@@ -16,7 +16,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 	t.Run("succeeds when content is smaller than limit", func(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "small.bin")
 		content := []byte("small content")
-		err := archive.ExtractToFileWithLimit(targetPath, bytes.NewReader(content), 0644, int64(len(content)+10))
+		_, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader(content), 0644, int64(len(content)+10))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -33,7 +33,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "oversized.bin")
 		content := bytes.Repeat([]byte("A"), 1024)
 		limit := int64(512)
-		err := archive.ExtractToFileWithLimit(targetPath, bytes.NewReader(content), 0644, limit)
+		_, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader(content), 0644, limit)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -48,7 +48,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 	t.Run("succeeds when content exactly equals limit", func(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "exact.bin")
 		content := []byte("exact content")
-		err := archive.ExtractToFileWithLimit(targetPath, bytes.NewReader(content), 0644, int64(len(content)))
+		_, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader(content), 0644, int64(len(content)))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -59,7 +59,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 
 	t.Run("succeeds when content is empty and limit is zero", func(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "zero_empty.bin")
-		err := archive.ExtractToFileWithLimit(targetPath, bytes.NewReader(nil), 0644, 0)
+		_, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader(nil), 0644, 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -74,7 +74,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 
 	t.Run("fails when content is non-empty and limit is zero", func(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "zero_nonempty.bin")
-		err := archive.ExtractToFileWithLimit(targetPath, bytes.NewReader([]byte("X")), 0644, 0)
+		_, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader([]byte("X")), 0644, 0)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -89,7 +89,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 	t.Run("defaults to MaxExtractFileSize when limit is negative", func(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "negative_limit.bin")
 		content := []byte("default limit content")
-		err := archive.ExtractToFileWithLimit(targetPath, bytes.NewReader(content), 0644, -1)
+		_, err := archive.ExtractToFileWithLimitN(targetPath, bytes.NewReader(content), 0644, -1)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -104,7 +104,7 @@ func TestExtractToFileWithLimit(t *testing.T) {
 
 	t.Run("returns error when reader is nil", func(t *testing.T) {
 		targetPath := filepath.Join(tempDir, "nil_reader.bin")
-		err := archive.ExtractToFileWithLimit(targetPath, nil, 0644, 100)
+		_, err := archive.ExtractToFileWithLimitN(targetPath, nil, 0644, 100)
 		if err == nil {
 			t.Fatal("expected error for nil reader, got nil")
 		}

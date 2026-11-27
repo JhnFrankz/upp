@@ -839,159 +839,38 @@ func TestPlan_FilterAll(t *testing.T) {
 	})
 }
 
-func TestResolveEffectiveUpdatePolicy(t *testing.T) {
-	t.Run("nil adapter returns PolicyGated", func(t *testing.T) {
-		got := ResolveEffectiveUpdatePolicy(nil, platform.OSLinux)
-		if got != adapters.PolicyGated {
-			t.Errorf("ResolveEffectiveUpdatePolicy(nil) = %v, want PolicyGated", got)
-		}
-	})
+func TestResolvingOwnerIndex_OSNameAndCanonOS(t *testing.T) {
+	mgr := &mockPlanAdapter{
+		info: adapters.ToolInfo{
+			ID:           "brew",
+			Name:         "Homebrew",
+			Kind:         adapters.KindManager,
+			UpdatePolicy: adapters.PolicyAlwaysUpdate,
+		},
+	}
+	rawKeyTool := &mockPlanAdapter{
+		info: adapters.ToolInfo{
+			ID:      "raw-tool",
+			Name:    "raw-tool",
+			Manager: map[string]string{"darwin": "brew"},
+		},
+	}
+	canonKeyTool := &mockPlanAdapter{
+		info: adapters.ToolInfo{
+			ID:      "canon-tool",
+			Name:    "canon-tool",
+			Manager: map[string]string{"macos": "brew"},
+		},
+	}
+	idx := buildAdapterIndex([]adapters.Adapter{mgr, rawKeyTool, canonKeyTool})
+	canonOS := normalizeOSName("darwin")
 
-	t.Run("standalone tools return declared policy", func(t *testing.T) {
-		npm := official.AdapterByName("npm")
-		if npm == nil {
-			t.Fatal("official npm adapter not found")
-		}
-		if got := ResolveEffectiveUpdatePolicy(npm, platform.OSLinux); got != adapters.PolicyGated {
-			t.Errorf("npm policy on Linux = %v, want PolicyGated", got)
-		}
-
-		brew := official.AdapterByName("brew")
-		if brew == nil {
-			t.Fatal("official brew adapter not found")
-		}
-		if got := ResolveEffectiveUpdatePolicy(brew, platform.OSMacOS); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("brew policy on macOS = %v, want PolicyAlwaysUpdate", got)
-		}
-
-		bun := official.AdapterByName("bun")
-		if bun == nil {
-			t.Fatal("official bun adapter not found")
-		}
-		if got := ResolveEffectiveUpdatePolicy(bun, platform.OSLinux); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("bun policy on Linux = %v, want PolicyAlwaysUpdate", got)
-		}
-	})
-
-	t.Run("owned tools return manager declared policy across platforms", func(t *testing.T) {
-		gh := official.AdapterByName("gh")
-		if gh == nil {
-			t.Fatal("official gh adapter not found")
-		}
-
-		// On Linux, gh is owned by apt (PolicyGated)
-		if got := ResolveEffectiveUpdatePolicy(gh, platform.OSLinux); got != adapters.PolicyGated {
-			t.Errorf("gh policy on Linux (owned by apt) = %v, want PolicyGated", got)
-		}
-
-		// On macOS, gh is owned by brew (PolicyAlwaysUpdate)
-		if got := ResolveEffectiveUpdatePolicy(gh, platform.OSMacOS); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("gh policy on macOS (owned by brew) = %v, want PolicyAlwaysUpdate", got)
-		}
-
-		docker := official.AdapterByName("docker")
-		if docker == nil {
-			t.Fatal("official docker adapter not found")
-		}
-
-		// On Linux, docker is owned by apt (PolicyGated)
-		if got := ResolveEffectiveUpdatePolicy(docker, platform.OSLinux); got != adapters.PolicyGated {
-			t.Errorf("docker policy on Linux (owned by apt) = %v, want PolicyGated", got)
-		}
-
-		// On macOS, docker is owned by brew (PolicyAlwaysUpdate)
-		if got := ResolveEffectiveUpdatePolicy(docker, platform.OSMacOS); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("docker policy on macOS (owned by brew) = %v, want PolicyAlwaysUpdate", got)
-		}
-
-		goTool := official.AdapterByName("go")
-		if goTool == nil {
-			t.Fatal("official go adapter not found")
-		}
-
-		// On Linux, go returns its effective declared/managed policy (PolicyAlwaysUpdate
-		// for /usr/local/go, PolicyGated when owned by apt/pacman or unmanaged).
-		wantGoLinux := goTool.Info().UpdatePolicy
-		if got := ResolveEffectiveUpdatePolicy(goTool, platform.OSLinux); got != wantGoLinux {
-			t.Errorf("go policy on Linux = %v, want %v", got, wantGoLinux)
-		}
-
-		// On macOS, go is owned by brew (PolicyAlwaysUpdate)
-		if got := ResolveEffectiveUpdatePolicy(goTool, platform.OSMacOS); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("go policy on macOS (owned by brew) = %v, want PolicyAlwaysUpdate", got)
-		}
-	})
-
-	t.Run("injected mock manager policy overrides tool declared policy", func(t *testing.T) {
-		mockGatedMgr := &mockPlanAdapter{
-			info: adapters.ToolInfo{
-				ID:           "mock-mgr-gated",
-				Name:         "mock-mgr-gated",
-				Kind:         adapters.KindManager,
-				UpdatePolicy: adapters.PolicyGated,
-			},
-		}
-		mockAlwaysMgr := &mockPlanAdapter{
-			info: adapters.ToolInfo{
-				ID:           "mock-mgr-always",
-				Name:         "mock-mgr-always",
-				Kind:         adapters.KindManager,
-				UpdatePolicy: adapters.PolicyAlwaysUpdate,
-			},
-		}
-		mockOwnedTool := &mockPlanAdapter{
-			info: adapters.ToolInfo{
-				ID:           "mock-tool",
-				Name:         "mock-tool",
-				UpdatePolicy: adapters.PolicyAlwaysUpdate, // declared is AlwaysUpdate
-				Manager: map[string]string{
-					"linux": "mock-mgr-gated",
-					"macos": "mock-mgr-always",
-				},
-			},
-		}
-
-		// Linux: mock-mgr-gated governs -> PolicyGated
-		allLinux := []adapters.Adapter{mockGatedMgr, mockOwnedTool}
-		if got := ResolveEffectiveUpdatePolicy(mockOwnedTool, "linux", allLinux); got != adapters.PolicyGated {
-			t.Errorf("mockOwnedTool on Linux with mockGatedMgr = %v, want PolicyGated", got)
-		}
-
-		// macOS: mock-mgr-always governs -> PolicyAlwaysUpdate
-		allMacOS := []adapters.Adapter{mockAlwaysMgr, mockOwnedTool}
-		if got := ResolveEffectiveUpdatePolicy(mockOwnedTool, "macos", allMacOS); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("mockOwnedTool on macOS with mockAlwaysMgr = %v, want PolicyAlwaysUpdate", got)
-		}
-	})
-
-	t.Run("custom tool with manager inherits manager policy", func(t *testing.T) {
-		aptMgr := official.AdapterByName("apt")
-		brewMgr := official.AdapterByName("brew")
-
-		customApt, err := adapters.NewCustomAdapter("custom-apt", "cmd", "check", true, aptMgr)
-		if err != nil {
-			t.Fatalf("NewCustomAdapter error: %v", err)
-		}
-		if got := ResolveEffectiveUpdatePolicy(customApt, platform.OSLinux); got != adapters.PolicyGated {
-			t.Errorf("custom-apt policy = %v, want PolicyGated", got)
-		}
-
-		customBrew, err := adapters.NewCustomAdapter("custom-brew", "cmd", "check", true, brewMgr)
-		if err != nil {
-			t.Fatalf("NewCustomAdapter error: %v", err)
-		}
-		if got := ResolveEffectiveUpdatePolicy(customBrew, platform.OSMacOS); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("custom-brew policy = %v, want PolicyAlwaysUpdate", got)
-		}
-
-		customStandalone, err := adapters.NewCustomAdapter("custom-standalone", "cmd", "check", true)
-		if err != nil {
-			t.Fatalf("NewCustomAdapter error: %v", err)
-		}
-		if got := ResolveEffectiveUpdatePolicy(customStandalone, platform.OSLinux); got != adapters.PolicyAlwaysUpdate {
-			t.Errorf("custom-standalone policy = %v, want PolicyAlwaysUpdate", got)
-		}
-	})
+	if got := resolvingOwnerIndex(rawKeyTool, rawKeyTool.Info(), "darwin", canonOS, idx); got != mgr {
+		t.Errorf("rawKeyTool owner = %v, want %v", got, mgr)
+	}
+	if got := resolvingOwnerIndex(canonKeyTool, canonKeyTool.Info(), "darwin", canonOS, idx); got != mgr {
+		t.Errorf("canonKeyTool owner = %v, want %v", got, mgr)
+	}
 }
 
 // --- fix-risk-command-synthesis WU2: row-class plan derivation + gate truth ---

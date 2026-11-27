@@ -121,33 +121,8 @@ func SafeTargetPath(destDir, name string) (string, error) {
 // It rejects empty targets, absolute paths (starting with '/', '\', or containing ':'),
 // and targets containing ".." path traversal components.
 func ValidateSymlinkTarget(target string) error {
-	if target == "" {
-		return fmt.Errorf("%w: target is empty", ErrUnsafeLink)
-	}
-	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "\\") || filepath.IsAbs(target) || strings.Contains(target, ":") {
-		return fmt.Errorf("%w: absolute target %q", ErrUnsafeLink, target)
-	}
-	rem := target
-	for len(rem) > 0 {
-		var comp string
-		idx := strings.IndexAny(rem, "/\\")
-		if idx >= 0 {
-			comp = rem[:idx]
-			rem = rem[idx+1:]
-		} else {
-			comp = rem
-			rem = ""
-		}
-		if comp == ".." {
-			return fmt.Errorf("%w: traversal component in target %q", ErrUnsafeLink, target)
-		}
-	}
-	clean := filepath.Clean(target)
-	if filepath.IsAbs(clean) {
-		return fmt.Errorf("%w: absolute target %q", ErrUnsafeLink, target)
-	}
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("%w: traversal component in target %q", ErrUnsafeLink, target)
+	if err := ValidatePath(target); err != nil {
+		return fmt.Errorf("%w: %w", ErrUnsafeLink, err)
 	}
 	return nil
 }
@@ -201,14 +176,7 @@ func CheckZipEntry(f *zip.File, allowLinks bool) error {
 // enforcing MaxExtractFileSize limit, ensuring parent directories exist, and
 // using bufferpool to avoid per-file memory allocations.
 func ExtractToFile(targetPath string, r io.Reader, mode os.FileMode) error {
-	return ExtractToFileWithLimit(targetPath, r, mode, MaxExtractFileSize)
-}
-
-// ExtractToFileWithLimit writes the content of r to targetPath with the given file mode,
-// bounding extraction to at most maxBytes. If the copied stream exceeds maxBytes,
-// the partial file is removed and ErrDecompressionLimit is returned.
-func ExtractToFileWithLimit(targetPath string, r io.Reader, mode os.FileMode, maxBytes int64) error {
-	_, err := ExtractToFileWithLimitN(targetPath, r, mode, maxBytes)
+	_, err := ExtractToFileWithLimitN(targetPath, r, mode, MaxExtractFileSize)
 	return err
 }
 

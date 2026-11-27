@@ -90,7 +90,7 @@ func TestDetect(t *testing.T) {
 
 	// Verify Arch maps to a known value.
 	switch p.Arch {
-	case ArchX86_64, ArchAarch64, ArchArm64:
+	case ArchX86_64, ArchArm64:
 		// valid
 	default:
 		t.Errorf("unexpected Arch %q (runtime.GOARCH=%s)", p.Arch, runtime.GOARCH)
@@ -114,14 +114,4 @@ func TestDetectConsistency(t *testing.T) {
 	if p1.Arch != p2.Arch {
 		t.Errorf("Arch inconsistent: %q vs %q", p1.Arch, p2.Arch)
 	}
-}
-
-func TestMustDetectPanics(t *testing.T) {
-	t.Parallel()
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("MustDetect() panicked on supported platform: %v", r)
-		}
-	}()
-	_ = MustDetect()
 }
