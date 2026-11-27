@@ -27,8 +27,7 @@ func RegisterProvider(p Provider) {
 	globalProvider = p
 }
 
-// GlobalProvider returns the currently registered adapter provider, or nil if none is registered.
-func GlobalProvider() Provider {
+func currentProvider() Provider {
 	providerMu.RLock()
 	defer providerMu.RUnlock()
 	return globalProvider
@@ -91,33 +90,13 @@ func ResolveOwner(tool, osName string) Adapter {
 	return nil
 }
 
-// ResolveOption configures adapter resolution.
-type ResolveOption func(*resolveOptions)
-
-type resolveOptions struct {
-	provider Provider
-}
-
-// WithProvider overrides the global provider for a specific ResolveAdapters call.
-func WithProvider(p Provider) ResolveOption {
-	return func(ro *resolveOptions) {
-		ro.provider = p
-	}
-}
-
 // ResolveAdapters discovers, instantiates, and filters active tool adapters according to
 // the configuration and platform.
-func ResolveAdapters(cfg *config.Config, osName string, opts ...ResolveOption) ([]Adapter, error) {
-	ro := &resolveOptions{}
-	for _, opt := range opts {
-		opt(ro)
-	}
-	provider := ro.provider
-	if provider == nil {
-		providerMu.RLock()
-		provider = globalProvider
-		providerMu.RUnlock()
-	}
+func ResolveAdapters(cfg *config.Config, osName string) ([]Adapter, error) {
+	return resolveAdaptersWithProvider(cfg, osName, currentProvider())
+}
+
+func resolveAdaptersWithProvider(cfg *config.Config, osName string, provider Provider) ([]Adapter, error) {
 
 	canonOS := osName
 	if norm, err := platform.NormalizeOS(osName); err == nil {

@@ -11,9 +11,13 @@ var (
 	reGsudo  = regexp.MustCompile(`(?i)\bgsudo\b`)
 	reDoas   = regexp.MustCompile(`(?i)\bdoas\b`)
 	rePkexec = regexp.MustCompile(`(?i)\bpkexec\b`)
-	reSu     = regexp.MustCompile(`(?i)\bsu\b`)
-	reRunas  = regexp.MustCompile(`(?i)\brunas(\b|admin)`)
-	reAdmin  = regexp.MustCompile(`(?i)(\b|runas)admin(istrator)?\b`)
+	reSu     = regexp.MustCompile(
+		`(?i)(?:^|[;&|(\n` + "`" + `])\s*` +
+			`(?:(?:sudo|gsudo|doas|pkexec|command|exec|builtin)\s+|env\s+(?:-\S+\s+)*|[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S*)\s+)*` +
+			`(?:[\w./-]+/)?su(?:$|\s|[;&|)\n` + "`" + `])`,
+	)
+	reRunas = regexp.MustCompile(`(?i)\brunas(\b|admin)`)
+	reAdmin = regexp.MustCompile(`(?i)(?:runasadmin(?:istrator)?|/user:admin(?:istrator)?|(?:^|[\s;|&(\n` + "`" + `-])admin(?:istrator)?(?:$|[\s;|&)\n` + "`" + `-]))`)
 )
 
 // DetectPrivileges inspects a command string for privilege escalation tokens.

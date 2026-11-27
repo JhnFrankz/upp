@@ -3,7 +3,6 @@ package official
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
@@ -131,38 +130,14 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 		before = v
 	}
 
-	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "upgrade", pkg)
-	invalidateBrewOutdated(pkg)
-	if err != nil {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("brew upgrade failed: %w", err),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "Error") {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("brew upgrade error: %s", truncate(stderr, 200)),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	after := before
-	if v := a.installedVersion(ctx, pkg); v != "" {
-		after = v
-	}
-
-	return adapters.Result{
-		Success: true,
-		Before:  before,
-		After:   after,
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:   "brew upgrade",
+		before:  before,
+		cmd:     "brew",
+		args:    []string{"upgrade", pkg},
+		onDone:  func() { invalidateBrewOutdated(pkg) },
+		afterFn: func() string { return a.installedVersion(ctx, pkg) },
+	})
 }
 
 func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
@@ -186,36 +161,16 @@ func (a *BrewAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result,
 	// versions of the packages brew manages. `brew upgrade brew` is
 	// intentionally avoided — it is non-canonical and is a known portable-ruby
 	// footgun (Homebrew's ruby shims make it error-prone).
-	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "update")
-	resetBrewOutdatedCache()
-	if err != nil {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("brew upgrade failed: %w", err),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "Error") {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("brew upgrade error: %s", truncate(stderr, 200)),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	after := commandOutput(ctx, "brew", "--version")
-	after = extractVersionFromString(after)
-
-	return adapters.Result{
-		Success: true,
-		Before:  before,
-		After:   after,
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:  "brew upgrade",
+		before: before,
+		cmd:    "brew",
+		args:   []string{"update"},
+		onDone: resetBrewOutdatedCache,
+		afterFn: func() string {
+			return extractVersionFromString(commandOutput(ctx, "brew", "--version"))
+		},
+	})
 }
 
 var brewInfo = adapters.ToolInfo{

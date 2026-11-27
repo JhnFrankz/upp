@@ -114,53 +114,66 @@ func TestGroupOrder_CustomToolWithInjectedManager(t *testing.T) {
 	}
 }
 
-// --- OwnerGroupLabel ---
+// --- OwnerGroupLabelWithManagers ---
 
-// TestOwnerGroupLabel_OwnedToolReturnsManagerLabel proves a tool whose owner is
+func presentManagersMap(tools []adapters.Adapter) map[string]bool {
+	present := make(map[string]bool)
+	for _, t := range tools {
+		if t.Info().Kind == adapters.KindManager {
+			present[t.Name()] = true
+			if id := t.Info().ID; id != "" {
+				present[id] = true
+			}
+		}
+	}
+	return present
+}
+
+// TestOwnerGroupLabelWithManagers_OwnedToolReturnsManagerLabel proves a tool whose owner is
 // present in the run set resolves to the manager display name, so a group header
 // can be rendered for the owned tool.
-func TestOwnerGroupLabel_OwnedToolReturnsManagerLabel(t *testing.T) {
+func TestOwnerGroupLabelWithManagers_OwnedToolReturnsManagerLabel(t *testing.T) {
 	brew := official.AdapterByName("brew")
 	gh := official.AdapterByName("gh")
 	tools := []adapters.Adapter{brew, gh}
-	if got := OwnerGroupLabel(gh, platform.OSMacOS, tools); got != "Homebrew" {
-		t.Errorf("OwnerGroupLabel(gh, macos) = %q, want %q", got, "Homebrew")
+	if got := OwnerGroupLabelWithManagers(gh, platform.OSMacOS, presentManagersMap(tools)); got != "Homebrew" {
+		t.Errorf("OwnerGroupLabelWithManagers(gh, macos) = %q, want %q", got, "Homebrew")
 	}
 }
 
-// TestOwnerGroupLabel_StandaloneToolReturnsEmpty proves a tool with no resolving
+// TestOwnerGroupLabelWithManagers_StandaloneToolReturnsEmpty proves a tool with no resolving
 // owner on this platform gets no group header.
-func TestOwnerGroupLabel_StandaloneToolReturnsEmpty(t *testing.T) {
+func TestOwnerGroupLabelWithManagers_StandaloneToolReturnsEmpty(t *testing.T) {
 	npm := official.AdapterByName("npm")
 	tools := []adapters.Adapter{npm}
-	if got := OwnerGroupLabel(npm, platform.OSLinux, tools); got != "" {
-		t.Errorf("OwnerGroupLabel(standalone) = %q, want empty", got)
+	if got := OwnerGroupLabelWithManagers(npm, platform.OSLinux, presentManagersMap(tools)); got != "" {
+		t.Errorf("OwnerGroupLabelWithManagers(standalone) = %q, want empty", got)
 	}
 }
 
-// TestOwnerGroupLabel_FilteredManagerReturnsEmpty proves a tool whose owner is
+// TestOwnerGroupLabelWithManagers_FilteredManagerReturnsEmpty proves a tool whose owner is
 // NOT in the run set produces no phantom group header (never shows a header
 // for a manager that was filtered out).
-func TestOwnerGroupLabel_FilteredManagerReturnsEmpty(t *testing.T) {
+func TestOwnerGroupLabelWithManagers_FilteredManagerReturnsEmpty(t *testing.T) {
 	gh := official.AdapterByName("gh")
 	// gh is owned by apt on linux, but apt is not among the tools.
-	if got := OwnerGroupLabel(gh, platform.OSLinux, []adapters.Adapter{gh}); got != "" {
-		t.Errorf("OwnerGroupLabel(gh, filtered apt) = %q, want empty", got)
+	if got := OwnerGroupLabelWithManagers(gh, platform.OSLinux, presentManagersMap([]adapters.Adapter{gh})); got != "" {
+		t.Errorf("OwnerGroupLabelWithManagers(gh, filtered apt) = %q, want empty", got)
 	}
 }
 
-// TestOwnerGroupLabel_CustomToolWithInjectedManager proves a custom adapter's
+// TestOwnerGroupLabelWithManagers_CustomToolWithInjectedManager proves a custom adapter's
 // injected manager resolves to the manager display name via the CustomAdapter
 // branch of ownerIDOf.
-func TestOwnerGroupLabel_CustomToolWithInjectedManager(t *testing.T) {
+func TestOwnerGroupLabelWithManagers_CustomToolWithInjectedManager(t *testing.T) {
 	brew := official.AdapterByName("brew")
 	custom, err := adapters.NewCustomAdapter("mytool", "mytool", "", false, brew)
 	if err != nil {
 		t.Fatalf("NewCustomAdapter() error: %v", err)
 	}
 	tools := []adapters.Adapter{brew, custom}
-	if got := OwnerGroupLabel(custom, platform.OSMacOS, tools); got != "Homebrew" {
-		t.Errorf("OwnerGroupLabel(custom tool) = %q, want %q", got, "Homebrew")
+	if got := OwnerGroupLabelWithManagers(custom, platform.OSMacOS, presentManagersMap(tools)); got != "Homebrew" {
+		t.Errorf("OwnerGroupLabelWithManagers(custom tool) = %q, want %q", got, "Homebrew")
 	}
 }
 

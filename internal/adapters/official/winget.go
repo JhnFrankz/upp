@@ -3,7 +3,6 @@ package official
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -121,38 +120,14 @@ func (a *WingetAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 		before = v
 	}
 
-	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", pkg)
-	wingetUpgradeQuery.invalidate()
-	if err != nil {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("winget upgrade failed: %w", err),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "Error") {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	after := before
-	if v := a.installedVersion(ctx, pkg); v != "" {
-		after = v
-	}
-
-	return adapters.Result{
-		Success: true,
-		Before:  before,
-		After:   after,
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:   "winget upgrade",
+		before:  before,
+		cmd:     "winget",
+		args:    []string{"upgrade", pkg},
+		onDone:  wingetUpgradeQuery.invalidate,
+		afterFn: func() string { return a.installedVersion(ctx, pkg) },
+	})
 }
 
 func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
@@ -177,39 +152,19 @@ func (a *WingetAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 	// Self-only: `winget upgrade winget` upgrades Windows Package Manager
 	// itself (equiv. Microsoft.AppInstaller), never the packages it manages.
 	// A bulk `winget upgrade --all` is intentionally avoided.
-	_, stderr, err := runCmdArgsUpdate(ctx, "winget", "upgrade", "winget")
-	wingetUpgradeQuery.invalidate()
-	if err != nil {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("winget upgrade failed: %w", err),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "Error") {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("winget upgrade error: %s", truncate(stderr, 200)),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	after := commandOutput(ctx, "winget", "--version")
-	after = extractVersionFromString(after)
-	if after == "" {
-		after = "unknown"
-	}
-
-	return adapters.Result{
-		Success: true,
-		Before:  before,
-		After:   after,
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:  "winget upgrade",
+		before: before,
+		cmd:    "winget",
+		args:   []string{"upgrade", "winget"},
+		onDone: wingetUpgradeQuery.invalidate,
+		afterFn: func() string {
+			if after := extractVersionFromString(commandOutput(ctx, "winget", "--version")); after != "" {
+				return after
+			}
+			return "unknown"
+		},
+	})
 }
 
 var wingetInfo = adapters.ToolInfo{

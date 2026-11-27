@@ -7,16 +7,12 @@ import (
 	"github.com/JhnFrankz/upp/internal/config"
 )
 
-// AdapterResolverFunc defines the signature for an adapter resolution function.
-type AdapterResolverFunc func(cfg *config.Config, osName string) ([]adapters.Adapter, error)
-
 // Engine coordinates headless tool discovery, checking, and planning.
 type Engine struct {
-	cfg             *config.Config
-	osName          string
-	numWorkers      int
-	adapters        []adapters.Adapter
-	adapterResolver AdapterResolverFunc
+	cfg        *config.Config
+	osName     string
+	numWorkers int
+	adapters   []adapters.Adapter
 }
 
 // Option configures an Engine instance.
@@ -43,11 +39,6 @@ func WithConcurrency(workers int) Option {
 	}
 }
 
-// WithWorkerCount is an alias for WithConcurrency.
-func WithWorkerCount(workers int) Option {
-	return WithConcurrency(workers)
-}
-
 // WithAdapters overrides adapter discovery with a pre-configured adapter slice.
 func WithAdapters(adapters []adapters.Adapter) Option {
 	return func(e *Engine) {
@@ -55,11 +46,13 @@ func WithAdapters(adapters []adapters.Adapter) Option {
 	}
 }
 
-// WithAdapterResolver overrides adapter discovery with a custom resolver function.
-func WithAdapterResolver(resolver AdapterResolverFunc) Option {
-	return func(e *Engine) {
-		e.adapterResolver = resolver
+// allAdapters returns the engine's full adapter list without filtering.
+func (e *Engine) allAdapters() []adapters.Adapter {
+	if e.adapters != nil {
+		return e.adapters
 	}
+	all, _ := e.Resolve(Filter{})
+	return all
 }
 
 // New creates and initializes an Engine instance.

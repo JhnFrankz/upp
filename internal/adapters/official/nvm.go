@@ -110,7 +110,7 @@ func (a *NVMAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 		}, nil
 	}
 
-	if stderr != "" && strings.Contains(stderr, "error") {
+	if hasFatalStderr(stderr) {
 		return adapters.Result{
 			Success: false,
 			Before:  before,

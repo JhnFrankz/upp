@@ -119,24 +119,18 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 		return err
 	}
 
-	var procLock *lock.Lock
+	var releaseLock func()
 	if !flags.DryRun {
-		acquireLock := deps.acquireLock
-		if acquireLock == nil {
-			acquireLock = defaultAcquireLock
-		}
-		l, err := acquireLock()
+		var err error
+		releaseLock, err = acquireOptionalLock(deps.acquireLock)
 		if err != nil {
 			return err
 		}
-		procLock = l
-		if procLock != nil {
-			defer func() {
-				if procLock != nil {
-					_ = procLock.Release()
-				}
-			}()
-		}
+		defer func() {
+			if releaseLock != nil {
+				releaseLock()
+			}
+		}()
 	}
 
 	targets, err := deps.discover(execPath, cfgDir, cDir)
@@ -191,9 +185,9 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 		return deps.removeAll(p)
 	}
 
-	if procLock != nil {
-		_ = procLock.Release()
-		procLock = nil
+	if releaseLock != nil {
+		releaseLock()
+		releaseLock = nil
 	}
 
 	errs := uninstall.Execute(targets, removeWrapper, removeAllWrapper)

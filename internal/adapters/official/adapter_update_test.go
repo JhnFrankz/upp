@@ -216,36 +216,36 @@ func TestCommandOutputErr(t *testing.T) {
 	})
 }
 
-func TestShellOutputErr(t *testing.T) {
+func TestShellOutputErrCheck(t *testing.T) {
 	fakeErr := errors.New("boom")
 
 	t.Run("success-passthrough", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "hello\n"}}})
-		out, err := shellOutputErr(context.Background(), "echo hello", "echo")
+		out, err := shellOutputErrCheck(context.Background(), "echo hello", "echo")
 		if err != nil {
-			t.Fatalf("shellOutputErr unexpected error: %v", err)
+			t.Fatalf("shellOutputErrCheck unexpected error: %v", err)
 		}
 		if out != "hello" {
-			t.Errorf("shellOutputErr() = %q, want %q", out, "hello")
+			t.Errorf("shellOutputErrCheck() = %q, want %q", out, "hello")
 		}
 	})
 
 	t.Run("failure-structured-and-chained", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {stdout: "partial\n", stderr: "boom details\n", err: fakeErr}}})
-		out, err := shellOutputErr(context.Background(), "echo hello", "echo")
+		out, err := shellOutputErrCheck(context.Background(), "echo hello", "echo")
 		if err == nil {
-			t.Fatal("shellOutputErr error = nil, want structured error")
+			t.Fatal("shellOutputErrCheck error = nil, want structured error")
 		}
 		if out != "partial" {
-			t.Errorf("shellOutputErr() out = %q, want stdout preserved on failure (D4)", out)
+			t.Errorf("shellOutputErrCheck() out = %q, want stdout preserved on failure (D4)", out)
 		}
 		if !errors.Is(err, fakeErr) {
-			t.Errorf("shellOutputErr() error = %v, want %v-chain to seam error", err, fakeErr)
+			t.Errorf("shellOutputErrCheck() error = %v, want %v-chain to seam error", err, fakeErr)
 		}
 		msg := err.Error()
 		for _, want := range []string{"echo check failed", "boom details"} {
 			if !strings.Contains(msg, want) {
-				t.Errorf("shellOutputErr() error = %q, want contains %q", msg, want)
+				t.Errorf("shellOutputErrCheck() error = %q, want contains %q", msg, want)
 			}
 		}
 	})
@@ -254,26 +254,52 @@ func TestShellOutputErr(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("real sh child not available on windows")
 		}
-		_, err := shellOutputErr(context.Background(), "exit 7", "sh")
+		_, err := shellOutputErrCheck(context.Background(), "exit 7", "sh")
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			t.Fatalf("shellOutputErr() error = %v, want *exec.ExitError", err)
+			t.Fatalf("shellOutputErrCheck() error = %v, want *exec.ExitError", err)
 		}
 		if exitErr.ExitCode() != 7 {
-			t.Errorf("shellOutputErr() exit code = %d, want 7", exitErr.ExitCode())
+			t.Errorf("shellOutputErrCheck() exit code = %d, want 7", exitErr.ExitCode())
 		}
 		if !strings.Contains(err.Error(), "(exit 7)") {
-			t.Errorf("shellOutputErr() error = %q, want contains (exit 7)", err.Error())
+			t.Errorf("shellOutputErrCheck() error = %q, want contains (exit 7)", err.Error())
 		}
 	})
 
 	t.Run("deadline-exceeded-preserved", func(t *testing.T) {
 		setExecFakes(t, execFakes{shell: map[string]fakeResult{"echo hello": {err: context.DeadlineExceeded}}})
-		_, err := shellOutputErr(context.Background(), "echo hello", "echo")
+		_, err := shellOutputErrCheck(context.Background(), "echo hello", "echo")
 		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Errorf("shellOutputErr() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+			t.Errorf("shellOutputErrCheck() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 		}
 	})
+}
+
+func TestHasFatalStderr(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   bool
+	}{
+		{"empty", "", false},
+		{"benign zero errors", "Completed with 0 errors", false},
+		{"benign package name", "Downloading liberror-perl_1.0_all.deb", false},
+		{"benign warning", "Warning: error_log rotated", false},
+		{"lowercase error prefix", "error: Failed to download", true},
+		{"titlecase error prefix", "Error: Permission denied", true},
+		{"indented multiline error prefix", "info: starting\n  error: failed", true},
+		{"scoop ERROR prefix", "ERROR 'ffmpeg' isn't installed correctly", true},
+		{"fatal prefix", "fatal: unable to access", true},
+		{"apt E: prefix", "E: Unable to locate package", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hasFatalStderr(tt.stderr); got != tt.want {
+				t.Errorf("hasFatalStderr(%q) = %v, want %v", tt.stderr, got, tt.want)
+			}
+		})
+	}
 }
 
 // --- Platform-Specific Adapter Tests ---

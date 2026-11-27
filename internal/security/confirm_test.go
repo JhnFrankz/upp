@@ -439,3 +439,34 @@ func TestConfirmAction_QuietSuppressesPrintInfo(t *testing.T) {
 		t.Errorf("expected no output when Quiet=true, got: %q", outQuiet.String())
 	}
 }
+
+func TestPromptUser_BoundedReadAndEOF(t *testing.T) {
+	t.Parallel()
+
+	// EOF without trailing newline still accepts "y".
+	cfgEOF := ConfirmConfig{
+		ToolName:   "mytool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskHigh,
+		Command:    "sudo mytool --update",
+		Reader:     strings.NewReader("y"),
+		Writer:     io.Discard,
+	}
+	if got := ConfirmAction(cfgEOF); got != ConfirmProceed {
+		t.Errorf("ConfirmAction(EOF yes) = %v, want ConfirmProceed", got)
+	}
+
+	// Oversized input past maxPromptInputBytes is bounded and safely denied.
+	oversized := strings.Repeat("x", 8192) + "\n"
+	cfgOversized := ConfirmConfig{
+		ToolName:   "mytool",
+		TrustLevel: TrustCustomUntrusted,
+		RiskLevel:  RiskHigh,
+		Command:    "sudo mytool --update",
+		Reader:     strings.NewReader(oversized),
+		Writer:     io.Discard,
+	}
+	if got := ConfirmAction(cfgOversized); got != ConfirmDeny {
+		t.Errorf("ConfirmAction(oversized) = %v, want ConfirmDeny", got)
+	}
+}

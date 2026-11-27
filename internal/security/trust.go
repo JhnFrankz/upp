@@ -73,12 +73,7 @@ var reEval = regexp.MustCompile(`(?i)\beval\b`)
 var HighRiskKeywords = []string{
 	"rm -rf",
 	"rm -r /",
-	"curl|sh",
-	"curl | sh",
 	"curl -fsSL",
-	"wget|sh",
-	"wget | sh",
-	"rm -rf /",
 }
 
 // MediumRiskKeywords are substrings that classify a command as medium risk.

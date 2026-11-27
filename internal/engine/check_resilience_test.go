@@ -55,7 +55,7 @@ func (a *testResilienceAdapter) Info() adapters.ToolInfo {
 
 func TestEngine_Check_GoroutineLeakOnCancellation(t *testing.T) {
 	cfg := &config.Config{}
-	eng := New(cfg, "linux", WithWorkerCount(16))
+	eng := New(cfg, "linux", WithConcurrency(16))
 
 	const totalAdapters = 50
 	var startedCount atomic.Int32
@@ -152,7 +152,7 @@ func TestEngine_Check_GoroutineLeakOnCancellation(t *testing.T) {
 
 func TestEngine_Check_ConcurrentPanicRecovery(t *testing.T) {
 	cfg := &config.Config{}
-	eng := New(cfg, "linux", WithWorkerCount(8))
+	eng := New(cfg, "linux", WithConcurrency(8))
 
 	const totalAdapters = 20
 	type adapterBehavior int

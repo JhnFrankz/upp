@@ -65,14 +65,9 @@ func EnsureSudoAuthForOS(ctx context.Context, goos string) error {
 	return nil
 }
 
-// PrepareSudoArgs returns args with "-n" injected right after "sudo" on Unix
-// unless non-interactive flags are already present, so background-pgrp children
-// fail fast instead of attempting to read from /dev/tty.
-func PrepareSudoArgs(name string, args []string) []string {
-	return PrepareSudoArgsForOS(runtimeGOOSFn(), name, args)
-}
-
-// PrepareSudoArgsForOS behaves like PrepareSudoArgs for the specified OS name.
+// PrepareSudoArgsForOS returns args with "-n" injected right after "sudo" on
+// Unix unless non-interactive flags are already present, so background-pgrp
+// children fail fast instead of attempting to read from /dev/tty.
 func PrepareSudoArgsForOS(goos, name string, args []string) []string {
 	if goos == "windows" || name != "sudo" {
 		return args

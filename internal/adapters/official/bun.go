@@ -3,7 +3,6 @@ package official
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -61,7 +60,7 @@ func (a *BunAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 		}, nil
 	}
 
-	if stderr != "" && strings.Contains(stderr, "error") {
+	if hasFatalStderr(stderr) {
 		return adapters.Result{
 			Success: false,
 			Before:  before,

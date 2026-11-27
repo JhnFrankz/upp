@@ -1,4 +1,4 @@
-# upp Windows installer — downloads the matching release archive and verifies its
+﻿# upp Windows installer — downloads the matching release archive and verifies its
 # SHA-256 checksum against checksums.txt before installing.
 # Usage: irm https://raw.githubusercontent.com/JhnFrankz/upp/main/scripts/install.ps1 | iex
 
@@ -123,8 +123,24 @@ try {
     }
 
     $targetExe = Join-Path $installDir $binary
+    $backupExe = "$targetExe.old"
     Write-Host "Installing $binary to $targetExe..."
-    Copy-Item -Path $extractedBin -Destination $targetExe -Force
+    $hasBackup = $false
+    if (Test-Path $targetExe) {
+        Move-Item -Path $targetExe -Destination $backupExe -Force
+        $hasBackup = $true
+    }
+    try {
+        Move-Item -Path $extractedBin -Destination $targetExe -Force
+        if ($hasBackup) {
+            Remove-Item -Path $backupExe -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        if ($hasBackup -and (Test-Path $backupExe)) {
+            Move-Item -Path $backupExe -Destination $targetExe -Force -ErrorAction SilentlyContinue
+        }
+        throw
+    }
 
     # PATH configuration
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')

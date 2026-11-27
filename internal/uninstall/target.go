@@ -41,7 +41,8 @@ func DiscoverTargets(execPath, configDir, cacheDir string) ([]Target, error) {
 
 	var targets []Target
 
-	// 1. Main binary target
+	// 1. Main binary target (and the executable symlink itself, if execPath is a symlink,
+	// so uninstall does not leave a dangling symlink behind).
 	binStat, err := os.Stat(resolved)
 	binExists := err == nil && !binStat.IsDir()
 	targets = append(targets, Target{
@@ -49,6 +50,15 @@ func DiscoverTargets(execPath, configDir, cacheDir string) ([]Target, error) {
 		Path:   resolved,
 		Exists: binExists,
 	})
+	if resolved != execPath {
+		if lfi, lerr := os.Lstat(execPath); lerr == nil && lfi.Mode()&os.ModeSymlink != 0 {
+			targets = append(targets, Target{
+				Type:   TargetBinary,
+				Path:   execPath,
+				Exists: true,
+			})
+		}
+	}
 
 	// 2. Historical backups in the binary directory
 	binDir := filepath.Dir(resolved)

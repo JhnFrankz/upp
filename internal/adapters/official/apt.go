@@ -110,41 +110,19 @@ func (a *AptAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.Re
 	}
 
 	before := a.installedVersion(ctx, pkg)
-
-	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "-y", "--only-upgrade", pkg)
-	if err != nil {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("apt upgrade failed: %w", err),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "E:") {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("apt upgrade error: %s", truncate(stderr, 200)),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	after := before
-	if v := a.installedVersion(ctx, pkg); v != "unknown" {
-		after = v
-	}
-
-	return adapters.Result{
-		Success:    true,
-		Before:     before,
-		After:      after,
-		Privileges: []string{"sudo"},
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:      "apt upgrade",
+		before:     before,
+		privileges: []string{"sudo"},
+		cmd:        "sudo",
+		args:       []string{"apt", "install", "-y", "--only-upgrade", pkg},
+		afterFn: func() string {
+			if v := a.installedVersion(ctx, pkg); v != "unknown" {
+				return v
+			}
+			return ""
+		},
+	})
 }
 
 func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
@@ -167,36 +145,17 @@ func (a *AptAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, 
 	// `apt upgrade` is intentionally avoided). Stays sudo-gated: the row means
 	// "apt package stale" (distro-managed, often intentional). Check() stays
 	// root-free and reports real Installed vs Candidate availability.
-	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "apt", "install", "-y", "--only-upgrade", "apt")
-	if err != nil {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("apt upgrade failed: %w", err),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "E:") {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("apt upgrade error: %s", truncate(stderr, 200)),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	after, _ := a.CurrentVersion(ctx)
-	return adapters.Result{
-		Success:    true,
-		Before:     before,
-		After:      after,
-		Privileges: []string{"sudo"},
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:      "apt upgrade",
+		before:     before,
+		privileges: []string{"sudo"},
+		cmd:        "sudo",
+		args:       []string{"apt", "install", "-y", "--only-upgrade", "apt"},
+		afterFn: func() string {
+			after, _ := a.CurrentVersion(ctx)
+			return after
+		},
+	})
 }
 
 var aptInfo = adapters.ToolInfo{

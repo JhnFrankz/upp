@@ -14,12 +14,6 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 
 	if e.adapters != nil {
 		source = e.adapters
-	} else if e.adapterResolver != nil {
-		var err error
-		source, err = e.adapterResolver(e.cfg, e.osName)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		var err error
 		source, err = adapters.ResolveAdapters(e.cfg, e.osName)
@@ -38,50 +32,106 @@ func (e *Engine) Resolve(filter Filter) ([]adapters.Adapter, error) {
 	return source, nil
 }
 
+type onlyMatcher struct {
+	enabled bool
+	small   []string
+	large   map[string]struct{}
+}
+
+func newOnlyMatcher(only []string) onlyMatcher {
+	if len(only) == 0 {
+		return onlyMatcher{}
+	}
+	if len(only) <= 3 {
+		small := make([]string, 0, len(only))
+		for _, name := range only {
+			if trimmed := strings.TrimSpace(name); trimmed != "" {
+				small = append(small, trimmed)
+			}
+		}
+		return onlyMatcher{enabled: true, small: small}
+	}
+	large := make(map[string]struct{}, len(only))
+	for _, name := range only {
+		if trimmed := strings.TrimSpace(name); trimmed != "" {
+			large[strings.ToLower(trimmed)] = struct{}{}
+		}
+	}
+	return onlyMatcher{enabled: true, large: large}
+}
+
+func (m onlyMatcher) matches(name, id string) bool {
+	if !m.enabled {
+		return true
+	}
+	if m.large != nil {
+		if _, ok := m.large[strings.ToLower(name)]; ok {
+			return true
+		}
+		if id != "" && id != name {
+			if _, ok := m.large[strings.ToLower(id)]; ok {
+				return true
+			}
+		}
+		return false
+	}
+	for _, want := range m.small {
+		if strings.EqualFold(name, want) || strings.EqualFold(id, want) {
+			return true
+		}
+	}
+	return false
+}
+
 // FilterAdapters filters a slice of adapters by tool ID or Name using the given filter list.
 func FilterAdapters(adapterList []adapters.Adapter, only []string) []adapters.Adapter {
 	if len(only) == 0 {
 		return adapterList
 	}
 
-	if len(only) <= 3 {
-		filtered := make([]adapters.Adapter, 0, len(only))
-		for _, a := range adapterList {
-			name := a.Name()
-			id := a.Info().ID
-			for _, want := range only {
-				want = strings.TrimSpace(want)
-				if want != "" && (strings.EqualFold(name, want) || strings.EqualFold(id, want)) {
-					filtered = append(filtered, a)
-					break
-				}
-			}
-		}
-		return filtered
-	}
-
-	onlySet := make(map[string]struct{}, len(only))
-	for _, name := range only {
-		onlySet[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
-	}
-
+	matcher := newOnlyMatcher(only)
 	filtered := make([]adapters.Adapter, 0, len(only))
 	for _, a := range adapterList {
-		nameLower := strings.ToLower(a.Name())
-		if _, ok := onlySet[nameLower]; ok {
-			filtered = append(filtered, a)
-			continue
-		}
-		// Only query Info() if name didn't match:
-		info := a.Info()
-		if info.ID != "" && info.ID != a.Name() {
-			if _, ok := onlySet[strings.ToLower(info.ID)]; ok {
+		name := a.Name()
+		if matcher.large != nil {
+			if _, ok := matcher.large[strings.ToLower(name)]; ok {
 				filtered = append(filtered, a)
 				continue
 			}
+			// Only query Info() if name didn't match.
+			info := a.Info()
+			if info.ID != "" && info.ID != name {
+				if _, ok := matcher.large[strings.ToLower(info.ID)]; ok {
+					filtered = append(filtered, a)
+				}
+			}
+			continue
+		}
+		if matcher.matches(name, a.Info().ID) {
+			filtered = append(filtered, a)
 		}
 	}
 	return filtered
+}
+
+func normalizeOSName(osName string) string {
+	if norm, err := platform.NormalizeOS(osName); err == nil {
+		return norm
+	}
+	return osName
+}
+
+func lookupOSMap(m map[string]string, osName, canonOS string) string {
+	if m == nil {
+		return ""
+	}
+	if v := m[osName]; v != "" {
+		return v
+	}
+	if canonOS != "" && canonOS != osName {
+		return m[canonOS]
+	}
+	return ""
 }
 
 // adapterByName finds an adapter by Name or ID in the provided adapter list.
@@ -110,23 +160,14 @@ func resolvingOwnerSlice(a adapters.Adapter, osName string, allAdapters []adapte
 			return m
 		}
 	}
-	canonOS := osName
-	if norm, err := platform.NormalizeOS(osName); err == nil {
-		canonOS = norm
-	}
+	canonOS := normalizeOSName(osName)
 
 	if allAdapters != nil {
 		if len(allAdapters) > 0 {
 			info := a.Info()
-			if info.Manager != nil {
-				ownerName := info.Manager[osName]
-				if ownerName == "" {
-					ownerName = info.Manager[canonOS]
-				}
-				if ownerName != "" {
-					if owner := adapterByName(allAdapters, ownerName); owner != nil {
-						return owner
-					}
+			if ownerName := lookupOSMap(info.Manager, osName, canonOS); ownerName != "" {
+				if owner := adapterByName(allAdapters, ownerName); owner != nil {
+					return owner
 				}
 			}
 		}
@@ -161,19 +202,6 @@ func OwnedPackage(a adapters.Adapter, osName string) string {
 	if a == nil {
 		return ""
 	}
-	info := a.Info()
-	if info.ManagerPackage == nil {
-		return ""
-	}
-	if pkg, ok := info.ManagerPackage[osName]; ok && pkg != "" {
-		return pkg
-	}
-	canonOS := osName
-	if norm, err := platform.NormalizeOS(osName); err == nil {
-		canonOS = norm
-	}
-	if pkg, ok := info.ManagerPackage[canonOS]; ok {
-		return pkg
-	}
-	return ""
+	canonOS := normalizeOSName(osName)
+	return lookupOSMap(a.Info().ManagerPackage, osName, canonOS)
 }

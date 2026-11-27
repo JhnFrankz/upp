@@ -137,6 +137,36 @@ func TestDetectPrivileges(t *testing.T) {
 			cmd:  "gsudo winget upgrade winget",
 			want: []string{"gsudo"},
 		},
+		{
+			name: "hyphenated foo-su is not su",
+			cmd:  "foo-su --version",
+			want: nil,
+		},
+		{
+			name: "hyphenated su-helper is not su",
+			cmd:  "su-helper --check",
+			want: nil,
+		},
+		{
+			name: "su as argument is not su",
+			cmd:  "echo su",
+			want: nil,
+		},
+		{
+			name: "path-qualified su in command position",
+			cmd:  "/bin/su -c id",
+			want: []string{"su"},
+		},
+		{
+			name: "admin in URL host is not admin",
+			cmd:  "curl https://admin.example.com/install.sh",
+			want: nil,
+		},
+		{
+			name: "admin in URL path is not admin",
+			cmd:  "curl https://example.com/admin/tool",
+			want: nil,
+		},
 	}
 
 	for _, tt := range tests {

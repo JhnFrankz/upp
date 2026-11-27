@@ -12,7 +12,6 @@ import (
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/engine"
 	"github.com/JhnFrankz/upp/internal/output"
-	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
 
@@ -58,39 +57,14 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 		errOut = os.Stderr
 	}
 
-	cfg, err := config.Load()
+	sess, err := resolveSessionAdapters(gf, deps.buildAdapterList, errOut)
 	if err != nil {
-		return fmt.Errorf("cannot load config: %w", err)
+		return err
 	}
-
-	p, err := platform.Detect()
-	if err != nil {
-		return fmt.Errorf("cannot detect platform: %w", err)
-	}
-
-	var allAdapters []adapters.Adapter
-	if deps.buildAdapterList != nil {
-		allAdapters = deps.buildAdapterList(cfg, p.OS)
-	} else {
-		var err error
-		allAdapters, err = adapters.ResolveAdapters(cfg, p.OS)
-		if err != nil {
-			return fmt.Errorf("cannot resolve tools: %w", err)
-		}
-	}
-	eng := engine.New(cfg, p.OS, engine.WithAdapters(allAdapters))
-
-	only := ParseFilter(gf.Only)
-	if len(only) > 0 {
-		FilterTools(adapterIDs(allAdapters), only, errOut)
-	}
-
-	var adapterList []adapters.Adapter
-	if len(only) == 0 {
-		adapterList = allAdapters
-	} else {
-		adapterList = engine.FilterAdapters(allAdapters, only)
-	}
+	allAdapters := sess.allAdapters
+	adapterList := sess.filteredAdapters
+	only := sess.onlyList
+	eng := sess.eng
 
 	r := output.NewRenderer(out, gf.Quiet)
 
@@ -109,13 +83,13 @@ func runList(ctx context.Context, gf *GlobalFlags, deps listDeps) error {
 		return nil
 	}
 
-	toolGroups := engine.GroupByOwner(adapterList, p.OS, allAdapters)
+	toolGroups := engine.GroupByOwner(adapterList, sess.osName, allAdapters)
 	if len(toolGroups) == 0 {
 		r.NoToolsConfigured()
 		return nil
 	}
 
-	checkAdapters := engine.PrepareCheckAdapters(adapterList, p.OS, allAdapters)
+	checkAdapters := engine.PrepareCheckAdapters(adapterList, sess.osName, allAdapters)
 	for i, a := range checkAdapters {
 		inner := a
 		if u, ok := a.(interface{ Unwrap() adapters.Adapter }); ok {

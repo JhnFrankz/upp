@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -118,56 +117,6 @@ func TestEngine_WithAdapters(t *testing.T) {
 	}
 	if eng.adapters[0].Name() != "fake1" || eng.adapters[1].Name() != "fake2" {
 		t.Errorf("eng.adapters = %+v, unexpected items", eng.adapters)
-	}
-}
-
-func TestEngine_WithAdapterResolver(t *testing.T) {
-	cfg := &config.Config{}
-	dummyList := []adapters.Adapter{
-		&dummyAdapter{name: "resolvedTool"},
-	}
-
-	resolverCalled := false
-	customResolver := func(c *config.Config, osName string) ([]adapters.Adapter, error) {
-		resolverCalled = true
-		if c != cfg {
-			t.Errorf("resolver received cfg %v, want %v", c, cfg)
-		}
-		if osName != "linux" {
-			t.Errorf("resolver received osName %q, want linux", osName)
-		}
-		return dummyList, nil
-	}
-
-	eng := New(cfg, "linux", WithAdapterResolver(customResolver))
-	res, err := eng.Resolve(Filter{})
-	if err != nil {
-		t.Fatalf("Resolve returned unexpected error: %v", err)
-	}
-	if !resolverCalled {
-		t.Error("expected custom resolver to be called")
-	}
-	if len(res) != 1 || res[0].Name() != "resolvedTool" {
-		t.Errorf("Resolve = %v, want resolvedTool", res)
-	}
-}
-
-func TestEngine_WithAdapterResolver_Error(t *testing.T) {
-	expectedErr := errors.New("resolver failure")
-	customResolver := func(c *config.Config, osName string) ([]adapters.Adapter, error) {
-		return nil, expectedErr
-	}
-
-	eng := New(nil, "linux", WithAdapterResolver(customResolver))
-	res, err := eng.Resolve(Filter{})
-	if err == nil {
-		t.Fatal("expected error from Resolve, got nil")
-	}
-	if !errors.Is(err, expectedErr) {
-		t.Errorf("got error %v, want %v", err, expectedErr)
-	}
-	if res != nil {
-		t.Errorf("expected nil result on error, got %v", res)
 	}
 }
 

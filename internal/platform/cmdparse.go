@@ -118,92 +118,25 @@ func ExtractCommandBinary(command, fallbackName string) string {
 		}
 
 		baseLower := normalizedWrapperName(tok)
-		if baseLower == "env" {
-			for i+1 < len(tokens) {
-				next := tokens[i+1]
-				if next == "--" {
-					i++
-					break
-				}
-				if next == "-u" || next == "--unset" || next == "-C" || next == "--chdir" {
-					i += 2
-					continue
-				}
-				if next == "-S" || next == "--split-string" {
-					if i+2 < len(tokens) {
-						if inner := ExtractCommandBinary(tokens[i+2], ""); inner != "" {
-							return inner
-						}
-					}
-					i += 2
-					continue
-				}
-				if strings.HasPrefix(next, "-") {
-					i++
-					continue
-				}
-				break
+		switch {
+		case baseLower == "env":
+			var target string
+			i, target = skipEnvWrapper(tokens, i)
+			if target != "" {
+				return target
 			}
 			continue
-		}
-
-		if baseLower == "su" {
-			for i+1 < len(tokens) {
-				next := tokens[i+1]
-				if next == "--" {
-					i++
-					break
-				}
-				if next == "-c" || next == "--command" || (strings.HasPrefix(next, "-") && !strings.HasPrefix(next, "--") && strings.HasSuffix(next, "c")) {
-					if i+2 < len(tokens) {
-						if inner := ExtractCommandBinary(tokens[i+2], ""); inner != "" {
-							return inner
-						}
-					}
-					i += 2
-					continue
-				}
-				if strings.HasPrefix(next, "--command=") {
-					if inner := ExtractCommandBinary(strings.TrimPrefix(next, "--command="), ""); inner != "" {
-						return inner
-					}
-					i++
-					continue
-				}
-				if isPrivilegeFlagWithArg(baseLower, next) {
-					i += 2
-					continue
-				}
-				if strings.HasPrefix(next, "-") || hasSuCommandFlagAhead(tokens[i+2:]) {
-					i++
-					continue
-				}
-				break
+		case baseLower == "su":
+			var target string
+			i, target = skipSuWrapper(tokens, i)
+			if target != "" {
+				return target
 			}
 			continue
-		}
-
-		if isPrivilegeWrapper(baseLower) {
-			for i+1 < len(tokens) {
-				next := tokens[i+1]
-				if next == "--" {
-					i++
-					break
-				}
-				if isPrivilegeFlagWithArg(baseLower, next) {
-					i += 2
-					continue
-				}
-				if strings.HasPrefix(next, "-") || (baseLower == "runas" && strings.HasPrefix(next, "/")) {
-					i++
-					continue
-				}
-				break
-			}
+		case isPrivilegeWrapper(baseLower):
+			i = skipPrivilegeWrapper(baseLower, tokens, i)
 			continue
-		}
-
-		if isShellWrapper(baseLower) {
+		case isShellWrapper(baseLower):
 			if inner := extractShellCommandTarget(baseLower, tokens[i+1:]); inner != "" {
 				return inner
 			}
@@ -213,6 +146,93 @@ func ExtractCommandBinary(command, fallbackName string) string {
 	}
 
 	return fallbackName
+}
+
+func skipEnvWrapper(tokens []string, i int) (int, string) {
+	for i+1 < len(tokens) {
+		next := tokens[i+1]
+		if next == "--" {
+			return i + 1, ""
+		}
+		if next == "-u" || next == "--unset" || next == "-C" || next == "--chdir" {
+			i += 2
+			continue
+		}
+		if next == "-S" || next == "--split-string" {
+			if i+2 < len(tokens) {
+				if inner := ExtractCommandBinary(tokens[i+2], ""); inner != "" {
+					return i, inner
+				}
+			}
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(next, "-") {
+			i++
+			continue
+		}
+		break
+	}
+	return i, ""
+}
+
+func skipSuWrapper(tokens []string, i int) (int, string) {
+	for i+1 < len(tokens) {
+		next := tokens[i+1]
+		if next == "--" {
+			return i + 1, ""
+		}
+		if isSuCommandFlag(next) {
+			if i+2 < len(tokens) {
+				if inner := ExtractCommandBinary(tokens[i+2], ""); inner != "" {
+					return i, inner
+				}
+			}
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(next, "--command=") {
+			if inner := ExtractCommandBinary(strings.TrimPrefix(next, "--command="), ""); inner != "" {
+				return i, inner
+			}
+			i++
+			continue
+		}
+		if isPrivilegeFlagWithArg("su", next) {
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(next, "-") || hasSuCommandFlagAhead(tokens[i+2:]) {
+			i++
+			continue
+		}
+		break
+	}
+	return i, ""
+}
+
+func isSuCommandFlag(flag string) bool {
+	return flag == "-c" || flag == "--command" ||
+		(strings.HasPrefix(flag, "-") && !strings.HasPrefix(flag, "--") && strings.HasSuffix(flag, "c"))
+}
+
+func skipPrivilegeWrapper(baseLower string, tokens []string, i int) int {
+	for i+1 < len(tokens) {
+		next := tokens[i+1]
+		if next == "--" {
+			return i + 1
+		}
+		if isPrivilegeFlagWithArg(baseLower, next) {
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(next, "-") || (baseLower == "runas" && strings.HasPrefix(next, "/")) {
+			i++
+			continue
+		}
+		break
+	}
+	return i
 }
 
 func normalizedWrapperName(tok string) string {

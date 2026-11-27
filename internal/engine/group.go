@@ -2,7 +2,7 @@ package engine
 
 import (
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/catalog"
 )
 
 // ToolGroup represents a logical group of tools: a manager header line
@@ -19,11 +19,11 @@ type ToolGroup struct {
 	Adapters []adapters.Adapter
 }
 
-var canonicalManagerIDs = []string{"apt", "brew", "pacman", "winget", "scoop"}
+var canonicalManagerIDs = catalog.CanonicalManagerIDs()
 
 // GroupByOwner buckets the given adapters into manager-grouped buckets in
-// canonical discovery order: (1) manager groups first, in official.AllAdapters
-// order (apt, brew, winget, scoop, pacman); (2) each manager's owned tools;
+// canonical discovery order: (1) manager groups first, in catalog.CanonicalManagerIDs()
+// order (apt, brew, pacman, winget, scoop); (2) each manager's owned tools;
 // (3) standalone tools (tools with no resolving owner on this platform or
 // whose manager was filtered out).
 //
@@ -31,11 +31,13 @@ var canonicalManagerIDs = []string{"apt", "brew", "pacman", "winget", "scoop"}
 // out (not present in tools) never produces a phantom header — its owned
 // tools fall through to the standalone group.
 func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) []ToolGroup {
+	infos := make([]adapters.ToolInfo, len(tools))
 	presentManagers := make(map[string]adapters.Adapter)
-	for _, a := range tools {
-		if a.Info().Kind == adapters.KindManager {
+	for i, a := range tools {
+		infos[i] = a.Info()
+		if infos[i].Kind == adapters.KindManager {
 			presentManagers[a.Name()] = a
-			if id := a.Info().ID; id != "" {
+			if id := infos[i].ID; id != "" {
 				presentManagers[id] = a
 			}
 		}
@@ -53,14 +55,19 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 	if len(allAdapters) > 0 {
 		allList = allAdapters[0]
 	}
+	canonOS := normalizeOSName(osName)
+	var idx adapterIndex
+	if len(allList) > 0 {
+		idx = buildAdapterIndex(allList)
+	}
 
 	ownerTools := make(map[string][]adapters.Adapter)
 	var standalone []adapters.Adapter
-	for _, a := range tools {
-		if a.Info().Kind == adapters.KindManager {
+	for i, a := range tools {
+		if infos[i].Kind == adapters.KindManager {
 			continue
 		}
-		ownerID := ownerIDOfSlice(a, osName, allList)
+		ownerID := ownerIDForAdapter(a, infos[i], osName, canonOS, idx, allList == nil)
 		if ownerID != "" && presentManagers[ownerID] != nil {
 			ownerTools[ownerID] = append(ownerTools[ownerID], a)
 		} else {
@@ -74,63 +81,30 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 	// (1) Manager groups in canonical order
 	for _, mgrID := range canonicalManagerIDs {
 		mgrAdapter, present := presentManagers[mgrID]
-		if !present {
+		if !present || visitedManagers[mgrAdapter.Name()] {
 			continue
 		}
-		if visitedManagers[mgrAdapter.Name()] {
-			continue
-		}
+		mgrInfo := mgrAdapter.Info()
 		visitedManagers[mgrAdapter.Name()] = true
 		visitedManagers[mgrID] = true
-		visitedManagers[mgrAdapter.Info().ID] = true
+		visitedManagers[mgrInfo.ID] = true
 
-		ownedCap := len(ownerTools[mgrID])
-		if mgrAdapter.Name() != mgrID {
-			ownedCap += len(ownerTools[mgrAdapter.Name()])
-		}
-		owned := make([]adapters.Adapter, 0, ownedCap)
-		owned = append(owned, ownerTools[mgrID]...)
-		if mgrAdapter.Name() != mgrID {
-			owned = append(owned, ownerTools[mgrAdapter.Name()]...)
-		}
-
-		header := mgrAdapter.Info().Name
-		adaps := make([]adapters.Adapter, 0, 1+len(owned))
-		adaps = append(adaps, mgrAdapter)
-		adaps = append(adaps, owned...)
-
-		groups = append(groups, ToolGroup{
-			Header:   header,
-			Manager:  mgrAdapter,
-			Adapters: adaps,
-		})
+		owned := collectOwnedForManager(ownerTools, mgrID, mgrAdapter.Name())
+		groups = appendManagerGroup(groups, mgrAdapter, mgrInfo, owned)
 	}
 
-	// Any manager in tools that wasn't in official.AllAdapters()
-	for _, a := range tools {
-		if a.Info().Kind != adapters.KindManager || visitedManagers[a.Name()] {
+	// Any manager in tools that wasn't in catalog.CanonicalManagerIDs()
+	for i, a := range tools {
+		info := infos[i]
+		if info.Kind != adapters.KindManager || visitedManagers[a.Name()] {
 			continue
 		}
 		visitedManagers[a.Name()] = true
-		owned := ownerTools[a.Name()]
-		if id := a.Info().ID; id != "" && id != a.Name() {
-			visitedManagers[id] = true
-			if len(ownerTools[id]) > 0 {
-				owned = append(owned, ownerTools[id]...)
-			}
+		if info.ID != "" {
+			visitedManagers[info.ID] = true
 		}
-		header := a.Info().Name
-		if header == "" {
-			header = a.Name()
-		}
-		adaps := make([]adapters.Adapter, 0, 1+len(owned))
-		adaps = append(adaps, a)
-		adaps = append(adaps, owned...)
-		groups = append(groups, ToolGroup{
-			Header:   header,
-			Manager:  a,
-			Adapters: adaps,
-		})
+		owned := collectOwnedForManager(ownerTools, info.ID, a.Name())
+		groups = appendManagerGroup(groups, a, info, owned)
 	}
 
 	// (2) Standalone tools
@@ -145,6 +119,36 @@ func GroupByOwner(tools []adapters.Adapter, osName string, allAdapters ...[]adap
 	return groups
 }
 
+func collectOwnedForManager(ownerTools map[string][]adapters.Adapter, id, name string) []adapters.Adapter {
+	if id == "" || id == name {
+		return ownerTools[name]
+	}
+	primary := ownerTools[id]
+	secondary := ownerTools[name]
+	if len(secondary) == 0 {
+		return primary
+	}
+	owned := make([]adapters.Adapter, 0, len(primary)+len(secondary))
+	owned = append(owned, primary...)
+	owned = append(owned, secondary...)
+	return owned
+}
+
+func appendManagerGroup(groups []ToolGroup, mgr adapters.Adapter, mgrInfo adapters.ToolInfo, owned []adapters.Adapter) []ToolGroup {
+	header := mgrInfo.Name
+	if header == "" {
+		header = mgr.Name()
+	}
+	adaps := make([]adapters.Adapter, 0, 1+len(owned))
+	adaps = append(adaps, mgr)
+	adaps = append(adaps, owned...)
+	return append(groups, ToolGroup{
+		Header:   header,
+		Manager:  mgr,
+		Adapters: adaps,
+	})
+}
+
 // GroupOrder returns the given adapters reordered into group order (manager
 // rows first in canonical AllAdapters order, then their owned tools, then
 // standalone tools).
@@ -155,26 +159,6 @@ func GroupOrder(tools []adapters.Adapter, osName string, allAdapters ...[]adapte
 		ordered = append(ordered, g.Adapters...)
 	}
 	return ordered
-}
-
-// OwnerGroupLabel returns the manager display label that owns a on osName, or
-// "" when a is standalone or its owning manager is not among the given tools
-// (so a filtered-out manager never creates a phantom group header).
-// tools is the current run's adapter set used to decide presence.
-func OwnerGroupLabel(a adapters.Adapter, osName string, tools []adapters.Adapter, allAdapters ...[]adapters.Adapter) string {
-	if a == nil || a.Info().Kind == adapters.KindManager {
-		return ""
-	}
-	presentManagers := make(map[string]bool)
-	for _, t := range tools {
-		if t.Info().Kind == adapters.KindManager {
-			presentManagers[t.Name()] = true
-			if id := t.Info().ID; id != "" {
-				presentManagers[id] = true
-			}
-		}
-	}
-	return OwnerGroupLabelWithManagers(a, osName, presentManagers, allAdapters...)
 }
 
 // OwnerGroupLabelWithManagers returns the manager display label that owns a on osName,
@@ -212,26 +196,37 @@ func ownerIDOfSlice(a adapters.Adapter, osName string, allAdapters []adapters.Ad
 	if a == nil {
 		return ""
 	}
+	canonOS := normalizeOSName(osName)
+	var idx adapterIndex
+	if len(allAdapters) > 0 {
+		idx = buildAdapterIndex(allAdapters)
+	}
+	return ownerIDForAdapter(a, a.Info(), osName, canonOS, idx, allAdapters == nil)
+}
+
+func ownerIDForAdapter(a adapters.Adapter, info adapters.ToolInfo, osName, canonOS string, idx adapterIndex, allowGlobalFallback bool) string {
+	if a == nil {
+		return ""
+	}
 	if custom, ok := a.(*adapters.CustomAdapter); ok {
 		if m := custom.ManagerAdapter(); m != nil {
 			return m.Name()
 		}
 		return ""
 	}
-	canonOS := osName
-	if norm, err := platform.NormalizeOS(osName); err == nil {
-		canonOS = norm
+	if id := lookupOSMap(info.Manager, osName, canonOS); id != "" {
+		return id
 	}
-	if a.Info().Manager != nil {
-		if id := a.Info().Manager[osName]; id != "" {
-			return id
+	if idx != nil {
+		if owner := resolvingOwnerIndex(a, info, osName, canonOS, idx); owner != nil {
+			return owner.Name()
 		}
-		if id := a.Info().Manager[canonOS]; id != "" {
-			return id
-		}
+		return ""
 	}
-	if owner := resolvingOwnerSlice(a, osName, allAdapters); owner != nil {
-		return owner.Name()
+	if allowGlobalFallback {
+		if owner := resolvingOwnerSlice(a, osName, nil); owner != nil {
+			return owner.Name()
+		}
 	}
 	return ""
 }

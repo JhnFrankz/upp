@@ -229,7 +229,7 @@ func IsVersionLike(s string) bool {
 		c := s[i]
 		if c == '.' {
 			dotFound = true
-		} else if (c < '0' || c > '9') && c != '.' && c != '-' && c != '+' {
+		} else if (c < '0' || c > '9') && c != '-' && c != '+' {
 			break
 		}
 	}

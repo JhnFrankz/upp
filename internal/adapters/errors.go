@@ -21,10 +21,4 @@ var (
 
 	// ErrNoManagerPackage indicates that no manager package is configured for the tool on the current platform.
 	ErrNoManagerPackage = errors.New("no manager package configured")
-
-	// ErrTimeout indicates that an adapter operation timed out.
-	ErrTimeout = errors.New("operation timed out")
-
-	// ErrCommandFailed indicates that a command execution failed.
-	ErrCommandFailed = errors.New("command execution failed")
 )

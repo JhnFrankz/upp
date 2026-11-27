@@ -145,7 +145,7 @@ func (l *Lock) Release() error {
 				if retryErr := os.Remove(l.path); retryErr == nil || os.IsNotExist(retryErr) {
 					removeErr = nil
 				} else {
-					removeErr = nil
+					removeErr = retryErr
 				}
 			} else {
 				removeErr = nil

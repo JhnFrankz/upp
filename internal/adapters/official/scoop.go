@@ -3,7 +3,6 @@ package official
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -91,38 +90,14 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	// Self-only: `scoop update scoop` upgrades Scoop itself, never the
 	// packages it manages. A bulk `scoop update *` (which updates every
 	// app) is intentionally avoided — self-only semantics per point 4.
-	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", "scoop")
-	scoopStatusQuery.invalidate()
-	if err != nil {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("scoop update failed: %w", err),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "ERROR") {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("scoop update error: %s", truncate(stderr, 200)),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	after := before
-	if v := a.installedVersion(ctx, "scoop"); v != "" {
-		after = v
-	}
-
-	return adapters.Result{
-		Success: true,
-		Before:  before,
-		After:   after,
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:   "scoop update",
+		before:  before,
+		cmd:     "scoop",
+		args:    []string{"update", "scoop"},
+		onDone:  scoopStatusQuery.invalidate,
+		afterFn: func() string { return a.installedVersion(ctx, "scoop") },
+	})
 }
 
 // CheckPackage reports the installed vs available version of an owned package under scoop.
@@ -172,38 +147,14 @@ func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.
 		before = v
 	}
 
-	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", pkg)
-	scoopStatusQuery.invalidate()
-	if err != nil {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("scoop update failed: %w", err),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "ERROR") {
-		return adapters.Result{
-			Success: false,
-			Before:  before,
-			After:   before,
-			Error:   fmt.Errorf("scoop update error: %s", truncate(stderr, 200)),
-			Stderr:  stderr,
-		}, nil
-	}
-
-	after := before
-	if v := a.installedVersion(ctx, pkg); v != "" {
-		after = v
-	}
-
-	return adapters.Result{
-		Success: true,
-		Before:  before,
-		After:   after,
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:   "scoop update",
+		before:  before,
+		cmd:     "scoop",
+		args:    []string{"update", pkg},
+		onDone:  scoopStatusQuery.invalidate,
+		afterFn: func() string { return a.installedVersion(ctx, pkg) },
+	})
 }
 
 var scoopInfo = adapters.ToolInfo{

@@ -73,36 +73,17 @@ func (a *PacmanAdapter) Update(ctx context.Context, dryRun bool) (adapters.Resul
 		}, nil
 	}
 
-	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "pacman", "-S", "--noconfirm", "pacman")
-	if err != nil {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("pacman update failed: %w", err),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "error:") {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("pacman update error: %s", truncate(stderr, 200)),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	after, _ := a.CurrentVersion(ctx)
-	return adapters.Result{
-		Success:    true,
-		Before:     before,
-		After:      after,
-		Privileges: []string{"sudo"},
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:      "pacman update",
+		before:     before,
+		privileges: []string{"sudo"},
+		cmd:        "sudo",
+		args:       []string{"pacman", "-S", "--noconfirm", "pacman"},
+		afterFn: func() string {
+			after, _ := a.CurrentVersion(ctx)
+			return after
+		},
+	})
 }
 
 // parsePacmanQOutput extracts the package version from `pacman -Q <pkg>` output.
@@ -207,41 +188,19 @@ func (a *PacmanAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters
 	}
 
 	before := a.installedVersion(ctx, pkg)
-
-	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "pacman", "-S", "--noconfirm", pkg)
-	if err != nil {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("pacman update failed: %w", err),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	if stderr != "" && strings.Contains(stderr, "error:") {
-		return adapters.Result{
-			Success:    false,
-			Before:     before,
-			After:      before,
-			Error:      fmt.Errorf("pacman update error: %s", truncate(stderr, 200)),
-			Stderr:     stderr,
-			Privileges: []string{"sudo"},
-		}, nil
-	}
-
-	after := before
-	if v := a.installedVersion(ctx, pkg); v != "unknown" {
-		after = v
-	}
-
-	return adapters.Result{
-		Success:    true,
-		Before:     before,
-		After:      after,
-		Privileges: []string{"sudo"},
-	}, nil
+	return executeUpdateCmd(ctx, updateExecConfig{
+		label:      "pacman update",
+		before:     before,
+		privileges: []string{"sudo"},
+		cmd:        "sudo",
+		args:       []string{"pacman", "-S", "--noconfirm", pkg},
+		afterFn: func() string {
+			if v := a.installedVersion(ctx, pkg); v != "unknown" {
+				return v
+			}
+			return ""
+		},
+	})
 }
 
 func (a *PacmanAdapter) installedVersion(ctx context.Context, pkg string) string {

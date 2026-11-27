@@ -94,15 +94,11 @@ func runInit(ctx context.Context, gf *GlobalFlags, deps initDeps) error {
 		return fmt.Errorf("%w: rerun `upp init` interactively to confirm the overwrite", ErrInitDeniedCI)
 	}
 
-	if deps.acquireLock != nil {
-		l, err := deps.acquireLock()
-		if err != nil {
-			return err
-		}
-		if l != nil {
-			defer func() { _ = l.Release() }()
-		}
+	releaseLock, err := acquireOptionalLock(deps.acquireLock)
+	if err != nil {
+		return err
 	}
+	defer releaseLock()
 
 	out := deps.out
 	if out == nil {

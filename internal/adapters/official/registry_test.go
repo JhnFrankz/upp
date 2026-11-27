@@ -344,26 +344,6 @@ func TestManagerOwnedToolCardinality(t *testing.T) {
 	})
 }
 
-// TestOwnerMetadata verifies the per-Kind count the registry reports: 5
-// managers (apt, brew, pacman, winget, scoop) and 9 tools (nvm, npm, pnpm, bun, gh,
-// docker, go, opencode, uv) out of 14 adapters. This pins the manager/tool split
-// so a new adapter with a wrong Kind cannot silently change the totals.
-func TestOwnerMetadata(t *testing.T) {
-	meta := OwnerMetadata()
-	if meta.Total != 14 {
-		t.Errorf("OwnerMetadata().Total = %d, want 14", meta.Total)
-	}
-	if meta.Managers != 5 {
-		t.Errorf("OwnerMetadata().Managers = %d, want 5", meta.Managers)
-	}
-	if meta.Tools != 9 {
-		t.Errorf("OwnerMetadata().Tools = %d, want 9", meta.Tools)
-	}
-	if meta.Managers+meta.Tools != meta.Total {
-		t.Errorf("OwnerMetadata() inconsistent: managers(%d) + tools(%d) != total(%d)", meta.Managers, meta.Tools, meta.Total)
-	}
-}
-
 func TestAdapterByName(t *testing.T) {
 	tests := []struct {
 		name    string

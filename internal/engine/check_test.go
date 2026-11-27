@@ -534,7 +534,7 @@ func TestTimeoutErr(t *testing.T) {
 
 func TestEngine_Check_OnProgressSerialized(t *testing.T) {
 	cfg := &config.Config{}
-	eng := New(cfg, "linux", WithWorkerCount(8))
+	eng := New(cfg, "linux", WithConcurrency(8))
 
 	const totalAdapters = 16
 	mockAdapters := make([]adapters.Adapter, totalAdapters)

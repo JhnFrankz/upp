@@ -291,8 +291,9 @@ func TestApplyDefaultsDoesNotOverride(t *testing.T) {
 	}
 }
 
-func TestDefaultConfigWithDefaults(t *testing.T) {
-	cfg := DefaultConfigWithDefaults()
+func TestApplyDefaults_OnDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	ApplyDefaults(cfg)
 
 	if cfg.Version != 1 {
 		t.Errorf("expected version 1, got %d", cfg.Version)
@@ -439,7 +440,8 @@ func TestLoadFullConfig_AsIs(t *testing.T) {
 	tmpDir := t.TempDir()
 	testConfigDir(t, tmpDir)
 
-	orig := DefaultConfigWithDefaults()
+	orig := DefaultConfig()
+	ApplyDefaults(orig)
 	orig.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
 	if err := Save(orig); err != nil {
 		t.Fatal(err)
@@ -534,7 +536,8 @@ func TestValidate_NonManagerWarning(t *testing.T) {
 // TestValidate_ManagerRoundTrip pins that Save/Decode preserve the manager key
 // for a valid manager so the CLI can thread it through buildAdapterList.
 func TestValidate_ManagerRoundTrip(t *testing.T) {
-	cfg := DefaultConfigWithDefaults()
+	cfg := DefaultConfig()
+	ApplyDefaults(cfg)
 	cfg.Custom["mytool"] = CustomTool{
 		Command: "mytool --update",
 		Manager: "brew",
@@ -554,7 +557,8 @@ func TestValidate_SavePreservesUnknownManagerRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	testConfigDir(t, tmpDir)
 
-	cfg := DefaultConfigWithDefaults()
+	cfg := DefaultConfig()
+	ApplyDefaults(cfg)
 	cfg.Custom["mytool"] = CustomTool{
 		Command: "mytool --update",
 		Manager: "future-pm",
@@ -587,7 +591,8 @@ func TestSave_NeverWritesManager(t *testing.T) {
 	tmpDir := t.TempDir()
 	testConfigDir(t, tmpDir)
 
-	cfg := DefaultConfigWithDefaults()
+	cfg := DefaultConfig()
+	ApplyDefaults(cfg)
 	cfg.Custom["mytool"] = CustomTool{Command: "mytool --update", Trusted: true}
 
 	if err := Save(cfg); err != nil {
@@ -610,7 +615,8 @@ func TestSave_AtomicPersistence(t *testing.T) {
 	tmpDir := t.TempDir()
 	testConfigDir(t, tmpDir)
 
-	cfg := DefaultConfigWithDefaults()
+	cfg := DefaultConfig()
+	ApplyDefaults(cfg)
 	cfg.Custom["initial"] = CustomTool{Command: "echo 1"}
 
 	if err := Save(cfg); err != nil {

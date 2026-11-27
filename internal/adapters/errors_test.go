@@ -19,8 +19,6 @@ func TestSentinelErrors_Messages(t *testing.T) {
 		{adapters.ErrUnsupportedPackageCheck, "manager does not support per-package checks"},
 		{adapters.ErrUnsupportedPackageUpdate, "manager does not support per-package updates"},
 		{adapters.ErrNoManagerPackage, "no manager package configured"},
-		{adapters.ErrTimeout, "operation timed out"},
-		{adapters.ErrCommandFailed, "command execution failed"},
 	}
 
 	for _, tt := range tests {
@@ -43,8 +41,6 @@ func TestSentinelErrors_Distinctness(t *testing.T) {
 		{"ErrUnsupportedPackageCheck", adapters.ErrUnsupportedPackageCheck},
 		{"ErrUnsupportedPackageUpdate", adapters.ErrUnsupportedPackageUpdate},
 		{"ErrNoManagerPackage", adapters.ErrNoManagerPackage},
-		{"ErrTimeout", adapters.ErrTimeout},
-		{"ErrCommandFailed", adapters.ErrCommandFailed},
 	}
 
 	for i, a := range allSentinels {
@@ -76,8 +72,6 @@ func TestSentinelErrors_Wrapping(t *testing.T) {
 		{"ErrUnsupportedPackageCheck", adapters.ErrUnsupportedPackageCheck},
 		{"ErrUnsupportedPackageUpdate", adapters.ErrUnsupportedPackageUpdate},
 		{"ErrNoManagerPackage", adapters.ErrNoManagerPackage},
-		{"ErrTimeout", adapters.ErrTimeout},
-		{"ErrCommandFailed", adapters.ErrCommandFailed},
 	}
 
 	for _, tt := range allSentinels {
@@ -111,8 +105,6 @@ func TestSentinelErrors_Unwrap(t *testing.T) {
 		{"ErrUnsupportedPackageCheck", adapters.ErrUnsupportedPackageCheck},
 		{"ErrUnsupportedPackageUpdate", adapters.ErrUnsupportedPackageUpdate},
 		{"ErrNoManagerPackage", adapters.ErrNoManagerPackage},
-		{"ErrTimeout", adapters.ErrTimeout},
-		{"ErrCommandFailed", adapters.ErrCommandFailed},
 	}
 
 	for _, tt := range allSentinels {

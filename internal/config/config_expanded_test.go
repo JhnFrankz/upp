@@ -214,10 +214,11 @@ func TestLoad_MissingFile(t *testing.T) {
 	}
 }
 
-// --- DefaultConfigWithDefaults ---
+// --- ApplyDefaults on DefaultConfig ---
 
-func TestDefaultConfigWithDefaults_AllPlatforms(t *testing.T) {
-	cfg := DefaultConfigWithDefaults()
+func TestApplyDefaults_AllPlatforms(t *testing.T) {
+	cfg := DefaultConfig()
+	ApplyDefaults(cfg)
 
 	if cfg.Version != 1 {
 		t.Errorf("version = %d, want 1", cfg.Version)

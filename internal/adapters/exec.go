@@ -30,8 +30,17 @@ var (
 // pipeline/grandchild work (curl|tar, sudo apt, brew...) cannot outlive the
 // deadline. The returned error is errors.Is-detectable as
 // context.DeadlineExceeded. On Windows only the direct child is terminated.
-// Delegates to the shared RunCommandWithTimeout implementation.
+// Delegates to the shared ExecShellWithTimeoutForOS implementation.
 func defaultShellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, string, error) {
+	stdout, stderr, err := ExecShellWithTimeoutForOS(ctx, runtimeGOOSFn(), command, timeout, true)
+	return strings.TrimSpace(stdout), strings.TrimSpace(stderr), err
+}
+
+// ExecShellWithTimeoutForOS runs a command via the platform shell for goos and
+// kills it — including its whole process group on Unix — once timeout expires.
+// When checkSudo is true on Unix and command invokes sudo, EnsureSudoAuthForOS
+// is called before spawning the background process group.
+func ExecShellWithTimeoutForOS(ctx context.Context, goos, command string, timeout time.Duration, checkSudo bool) (string, string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -39,11 +48,11 @@ func defaultShellExecWithTimeout(ctx context.Context, command string, timeout ti
 	defer cancel()
 
 	var cmd *exec.Cmd
-	if runtimeGOOSFn() == "windows" {
+	if goos == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
-		if CommandUsesSudo(command) {
-			if err := EnsureSudoAuth(ctx); err != nil {
+		if checkSudo && CommandUsesSudo(command) {
+			if err := EnsureSudoAuthForOS(ctx, goos); err != nil {
 				return "", "", err
 			}
 		}
@@ -52,8 +61,25 @@ func defaultShellExecWithTimeout(ctx context.Context, command string, timeout ti
 		setpgid(cmd)
 	}
 
-	stdout, stderr, err := RunCommandWithTimeout(ctx, cmd)
-	return strings.TrimSpace(stdout), strings.TrimSpace(stderr), err
+	return RunCommandWithTimeout(ctx, cmd)
+}
+
+// ExecArgsWithTimeoutForOS runs an explicit command (no shell) for goos and
+// kills it — including its whole process group on Unix — once timeout expires.
+func ExecArgsWithTimeoutForOS(ctx context.Context, goos string, timeout time.Duration, name string, args ...string) (string, string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	if goos != "windows" {
+		// Own process group so the timeout can kill descendants too.
+		setpgid(cmd)
+	}
+
+	return RunCommandWithTimeout(ctx, cmd)
 }
 
 // RunCommandWithTimeout runs a started command under ctx, killing the whole

@@ -97,10 +97,6 @@ func isStandardGoPath(bin string) bool {
 	return false
 }
 
-func hasCommandError(stderr string) bool {
-	return stderr != "" && (strings.Contains(stderr, "Error") || strings.Contains(stderr, "error") || strings.Contains(stderr, "E:"))
-}
-
 func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
 	if !a.Detect() {
 		return adapters.Result{Success: false}, fmt.Errorf("%w: go is not installed", adapters.ErrNotInstalled)
@@ -192,7 +188,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	if goTargetExistsFn() {
 		_, _, _ = runCmdArgsUpdate(ctx, "sudo", "rm", "-rf", "/usr/local/go.bak")
 		_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", "/usr/local/go", "/usr/local/go.bak")
-		if err != nil || hasCommandError(stderr) {
+		if err != nil || hasFatalStderr(stderr) {
 			errMsg := err
 			if errMsg == nil {
 				errMsg = fmt.Errorf("%s", truncate(stderr, 200))
@@ -210,7 +206,7 @@ func (a *GoAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, e
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "sudo", "mv", stagedDir, "/usr/local/go")
-	if err != nil || hasCommandError(stderr) {
+	if err != nil || hasFatalStderr(stderr) {
 		errMsg := err
 		if errMsg == nil {
 			errMsg = fmt.Errorf("%s", truncate(stderr, 200))

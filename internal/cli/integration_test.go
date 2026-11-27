@@ -617,9 +617,13 @@ func TestEmptyConfig_AllToolsSkipped(t *testing.T) {
 	probeHome(t)
 
 	// Create config with all tools explicitly disabled
-	cfg := config.DefaultConfigWithDefaults()
-	for id := range cfg.Tools {
-		cfg.Tools[id] = config.ToolConfig{Enabled: false}
+	cfg := config.DefaultConfig()
+	p, err := platform.Detect()
+	if err != nil {
+		t.Fatalf("platform.Detect: %v", err)
+	}
+	for _, a := range buildAdapterList(cfg, p.OS) {
+		cfg.Tools[a.Name()] = config.ToolConfig{Enabled: false}
 	}
 	if err := config.Save(cfg); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -1011,7 +1015,7 @@ func TestUpdateDryRun_SummaryOutput(t *testing.T) {
 func TestInitCommand_AlreadyExists(t *testing.T) {
 	probeHome(t)
 
-	cfg := config.DefaultConfigWithDefaults()
+	cfg := config.DefaultConfig()
 	if err := config.Save(cfg); err != nil {
 		t.Fatalf("Save: %v", err)
 	}

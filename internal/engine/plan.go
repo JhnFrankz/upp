@@ -4,27 +4,8 @@ import (
 	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
-	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
 )
-
-// ResolveEffectiveUpdatePolicy returns the effective UpdatePolicy that governs
-// whether an adapter update is executed. For an owned tool, the owner's policy
-// governs and the tool's own declared policy is inert. Otherwise, the adapter's
-// own declared policy applies.
-func ResolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.UpdatePolicy {
-	if a == nil {
-		return adapters.PolicyGated
-	}
-	var list []adapters.Adapter
-	if len(allAdapters) > 0 {
-		list = allAdapters[0]
-	}
-	if owner := resolvingOwnerSlice(a, osName, list); owner != nil {
-		return owner.Info().UpdatePolicy
-	}
-	return a.Info().UpdatePolicy
-}
 
 type adapterIndex map[string]adapters.Adapter
 
@@ -89,7 +70,7 @@ func (idx adapterIndex) find(toolID, toolName string) adapters.Adapter {
 }
 
 // resolvingOwnerIndex resolves the owning manager using the O(1) adapterIndex.
-func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS string, idx adapterIndex) adapters.Adapter {
+func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, osName, canonOS string, idx adapterIndex) adapters.Adapter {
 	if a == nil {
 		return nil
 	}
@@ -99,11 +80,8 @@ func resolvingOwnerIndex(a adapters.Adapter, info adapters.ToolInfo, canonOS str
 		}
 	}
 
-	if info.Manager != nil {
-		ownerName := info.Manager[canonOS]
-		if ownerName != "" {
-			return idx.find(ownerName, ownerName)
-		}
+	if ownerName := lookupOSMap(info.Manager, osName, canonOS); ownerName != "" {
+		return idx.find(ownerName, ownerName)
 	}
 	return nil
 }
@@ -122,56 +100,13 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		return plan, nil
 	}
 
-	onlyCount := len(filter.Only)
-	var onlySet map[string]struct{}
-	var trimmedOnly []string
-	if onlyCount > 0 {
-		trimmedOnly = make([]string, onlyCount)
-		for i, name := range filter.Only {
-			trimmedOnly[i] = strings.TrimSpace(name)
-		}
-		if onlyCount > 3 {
-			onlySet = make(map[string]struct{}, onlyCount)
-			for _, name := range trimmedOnly {
-				onlySet[strings.ToLower(name)] = struct{}{}
-			}
-		}
-	}
-
-	var allAdapters []adapters.Adapter
-	if e.adapters != nil {
-		allAdapters = e.adapters
-	} else {
-		allAdapters, _ = e.Resolve(Filter{})
-	}
-	idx := buildAdapterIndex(allAdapters)
-	canonOS := e.osName
-	if norm, err := platform.NormalizeOS(e.osName); err == nil {
-		canonOS = norm
-	}
+	matcher := newOnlyMatcher(filter.Only)
+	idx := buildAdapterIndex(e.allAdapters())
+	canonOS := normalizeOSName(e.osName)
 
 	for _, oc := range outcomes {
-		if onlyCount > 0 {
-			if onlyCount <= 3 {
-				matched := false
-				for _, w := range trimmedOnly {
-					if strings.EqualFold(oc.ToolName, w) || strings.EqualFold(oc.ToolID, w) {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					continue
-				}
-			} else {
-				nameLower := strings.ToLower(oc.ToolName)
-				idLower := strings.ToLower(oc.ToolID)
-				_, byName := onlySet[nameLower]
-				_, byID := onlySet[idLower]
-				if !byName && !byID {
-					continue
-				}
-			}
+		if !matcher.matches(oc.ToolName, oc.ToolID) {
+			continue
 		}
 
 		switch oc.Status {
@@ -180,127 +115,135 @@ func (e *Engine) Plan(outcomes []CheckOutcome, filter Filter) (UpdatePlan, error
 		case StatusSkipped, StatusUnknown:
 			plan.Skipped = append(plan.Skipped, oc)
 		case StatusAvailable, StatusCurrent:
-			a := idx.find(oc.ToolID, oc.ToolName)
-
-			var info adapters.ToolInfo
-			if a != nil {
-				info = a.Info()
-			}
-
-			owner := resolvingOwnerIndex(a, info, canonOS, idx)
-			policy := adapters.PolicyGated
-			if a != nil {
-				policy = info.UpdatePolicy
-				if owner != nil {
-					policy = owner.Info().UpdatePolicy
-				}
-			}
-
-			isEligible := false
-			if policy == adapters.PolicyAlwaysUpdate {
-				isEligible = true
-			} else if oc.UpdateAvailable || filter.All {
-				isEligible = true
-			}
-
-			if !isEligible {
+			if planned, eligible := buildPlannedUpdate(oc, filter, idx, e.osName, canonOS); eligible {
+				plan.Updates = append(plan.Updates, planned)
+			} else {
 				plan.Current = append(plan.Current, oc)
-				continue
 			}
-
-			toolID := oc.ToolID
-			toolName := oc.ToolName
-			trust := security.TrustCustomUntrusted
-			var privileges []string
-			var command string
-			var kind adapters.Kind
-			var selfCommand string
-
-			if a != nil {
-				if info.ID != "" {
-					toolID = info.ID
-				}
-				if info.Name != "" {
-					toolName = info.Name
-				}
-				trust = info.Trust
-				privileges = info.Privileges
-				command = info.Command
-				kind = info.Kind
-				selfCommand = info.SelfUpdateCommand
-			}
-
-			var managerID string
-			var packageName string
-			var riskCmd string
-
-			switch {
-			case owner != nil:
-				ownerInfo := owner.Info()
-				managerID = ownerInfo.ID
-				if managerID == "" {
-					managerID = owner.Name()
-				}
-				if info.ManagerPackage != nil {
-					packageName = info.ManagerPackage[canonOS]
-				}
-				if len(privileges) == 0 && len(ownerInfo.Privileges) > 0 {
-					privileges = ownerInfo.Privileges
-				}
-				switch {
-				case packageName != "" && ownerInfo.PackageUpdateCommand != "":
-					// Owned-package row: the manager's real per-package command
-					// (design D3), rendered from the same declaration the
-					// manager's UpdatePackage() executes.
-					riskCmd = adapters.RenderPackageCommand(ownerInfo.PackageUpdateCommand, packageName)
-				case info.Manager == nil || ownerInfo.SelfUpdateCommand != "":
-					// Custom manager-delegated row (or fallback when manager has no per-package command):
-					// custom.Update() delegates to owner.Update(), so the manager's
-					// real self-update command is what actually executes (design D3).
-					riskCmd = ownerInfo.SelfUpdateCommand
-				default:
-					// Official owned tool with no declared package (unreachable
-					// today): keep the standalone fallback rule.
-					riskCmd = standaloneRiskCommand(command, toolName)
-				}
-			case kind == adapters.KindManager:
-				// Manager self-row: the manager's real self-update command
-				// (design D3). Mark the row manager-scoped iff the manager
-				// declares privileges, so the gate's EnforceRisk path applies to
-				// privileged managers (pacman) only — apt/brew/winget keep their
-				// byte-identical auto-proceed decision (design D4).
-				riskCmd = selfCommand
-				if len(privileges) > 0 {
-					managerID = toolID
-				}
-			default:
-				// Standalone row: the declared command, or the "<name> update"
-				// fallback (unchanged).
-				riskCmd = standaloneRiskCommand(command, toolName)
-			}
-
-			if len(privileges) == 0 {
-				privileges = security.DetectPrivileges(riskCmd)
-			}
-
-			plan.Updates = append(plan.Updates, PlannedUpdate{
-				ToolID:         toolID,
-				ToolName:       toolName,
-				ManagerID:      managerID,
-				PackageName:    packageName,
-				UpdatePolicy:   policy,
-				CurrentVersion: oc.CurrentVersion,
-				LatestVersion:  oc.LatestVersion,
-				RiskCommand:    riskCmd,
-				Privileges:     privileges,
-				Trust:          trust,
-			})
 		default:
 			plan.Current = append(plan.Current, oc)
 		}
 	}
 
 	return plan, nil
+}
+
+func buildPlannedUpdate(oc CheckOutcome, filter Filter, idx adapterIndex, osName, canonOS string) (PlannedUpdate, bool) {
+	a := idx.find(oc.ToolID, oc.ToolName)
+	var info adapters.ToolInfo
+	if a != nil {
+		info = a.Info()
+	}
+
+	owner := resolvingOwnerIndex(a, info, osName, canonOS, idx)
+	policy := adapters.PolicyGated
+	if a != nil {
+		policy = info.UpdatePolicy
+		if owner != nil {
+			policy = owner.Info().UpdatePolicy
+		}
+	}
+
+	if policy != adapters.PolicyAlwaysUpdate && !oc.UpdateAvailable && !filter.All {
+		return PlannedUpdate{}, false
+	}
+
+	toolID, toolName := oc.ToolID, oc.ToolName
+	trust := security.TrustCustomUntrusted
+	var privileges []string
+	var command string
+	var kind adapters.Kind
+	var selfCommand string
+
+	if a != nil {
+		if info.ID != "" {
+			toolID = info.ID
+		}
+		if info.Name != "" {
+			toolName = info.Name
+		}
+		trust = info.Trust
+		privileges = info.Privileges
+		command = info.Command
+		kind = info.Kind
+		selfCommand = info.SelfUpdateCommand
+	}
+
+	managerID, packageName, riskCmd, privileges := resolveRiskDetails(
+		toolID, toolName, command, selfCommand, kind, privileges, info, owner, osName, canonOS,
+	)
+
+	return PlannedUpdate{
+		ToolID:         toolID,
+		ToolName:       toolName,
+		ManagerID:      managerID,
+		PackageName:    packageName,
+		UpdatePolicy:   policy,
+		CurrentVersion: oc.CurrentVersion,
+		LatestVersion:  oc.LatestVersion,
+		RiskCommand:    riskCmd,
+		Privileges:     privileges,
+		Trust:          trust,
+	}, true
+}
+
+func resolveRiskDetails(
+	toolID, toolName, command, selfCommand string,
+	kind adapters.Kind,
+	privileges []string,
+	info adapters.ToolInfo,
+	owner adapters.Adapter,
+	osName, canonOS string,
+) (managerID, packageName, riskCmd string, resolvedPrivileges []string) {
+	resolvedPrivileges = privileges
+
+	switch {
+	case owner != nil:
+		ownerInfo := owner.Info()
+		managerID = ownerInfo.ID
+		if managerID == "" {
+			managerID = owner.Name()
+		}
+		packageName = lookupOSMap(info.ManagerPackage, osName, canonOS)
+		if len(resolvedPrivileges) == 0 && len(ownerInfo.Privileges) > 0 {
+			resolvedPrivileges = ownerInfo.Privileges
+		}
+		switch {
+		case packageName != "" && ownerInfo.PackageUpdateCommand != "":
+			// Owned-package row: the manager's real per-package command
+			// (design D3), rendered from the same declaration the
+			// manager's UpdatePackage() executes.
+			riskCmd = adapters.RenderPackageCommand(ownerInfo.PackageUpdateCommand, packageName)
+		case info.Manager == nil || ownerInfo.SelfUpdateCommand != "":
+			// Custom manager-delegated row (or fallback when manager has no per-package command):
+			// custom.Update() delegates to owner.Update(), so the manager's
+			// real self-update command is what actually executes (design D3).
+			riskCmd = ownerInfo.SelfUpdateCommand
+		default:
+			// Official owned tool with no declared package (unreachable
+			// today): keep the standalone fallback rule.
+			riskCmd = standaloneRiskCommand(command, toolName)
+		}
+	case kind == adapters.KindManager:
+		// Manager self-row: the manager's real self-update command
+		// (design D3). Mark the row manager-scoped iff the manager
+		// declares privileges, so the gate's EnforceRisk path applies to
+		// privileged managers (pacman) only — apt/brew/winget keep their
+		// byte-identical auto-proceed decision (design D4).
+		riskCmd = selfCommand
+		if len(resolvedPrivileges) > 0 {
+			managerID = toolID
+		}
+	default:
+		// Standalone row: the declared command, or the "<name> update"
+		// fallback (unchanged).
+		riskCmd = standaloneRiskCommand(command, toolName)
+	}
+
+	if len(resolvedPrivileges) == 0 {
+		resolvedPrivileges = security.DetectPrivileges(riskCmd)
+	}
+	return managerID, packageName, riskCmd, resolvedPrivileges
 }
 
 // standaloneRiskCommand returns a standalone row's risk command: the adapter's

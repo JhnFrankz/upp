@@ -17,7 +17,7 @@ func TestAssetName(t *testing.T) {
 		// set (linux/darwin × amd64/arm64, canonical platform names).
 		{"linux amd64", platform.Platform{OS: platform.OSLinux, Arch: platform.ArchX86_64}, "upp-linux-amd64.tar.gz", false},
 		{"linux arm64", platform.Platform{OS: platform.OSLinux, Arch: platform.ArchArm64}, "upp-linux-arm64.tar.gz", false},
-		{"linux aarch64", platform.Platform{OS: platform.OSLinux, Arch: platform.ArchAarch64}, "upp-linux-arm64.tar.gz", false},
+		{"linux aarch64", platform.Platform{OS: platform.OSLinux, Arch: "aarch64"}, "upp-linux-arm64.tar.gz", false},
 		{"macos amd64", platform.Platform{OS: platform.OSMacOS, Arch: platform.ArchX86_64}, "upp-darwin-amd64.tar.gz", false},
 		{"macos arm64", platform.Platform{OS: platform.OSMacOS, Arch: platform.ArchArm64}, "upp-darwin-arm64.tar.gz", false},
 		// Identity entries accept release-style names unchanged.

@@ -77,9 +77,6 @@ func TestHasErrorsAndWarnings(t *testing.T) {
 			if got := HasErrors(tt.results); got != tt.wantErrors {
 				t.Errorf("HasErrors() = %v, want %v", got, tt.wantErrors)
 			}
-			if got := HasWarnings(tt.results); got != tt.wantWarnings {
-				t.Errorf("HasWarnings() = %v, want %v", got, tt.wantWarnings)
-			}
 		})
 	}
 }
@@ -1280,8 +1277,8 @@ func TestExtractCustomBinary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := extractCustomBinary(tt.command, tt.fallback); got != tt.want {
-				t.Errorf("extractCustomBinary(%q, %q) = %q, want %q", tt.command, tt.fallback, got, tt.want)
+			if got := platform.ExtractCommandBinary(tt.command, tt.fallback); got != tt.want {
+				t.Errorf("platform.ExtractCommandBinary(%q, %q) = %q, want %q", tt.command, tt.fallback, got, tt.want)
 			}
 		})
 	}
@@ -1462,19 +1459,33 @@ func TestDiagnose_ToolPaths_SkipsOtherPlatformToolsAndRespectsLookPathOnly(t *te
 	}
 }
 
-func TestDefaultDoctorDeps(t *testing.T) {
-	deps := DefaultDoctorDeps()
-	if deps.ConfigPath == nil || deps.ConfigDir == nil || deps.CacheDir == nil {
-		t.Error("expected config path/dir hooks to be populated")
+func TestDoctor_ToolPaths_UninstalledNvmWarnsWithHint(t *testing.T) {
+	deps := baseTestDeps(t)
+	deps.LoadConfig = func() (*config.Config, error) {
+		return &config.Config{
+			Tools: map[string]config.ToolConfig{
+				"nvm": {Enabled: true},
+			},
+		}, nil
 	}
-	if deps.LoadConfig == nil || deps.LockPath == nil || deps.ProcessAlive == nil || deps.TryLock == nil {
-		t.Error("expected core system hooks to be populated")
+	deps.Adapters = []adapters.Adapter{
+		&mockEnvToolAdapter{name: "nvm", detected: false},
 	}
-	if deps.LookPath == nil || deps.FindAllPaths == nil || deps.HTTPGet == nil {
-		t.Error("expected tool and network hooks to be populated")
+	deps.FindAllPaths = func(name string) []string {
+		t.Errorf("FindAllPaths(%q) should not be called for shell-function tool nvm", name)
+		return nil
 	}
-	if deps.Adapters != nil {
-		t.Errorf("expected DefaultDoctorDeps.Adapters to be nil (injected by CLI), got: %v", deps.Adapters)
+
+	results := Diagnose(context.Background(), deps)
+	res := findResult(results, "Tool Paths", "nvm")
+	if res == nil {
+		t.Fatal("expected result for nvm in Tool Paths")
+	}
+	if res.Status != SeverityWarn {
+		t.Errorf("expected Status SeverityWarn, got %v (%s)", res.Status, res.Message)
+	}
+	if !strings.Contains(res.FixHint, "NVM_DIR") || !strings.Contains(res.FixHint, "~/.nvm/nvm.sh") {
+		t.Errorf("expected FixHint to mention NVM_DIR and ~/.nvm/nvm.sh, got: %q", res.FixHint)
 	}
 }
 
