@@ -70,24 +70,34 @@ func TestDiscoverTargets_SymlinkAndBackups(t *testing.T) {
 		t.Fatalf("eval backup2: %v", err)
 	}
 
+	symlinkResolved, err := filepath.EvalSymlinks(filepath.Dir(symlinkBin))
+	if err != nil {
+		t.Fatalf("eval symlinkBin dir: %v", err)
+	}
+	expectedSymlinkPath := filepath.Join(symlinkResolved, filepath.Base(symlinkBin))
+
 	// Should have:
 	// 1 binary (resolved to realBin)
+	// 1 binary symlink (symlinkBin, when resolved != execPath)
 	// 2 backups
 	// 1 config
 	// 1 cache
-	if len(targets) != 5 {
-		t.Fatalf("expected 5 targets, got %d: %+v", len(targets), targets)
+	if len(targets) != 6 {
+		t.Fatalf("expected 6 targets, got %d: %+v", len(targets), targets)
 	}
 
-	// Verify main binary resolved to realBin
+	// Verify main binary resolved to realBin and symlink target is included
 	if targets[0].Type != uninstall.TargetBinary || targets[0].Path != realBinResolved || !targets[0].Exists {
 		t.Errorf("unexpected binary target: %+v", targets[0])
+	}
+	if targets[1].Type != uninstall.TargetBinary || (targets[1].Path != symlinkBin && targets[1].Path != expectedSymlinkPath) || !targets[1].Exists {
+		t.Errorf("unexpected symlink binary target: %+v", targets[1])
 	}
 
 	// Verify config and cache
 	var foundConfig, foundCache bool
 	backupCount := 0
-	for _, target := range targets[1:] {
+	for _, target := range targets[2:] {
 		switch target.Type {
 		case uninstall.TargetBackup:
 			backupCount++
@@ -115,6 +125,19 @@ func TestDiscoverTargets_SymlinkAndBackups(t *testing.T) {
 	}
 	if !foundCache {
 		t.Errorf("cache target missing")
+	}
+
+	// Executing removal over discovered targets must remove both realBin and symlinkBin
+	// without leaving a dangling symlink.
+	for _, target := range targets {
+		if target.Type == uninstall.TargetBinary || target.Type == uninstall.TargetBackup {
+			if err := os.Remove(target.Path); err != nil {
+				t.Fatalf("remove %s: %v", target.Path, err)
+			}
+		}
+	}
+	if _, err := os.Lstat(symlinkBin); !os.IsNotExist(err) {
+		t.Errorf("expected symlink %s to be removed, lstat err = %v", symlinkBin, err)
 	}
 }
 

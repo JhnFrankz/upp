@@ -54,7 +54,7 @@ func newReleaseServer(t *testing.T, latestStatus int, latestJSON string, asset, 
 // newTestClient builds a production-wired Client (NewClient) pointed at ts.
 func newTestClient(t *testing.T, ts *httptest.Server) (*Client, string) {
 	t.Helper()
-	return NewClient(ts.URL, ""), ""
+	return NewClient(ts.URL), ""
 }
 
 func TestCheckRedirectPolicy(t *testing.T) {
@@ -129,7 +129,7 @@ func TestLatestFresh(t *testing.T) {
 			http.Redirect(w, r, ts.URL+"/elsewhere", http.StatusFound)
 		}))
 		defer ts.Close()
-		c := NewClient(ts.URL, "")
+		c := NewClient(ts.URL)
 		_, err := c.LatestFresh(context.Background())
 		if err == nil {
 			t.Fatal("LatestFresh: want error on off-HTTPS redirect")
@@ -244,7 +244,7 @@ func TestDownload(t *testing.T) {
 			}
 		}))
 		defer ts.Close()
-		c := NewClient(ts.URL, "")
+		c := NewClient(ts.URL)
 		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}
@@ -404,7 +404,7 @@ func TestClientCancellation(t *testing.T) {
 
 func TestClient_DownloadClientTimeout(t *testing.T) {
 	t.Run("default client uses downloadTimeout for downloads", func(t *testing.T) {
-		c := NewClient("https://api.github.com", "")
+		c := NewClient("https://api.github.com")
 		dc := c.downloadHTTPClient()
 		if dc.Timeout != 5*time.Minute {
 			t.Errorf("downloadHTTPClient timeout = %v, want 5m", dc.Timeout)
@@ -434,7 +434,7 @@ func TestClient_DownloadClientTimeout(t *testing.T) {
 		ts := newReleaseServer(t, http.StatusOK, `{"tag_name":"v0.1.1"}`, asset, checksums, nil)
 		defer ts.Close()
 
-		c := NewClient(ts.URL, "")
+		c := NewClient(ts.URL)
 		if _, err := c.LatestFresh(context.Background()); err != nil {
 			t.Fatalf("LatestFresh: %v", err)
 		}

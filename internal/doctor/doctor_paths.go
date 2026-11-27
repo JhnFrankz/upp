@@ -182,7 +182,7 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 				}
 				toolsToCheck[name] = true
 				configuredTools[name] = true
-				customBinaries[name] = extractCustomBinary(custom.Command, name)
+				customBinaries[name] = platform.ExtractCommandBinary(custom.Command, name)
 			}
 		}
 	}
@@ -210,6 +210,14 @@ func checkToolPaths(results []CheckResult, deps DoctorDeps) []CheckResult {
 				})
 				continue
 			}
+			results = append(results, CheckResult{
+				Category: "Tool Paths",
+				Name:     name,
+				Status:   SeverityWarn,
+				Message:  fmt.Sprintf("Tool %q is configured but not detected in environment", name),
+				FixHint:  "Ensure nvm is installed and NVM_DIR is set or ~/.nvm/nvm.sh exists.",
+			})
+			continue
 		}
 
 		probeName := name
@@ -310,10 +318,6 @@ func lookupToolPaths(deps DoctorDeps, name string) []string {
 		}
 	}
 	return nil
-}
-
-func extractCustomBinary(command, fallbackName string) string {
-	return platform.ExtractCommandBinary(command, fallbackName)
 }
 
 func isShellFunctionTool(name string) bool {

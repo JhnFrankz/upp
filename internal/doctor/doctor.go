@@ -54,16 +54,6 @@ func HasErrors(results []CheckResult) bool {
 	return false
 }
 
-// HasWarnings returns true if any check result has SeverityWarn status.
-func HasWarnings(results []CheckResult) bool {
-	for _, r := range results {
-		if r.Status == SeverityWarn {
-			return true
-		}
-	}
-	return false
-}
-
 // DoctorDeps defines dependencies and environment hooks for diagnostics.
 type DoctorDeps struct {
 	ConfigPath   func() (string, error)
@@ -80,25 +70,6 @@ type DoctorDeps struct {
 	// or caller to keep package doctor decoupled from concrete official adapters.
 	Adapters []adapters.Adapter
 	HTTPGet  func(ctx context.Context, url string) (int, error)
-}
-
-// DefaultDoctorDeps returns default production dependencies.
-func DefaultDoctorDeps() DoctorDeps {
-	p, _ := platform.Detect()
-	return DoctorDeps{
-		ConfigPath:   config.ConfigPath,
-		ConfigDir:    config.ConfigDir,
-		CacheDir:     config.CacheDir,
-		LoadConfig:   config.Load,
-		LockPath:     lock.DefaultLockPath,
-		ProcessAlive: defaultProcessAlive,
-		TryLock:      lock.TryLock,
-		LookPath:     exec.LookPath,
-		FindAllPaths: defaultFindAllPaths,
-		Platform:     p,
-		Adapters:     nil,
-		HTTPGet:      defaultHTTPGet,
-	}
 }
 
 // Diagnose executes all diagnostic checks and returns the results.

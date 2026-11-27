@@ -100,63 +100,21 @@ func FilterTools(tools, onlyList []string, stderr io.Writer) []string {
 		return tools
 	}
 
-	if len(onlyList) <= 3 {
-		return filterOnlySmall(tools, onlyList, stderr)
-	}
-
 	toolSet := make(map[string]bool, len(tools))
 	for _, t := range tools {
 		toolSet[strings.ToLower(t)] = true
 	}
 
-	return filterOnly(tools, onlyList, toolSet, stderr)
-}
-
-func filterWarningRenderer(stderr io.Writer) *output.Renderer {
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	return output.NewRenderer(stderr, false)
-}
+	warn := output.NewRenderer(stderr, false)
 
-func filterOnlySmall(tools, onlyList []string, stderr io.Writer) []string {
-	warn := filterWarningRenderer(stderr)
-	// Warn about unknown tools
-	for _, want := range onlyList {
-		found := false
-		for _, t := range tools {
-			if strings.EqualFold(t, want) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			warn.Warning(fmt.Sprintf("tool %q not found, ignored", want))
-		}
-	}
-
-	result := make([]string, 0, len(onlyList))
-	for _, t := range tools {
-		for _, want := range onlyList {
-			if strings.EqualFold(t, want) {
-				result = append(result, t)
-				break
-			}
-		}
-	}
-	return result
-}
-
-func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Writer) []string {
-	warn := filterWarningRenderer(stderr)
 	onlySet := make(map[string]bool, len(onlyList))
 	for _, name := range onlyList {
-		onlySet[strings.ToLower(name)] = true
-	}
-
-	// Warn about unknown tools
-	for _, name := range onlyList {
-		if !toolSet[strings.ToLower(name)] {
+		lower := strings.ToLower(name)
+		onlySet[lower] = true
+		if !toolSet[lower] {
 			warn.Warning(fmt.Sprintf("tool %q not found, ignored", name))
 		}
 	}

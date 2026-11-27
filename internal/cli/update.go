@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -151,40 +150,12 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 	}
 
 	if !uf.DryRun {
-		acquireLock := deps.acquireLock
-		if acquireLock == nil {
-			acquireLock = defaultAcquireLock
-		}
-		l, err := acquireLock()
+		releaseLock, err := acquireOptionalLock(deps.acquireLock)
 		if err != nil {
 			return err
 		}
-		if l != nil {
-			defer func() { _ = l.Release() }()
-		}
+		defer releaseLock()
 	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("cannot load config: %w", err)
-	}
-
-	p, err := platform.Detect()
-	if err != nil {
-		return fmt.Errorf("cannot detect platform: %w", err)
-	}
-
-	var allAdapters []adapters.Adapter
-	if deps.buildAdapterList != nil {
-		allAdapters = deps.buildAdapterList(cfg, p.OS)
-	} else {
-		var err error
-		allAdapters, err = adapters.ResolveAdapters(cfg, p.OS)
-		if err != nil {
-			return fmt.Errorf("cannot resolve tools: %w", err)
-		}
-	}
-	eng := engine.New(cfg, p.OS, engine.WithAdapters(allAdapters))
 
 	in := deps.in
 	if in == nil {
@@ -202,16 +173,9 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 	deps.out = out
 	deps.errOut = errOut
 
-	onlyList := ParseFilter(gf.Only)
-	if len(onlyList) > 0 {
-		FilterTools(adapterIDs(allAdapters), onlyList, errOut)
-	}
-
-	var filteredAdapters []adapters.Adapter
-	if len(onlyList) == 0 {
-		filteredAdapters = allAdapters
-	} else {
-		filteredAdapters = engine.FilterAdapters(allAdapters, onlyList)
+	resolved, err := resolveSessionAdapters(gf, deps.buildAdapterList, errOut)
+	if err != nil {
+		return err
 	}
 
 	r := output.NewRendererVerbose(out, gf.Quiet, gf.Verbose)
@@ -220,7 +184,7 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		r.DryRunHeader()
 	}
 
-	sess := NewUpdateSession(ctx, gf, uf, r, eng, allAdapters, p.OS, in, out, errOut)
+	sess := NewUpdateSession(ctx, gf, uf, r, resolved.eng, resolved.allAdapters, resolved.osName, in, out, errOut)
 	sess.Selector = deps.selector
 
 	// Interactive gate (design D2): selector only when stdin is a TTY and
@@ -230,8 +194,8 @@ func runUpdateContext(ctx context.Context, gf *GlobalFlags, uf *UpdateFlags, dep
 		deps.stdinIsTTY = stdinIsTTY
 	}
 	if deps.stdinIsTTY() && !gf.CI && !gf.Quiet && !uf.DryRun {
-		return sess.RunInteractive(filteredAdapters)
+		return sess.RunInteractive(resolved.filteredAdapters)
 	}
 
-	return sess.RunSequential(filteredAdapters)
+	return sess.RunSequential(resolved.filteredAdapters)
 }

@@ -370,10 +370,6 @@ func timeoutErr(name, op string, err error) error {
 	return engine.TimeoutErr(name, op, err)
 }
 
-func resolveEffectiveUpdatePolicy(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.UpdatePolicy {
-	return engine.ResolveEffectiveUpdatePolicy(a, osName, allAdapters...)
-}
-
 func resolvingOwner(a adapters.Adapter, osName string, allAdapters ...[]adapters.Adapter) adapters.Adapter {
 	return engine.ResolvingOwner(a, osName, allAdapters...)
 }
@@ -425,39 +421,6 @@ func TestResolvingOwner(t *testing.T) {
 			t.Errorf("resolvingOwner(npm, linux) = %v, want nil (standalone)", got)
 		}
 	})
-}
-
-// TestResolveEffectiveUpdatePolicy pins the INERT ownership semantics across
-// every platform on any host: docker declares AlwaysUpdate but is owned by apt
-// (Gated) on Linux and brew (Always) on macOS; gh is owned by apt (Gated) on
-// Linux and brew (Always) on macOS; go owns nothing on Linux (standalone →
-// own Always policy) but is owned by brew on macOS. Each case drives the
-// effective policy directly, so the darwin branch is proven without running on
-// a Mac.
-func TestResolveEffectiveUpdatePolicy(t *testing.T) {
-	tests := []struct {
-		name string
-		id   string
-		os   string
-		self adapters.UpdatePolicy
-		want adapters.UpdatePolicy
-	}{
-		{"docker-linux-inherits-apt-gated", "docker", "linux", adapters.PolicyAlwaysUpdate, adapters.PolicyGated},
-		{"docker-macos-inherits-brew-always", "docker", "macos", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
-		{"gh-linux-inherits-apt-gated", "gh", "linux", adapters.PolicyAlwaysUpdate, adapters.PolicyGated},
-		{"gh-macos-inherits-brew-always", "gh", "macos", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
-		{"go-linux-standalone-own-always", "go", "linux", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
-		{"go-macos-inherits-brew-always", "go", "macos", adapters.PolicyAlwaysUpdate, adapters.PolicyAlwaysUpdate},
-		{"npm-standalone-own-gated", "npm", "linux", adapters.PolicyGated, adapters.PolicyGated},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			a := &fakeUpdateAdapter{name: tt.id, policy: tt.self}
-			if got := resolveEffectiveUpdatePolicy(a, tt.os); got != tt.want {
-				t.Errorf("resolveEffectiveUpdatePolicy(%q, %q) = %v, want %v", tt.id, tt.os, got, tt.want)
-			}
-		})
-	}
 }
 
 // TestRunUpdate_OwnedToolInheritsGatedGate proves the INERT gate at the

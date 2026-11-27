@@ -76,7 +76,7 @@ type Client struct {
 // and request timeouts, environment proxies, and the HTTPS-only redirect
 // policy (design D6). Tests construct Client directly with an injected
 // HTTP client instead.
-func NewClient(baseURL, _ string) *Client {
+func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
 		HTTP:    defaultHTTPClient(),

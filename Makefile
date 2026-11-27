@@ -39,13 +39,16 @@ build:
 build-all: $(PLATFORMS)
 
 $(PLATFORMS):
-	$(eval GOOS := $(word 1,$(subst /, ,$@)))
-	$(eval GOARCH := $(word 2,$(subst /, ,$@)))
-	$(eval EXT := $(if $(filter windows,$(GOOS)),.exe,))
-	@echo "Building $(BINARY)-$(GOOS)-$(GOARCH)$(EXT)..."
-	@mkdir -p $(DIST_DIR)
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GOFLAGS) $(LDFLAGS) \
-		-o $(DIST_DIR)/$(BINARY)-$(GOOS)-$(GOARCH)$(EXT) ./cmd/upp
+	@set -e; \
+	plat=$@; \
+	GOOS=$${plat%/*}; \
+	GOARCH=$${plat#*/}; \
+	EXT=""; \
+	if [ "$$GOOS" = "windows" ]; then EXT=".exe"; fi; \
+	echo "Building $(BINARY)-$$GOOS-$$GOARCH$$EXT..."; \
+	mkdir -p $(DIST_DIR); \
+	GOOS=$$GOOS GOARCH=$$GOARCH go build $(GOFLAGS) $(LDFLAGS) \
+		-o $(DIST_DIR)/$(BINARY)-$$GOOS-$$GOARCH$$EXT ./cmd/upp
 
 ## test: run all tests
 test:

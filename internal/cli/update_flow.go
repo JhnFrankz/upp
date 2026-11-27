@@ -8,11 +8,15 @@ import (
 	"github.com/JhnFrankz/upp/internal/output"
 )
 
-// runUpdateSequential processes each filtered adapter: for owned tools under a
+// RunSequential processes each filtered adapter: for owned tools under a
 // package manager, it checks per-package availability via PackageChecker and
 // updates via PackageUpdater (with EnforceRisk: true); for standalone tools, it
 // runs standard Check and Update. Per-tool errors are isolated.
-func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) error {
+func (s *UpdateSession) RunSequential(filteredAdapters []adapters.Adapter) error {
+	if s == nil {
+		return fmt.Errorf("update session is nil")
+	}
+	s.ensureDefaults()
 	total := len(filteredAdapters)
 	if total == 0 {
 		if len(ParseFilter(s.GlobalFlags.Only)) > 0 {
@@ -162,12 +166,16 @@ func runUpdateSequential(s *UpdateSession, filteredAdapters []adapters.Adapter) 
 	return nil
 }
 
-// runUpdateInteractive implements the TTY update flow:
+// RunInteractive implements the TTY update flow:
 // a concurrent pre-check via eng.Check, a checkbox selector over the
 // plan-derived pending set (engine.Plan, so PolicyAlwaysUpdate tools appear
 // even when current), and the carried-outcome loop that updates the user's
 // selection while reporting every deselected pending tool distinctly.
-func runUpdateInteractive(s *UpdateSession, filteredAdapters []adapters.Adapter) error {
+func (s *UpdateSession) RunInteractive(filteredAdapters []adapters.Adapter) error {
+	if s == nil {
+		return fmt.Errorf("update session is nil")
+	}
+	s.ensureDefaults()
 	if err := s.Ctx.Err(); err != nil {
 		return err
 	}
@@ -369,24 +377,6 @@ func runUpdateInteractive(s *UpdateSession, filteredAdapters []adapters.Adapter)
 	}
 
 	return nil
-}
-
-// RunSequential delegates to runUpdateSequential.
-func (s *UpdateSession) RunSequential(filteredAdapters []adapters.Adapter) error {
-	if s == nil {
-		return fmt.Errorf("update session is nil")
-	}
-	s.ensureDefaults()
-	return runUpdateSequential(s, filteredAdapters)
-}
-
-// RunInteractive delegates to runUpdateInteractive.
-func (s *UpdateSession) RunInteractive(filteredAdapters []adapters.Adapter) error {
-	if s == nil {
-		return fmt.Errorf("update session is nil")
-	}
-	s.ensureDefaults()
-	return runUpdateInteractive(s, filteredAdapters)
 }
 
 // formatSelectorVersion formats a version string for display in selector

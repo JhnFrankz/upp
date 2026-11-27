@@ -479,7 +479,9 @@ func TestSelector_ColorRepositioningAndCursorControl(t *testing.T) {
 
 	// Down arrow (\x1b[B), Space (deselect docker), Enter (\r)
 	// Total lines = 1 header ("APT Package Manager") + 3 options + 1 footer = 5 lines.
-	sel := NewCheckboxSelector(&buf, strings.NewReader("\x1b[B \r"), opts).WithColor(true)
+	colorTrue := true
+	sel := NewCheckboxSelector(&buf, strings.NewReader("\x1b[B \r"), opts)
+	sel.color = &colorTrue
 	res, err := sel.Run()
 	if err != nil {
 		t.Fatalf("Run() error: %v", err)
@@ -609,7 +611,9 @@ func TestSelector_ContextCancelRestoresCursor(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var buf bytes.Buffer
-	sel := NewCheckboxSelector(&buf, pr, opts).WithColor(true)
+	colorTrue := true
+	sel := NewCheckboxSelector(&buf, pr, opts)
+	sel.color = &colorTrue
 
 	type out struct {
 		res SelectResult
@@ -678,7 +682,10 @@ func TestInPlaceFramesDisableLineWrap(t *testing.T) {
 	t.Run("selector redraw frames", func(t *testing.T) {
 		rec := &writeRecorder{}
 		opts := []SelectOption{{ID: "a", Label: "a"}, {ID: "b", Label: "b"}}
-		_, err := NewCheckboxSelector(rec, strings.NewReader(" \r"), opts).WithColor(true).Run()
+		colorTrue := true
+		sel := NewCheckboxSelector(rec, strings.NewReader(" \r"), opts)
+		sel.color = &colorTrue
+		_, err := sel.Run()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -734,7 +741,7 @@ func TestSelector_RawModeNoColorUsesCRLF(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := []SelectOption{{ID: "a", Label: "a", Group: "grp"}}
-	if _, err := NewCheckboxSelector(&buf, r, opts).WithColor(false).Run(); err != nil {
+	if _, err := NewCheckboxSelector(&buf, r, opts).Run(); err != nil {
 		t.Fatalf("Run() error: %v", err)
 	}
 	out := buf.String()
@@ -878,7 +885,9 @@ func TestSelector_ViewportBounding(t *testing.T) {
 				close(readDone)
 			}()
 
-			sel := NewCheckboxSelector(pw, strings.NewReader(tt.input), tt.opts).WithColor(true)
+			colorTrue := true
+			sel := NewCheckboxSelector(pw, strings.NewReader(tt.input), tt.opts)
+			sel.color = &colorTrue
 			res, runErr := sel.Run()
 			_ = pw.Close()
 			<-readDone

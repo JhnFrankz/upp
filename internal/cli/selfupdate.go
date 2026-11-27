@@ -117,21 +117,15 @@ func runSelfUpdate(ctx context.Context, gf *GlobalFlags, version string, deps se
 
 	c := deps.client
 	if c == nil {
-		c = selfupdate.NewClient(selfUpdateAPIBase, "")
+		c = selfupdate.NewClient(selfUpdateAPIBase)
 		c.DownloadBaseURL = selfUpdateWebBase
 	}
 
-	acquireLock := deps.acquireLock
-	if acquireLock == nil {
-		acquireLock = defaultAcquireLock
-	}
-	l, err := acquireLock()
+	releaseLock, err := acquireOptionalLock(deps.acquireLock)
 	if err != nil {
 		return err
 	}
-	if l != nil {
-		defer func() { _ = l.Release() }()
-	}
+	defer releaseLock()
 
 	rel, newPath, err := selfupdate.Prepare(ctx, c, current, p)
 	if newPath != "" {

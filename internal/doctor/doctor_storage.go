@@ -74,80 +74,48 @@ func checkStorageAndConfig(results []CheckResult, deps DoctorDeps) []CheckResult
 	}
 
 	// 2. Config directory
-	cfgDir, err := deps.ConfigDir()
-	if err != nil {
-		results = append(results, CheckResult{
-			Category: "Configuration & Storage",
-			Name:     "Config Directory",
-			Status:   SeverityError,
-			Message:  fmt.Sprintf("Failed to resolve config directory: %v", err),
-		})
-	} else {
-		exists, writeErr := checkDirWritable(cfgDir)
-		if writeErr != nil {
-			msg := "Config directory is not writable"
-			hint := fmt.Sprintf("Ensure %s has write permissions.", cfgDir)
-			if !exists {
-				msg = "Config directory cannot be created or is not writable"
-				hint = fmt.Sprintf("Ensure %s exists and has write permissions.", cfgDir)
-			}
-			results = append(results, CheckResult{
-				Category: "Configuration & Storage",
-				Name:     "Config Directory",
-				Status:   SeverityError,
-				Message:  msg,
-				Detail:   writeErr.Error(),
-				FixHint:  hint,
-			})
-		} else {
-			results = append(results, CheckResult{
-				Category: "Configuration & Storage",
-				Name:     "Config Directory",
-				Status:   SeverityOK,
-				Message:  "Config directory is writable",
-				Detail:   cfgDir,
-			})
-		}
-	}
+	results = checkWritableDir(results, "Config Directory", "Config directory", deps.ConfigDir, SeverityError)
 
 	// 3. Cache directory
-	cacheDir, err := deps.CacheDir()
-	if err != nil {
-		results = append(results, CheckResult{
-			Category: "Configuration & Storage",
-			Name:     "Cache Directory",
-			Status:   SeverityWarn,
-			Message:  fmt.Sprintf("Failed to resolve cache directory: %v", err),
-		})
-	} else {
-		exists, writeErr := checkDirWritable(cacheDir)
-		if writeErr != nil {
-			msg := "Cache directory is not writable"
-			hint := fmt.Sprintf("Ensure %s has write permissions.", cacheDir)
-			if !exists {
-				msg = "Cache directory cannot be created or is not writable"
-				hint = fmt.Sprintf("Ensure %s exists and has write permissions.", cacheDir)
-			}
-			results = append(results, CheckResult{
-				Category: "Configuration & Storage",
-				Name:     "Cache Directory",
-				Status:   SeverityWarn,
-				Message:  msg,
-				Detail:   writeErr.Error(),
-				FixHint:  hint,
-			})
-		} else {
-			results = append(results, CheckResult{
-				Category: "Configuration & Storage",
-				Name:     "Cache Directory",
-				Status:   SeverityOK,
-				Message:  "Cache directory is writable",
-				Detail:   cacheDir,
-			})
-		}
-	}
+	results = checkWritableDir(results, "Cache Directory", "Cache directory", deps.CacheDir, SeverityWarn)
 
 	return results
+}
+
+func checkWritableDir(results []CheckResult, name, label string, resolveDir func() (string, error), failSeverity Severity) []CheckResult {
+	dir, err := resolveDir()
+	if err != nil {
+		return append(results, CheckResult{
+			Category: "Configuration & Storage",
+			Name:     name,
+			Status:   failSeverity,
+			Message:  fmt.Sprintf("Failed to resolve %s: %v", strings.ToLower(label), err),
+		})
+	}
+	exists, writeErr := checkDirWritable(dir)
+	if writeErr != nil {
+		msg := fmt.Sprintf("%s is not writable", label)
+		hint := fmt.Sprintf("Ensure %s has write permissions.", dir)
+		if !exists {
+			msg = fmt.Sprintf("%s cannot be created or is not writable", label)
+			hint = fmt.Sprintf("Ensure %s exists and has write permissions.", dir)
+		}
+		return append(results, CheckResult{
+			Category: "Configuration & Storage",
+			Name:     name,
+			Status:   failSeverity,
+			Message:  msg,
+			Detail:   writeErr.Error(),
+			FixHint:  hint,
+		})
+	}
+	return append(results, CheckResult{
+		Category: "Configuration & Storage",
+		Name:     name,
+		Status:   SeverityOK,
+		Message:  fmt.Sprintf("%s is writable", label),
+		Detail:   dir,
+	})
 }
 
 func checkDirWritable(targetDir string) (bool, error) {

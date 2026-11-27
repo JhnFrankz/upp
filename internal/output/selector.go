@@ -54,13 +54,6 @@ func NewCheckboxSelector(w io.Writer, r io.Reader, opts []SelectOption) *Checkbo
 	return &CheckboxSelector{w: w, r: r, opts: opts}
 }
 
-// WithColor explicitly sets or overrides whether ANSI color and in-place
-// cursor repositioning are enabled. By default it is auto-detected from w.
-func (s *CheckboxSelector) WithColor(color bool) *CheckboxSelector {
-	s.color = &color
-	return s
-}
-
 // Run is RunContext with a background context.
 func (s *CheckboxSelector) Run() (SelectResult, error) {
 	return s.RunContext(context.Background())

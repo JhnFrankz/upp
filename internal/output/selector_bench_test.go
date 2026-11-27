@@ -20,8 +20,10 @@ func BenchmarkCheckboxSelector_Run(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
+	colorTrue := true
 	for i := 0; i < b.N; i++ {
-		sel := NewCheckboxSelector(io.Discard, strings.NewReader(input), opts).WithColor(true)
+		sel := NewCheckboxSelector(io.Discard, strings.NewReader(input), opts)
+		sel.color = &colorTrue
 		_, _ = sel.Run()
 	}
 }
