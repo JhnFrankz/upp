@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/JhnFrankz/upp/internal/output"
 )
 
 // GlobalFlags holds the flags shared by all commands.
@@ -55,7 +57,7 @@ func BuildRoot() (*cobra.Command, *GlobalFlags) {
 
 // AddCommands registers all subcommands on the root command.
 // Commands are grouped for help output (spec command-interface):
-// Commands (list/update), Maintenance (init/self-update).
+// Commands (list/update), Maintenance (init/self-update/uninstall/doctor).
 func AddCommands(root *cobra.Command, gf *GlobalFlags) {
 	root.AddGroup(
 		&cobra.Group{ID: "commands", Title: "Commands"},
@@ -110,7 +112,15 @@ func FilterTools(tools, onlyList []string, stderr io.Writer) []string {
 	return filterOnly(tools, onlyList, toolSet, stderr)
 }
 
+func filterWarningRenderer(stderr io.Writer) *output.Renderer {
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	return output.NewRenderer(stderr, false)
+}
+
 func filterOnlySmall(tools, onlyList []string, stderr io.Writer) []string {
+	warn := filterWarningRenderer(stderr)
 	// Warn about unknown tools
 	for _, want := range onlyList {
 		found := false
@@ -121,7 +131,7 @@ func filterOnlySmall(tools, onlyList []string, stderr io.Writer) []string {
 			}
 		}
 		if !found {
-			_, _ = fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", want)
+			warn.Warning(fmt.Sprintf("tool %q not found, ignored", want))
 		}
 	}
 
@@ -138,6 +148,7 @@ func filterOnlySmall(tools, onlyList []string, stderr io.Writer) []string {
 }
 
 func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Writer) []string {
+	warn := filterWarningRenderer(stderr)
 	onlySet := make(map[string]bool, len(onlyList))
 	for _, name := range onlyList {
 		onlySet[strings.ToLower(name)] = true
@@ -146,7 +157,7 @@ func filterOnly(tools, onlyList []string, toolSet map[string]bool, stderr io.Wri
 	// Warn about unknown tools
 	for _, name := range onlyList {
 		if !toolSet[strings.ToLower(name)] {
-			_, _ = fmt.Fprintf(stderr, "Warning: tool %q not found, ignored\n", name)
+			warn.Warning(fmt.Sprintf("tool %q not found, ignored", name))
 		}
 	}
 

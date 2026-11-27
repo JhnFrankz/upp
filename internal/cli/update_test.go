@@ -919,7 +919,7 @@ func TestRunUpdate_InteractiveSelection(t *testing.T) {
 		{ID: "selected-tool", Label: "selected-tool", Version: "1.0.0 → 2.0.0"},
 		{ID: "deselected-tool", Label: "deselected-tool", Version: "1.0.0 → 2.0.0"},
 		{ID: "custom-tool", Label: "custom-tool", Version: "1.0.0 → 2.0.0"},
-		{ID: "current-tool", Label: "current-tool", Version: "1.0.0 → 1.0.0"},
+		{ID: "current-tool", Label: "current-tool", Version: "1.0.0"},
 	}
 	if len(*got) != len(wantOpts) {
 		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
@@ -1093,7 +1093,7 @@ func TestRunUpdate_SelectorCancel(t *testing.T) {
 	// order — brew is no longer excluded.
 	wantOpts := []output.SelectOption{
 		{ID: "npm", Label: "npm", Version: "1.0.0 → 2.0.0"},
-		{ID: "brew", Label: "brew", Version: "1.0.0 → 1.0.0"},
+		{ID: "brew", Label: "brew", Version: "1.0.0"},
 	}
 	if len(*got) != len(wantOpts) {
 		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
@@ -1327,7 +1327,7 @@ func TestRunUpdate_ManagerSelfUpdateBrewInSelector(t *testing.T) {
 	// Selector options: the plan-derived pending set includes brew (always
 	// update), apt, and winget — in plan order.
 	wantOpts := []output.SelectOption{
-		{ID: "brew", Label: "brew", Version: "4.1.0 → 4.1.0"},
+		{ID: "brew", Label: "brew", Version: "4.1.0"},
 		{ID: "apt", Label: "apt", Version: "2.4.0 → 2.4.5"},
 		{ID: "winget", Label: "winget", Version: "v1.8.2301 → v1.8.2311"},
 	}
@@ -1704,7 +1704,7 @@ func TestRunUpdate_AlwaysUpdateCurrentSelectedExecutes(t *testing.T) {
 	})
 
 	wantOpts := []output.SelectOption{
-		{ID: "bun", Label: "Bun", Version: "1.0.30 → 1.0.30"},
+		{ID: "bun", Label: "Bun", Version: "1.0.30"},
 	}
 	if len(*got) != len(wantOpts) {
 		t.Fatalf("selector options = %d, want %d: %+v", len(*got), len(wantOpts), *got)
@@ -2631,8 +2631,8 @@ func TestRunUpdateInteractive_GroupResolutionFromManagerID(t *testing.T) {
 	if mgrOpt == nil {
 		t.Fatalf("custom-mgr not found in selector options: %+v", *got)
 	}
-	if mgrOpt.Group != "" {
-		t.Errorf("manager self-row must not have a group, got %q", mgrOpt.Group)
+	if mgrOpt.Group != "Custom Package Manager" {
+		t.Errorf("manager self-row must share group when owned tools are pending, got %q", mgrOpt.Group)
 	}
 }
 
@@ -2893,5 +2893,162 @@ func TestRunUpdate_ResultErrorTimeoutWrapped(t *testing.T) {
 
 	if !strings.Contains(out, "timed out after") {
 		t.Errorf("expected timeout error wrapping in verbose output; got:\n%s", out)
+	}
+}
+
+func TestRunUpdateSequential_EmptyState(t *testing.T) {
+	tests := []struct {
+		name        string
+		only        string
+		wantContain string
+	}{
+		{
+			name:        "empty without filter",
+			only:        "",
+			wantContain: "no tools configured.",
+		},
+		{
+			name:        "empty with --only filter",
+			only:        "nonexistent",
+			wantContain: "no tools match --only filter: nonexistent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			r := output.NewRenderer(&buf, false)
+			sess := NewUpdateSession(context.Background(), &GlobalFlags{Only: tt.only}, &UpdateFlags{}, r, nil, nil, platform.OSLinux, nil, &buf)
+			if err := sess.RunSequential(nil); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(buf.String(), tt.wantContain) {
+				t.Errorf("output = %q, want substring %q", buf.String(), tt.wantContain)
+			}
+		})
+	}
+}
+
+func TestFormatSelectorVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		latest  string
+		want    string
+	}{
+		{name: "distinct versions", current: "1.0.0", latest: "2.0.0", want: "1.0.0 → 2.0.0"},
+		{name: "identical versions", current: "1.0.0", latest: "1.0.0", want: "1.0.0"},
+		{name: "missing latest", current: "1.0.0", latest: "", want: "1.0.0"},
+		{name: "missing current", current: "", latest: "2.0.0", want: "update available"},
+		{name: "both empty", current: "", latest: "", want: "update available"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatSelectorVersion(tt.current, tt.latest); got != tt.want {
+				t.Errorf("formatSelectorVersion(%q, %q) = %q, want %q", tt.current, tt.latest, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunUpdateInteractive_ManagerOnlyPendingHasNoGroup(t *testing.T) {
+	probeHome(t)
+	mgr := &fakeUpdateAdapter{
+		name:     "custom-mgr",
+		infoName: "Custom Package Manager",
+		kind:     adapters.KindManager,
+		policy:   adapters.PolicyGated,
+		trust:    security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			UpdateAvailable: true,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "2.0.0",
+		},
+	}
+	ownedCurrent := &fakeUpdateAdapter{
+		name:     "owned-current",
+		infoName: "Owned Current",
+		kind:     adapters.KindTool,
+		policy:   adapters.PolicyGated,
+		trust:    security.TrustOfficial,
+		manager:  testManagerMap("custom-mgr"),
+		info: adapters.UpdateInfo{
+			UpdateAvailable: false,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.0.0",
+		},
+	}
+
+	sel, got := fakeSelector([]string{"custom-mgr"}, false)
+	all := []adapters.Adapter{mgr, ownedCurrent}
+	deps := updateDeps{
+		buildAdapterList: func(*config.Config, string) []adapters.Adapter { return all },
+		stdinIsTTY:       func() bool { return true },
+		selector:         sel,
+	}
+
+	_ = withCapturedStdout(func() {
+		_ = runUpdate(&GlobalFlags{}, &UpdateFlags{}, deps)
+	})
+
+	if len(*got) != 1 {
+		t.Fatalf("expected 1 selector option, got %d: %+v", len(*got), *got)
+	}
+	if (*got)[0].Group != "" {
+		t.Errorf("manager-only pending row must not have a group, got %q", (*got)[0].Group)
+	}
+}
+
+func TestRunUpdateSequential_ProgressUsesPlannedCount(t *testing.T) {
+	probeHome(t)
+	current := &fakeUpdateAdapter{
+		name:   "up-to-date",
+		policy: adapters.PolicyGated,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			UpdateAvailable: false,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.0.0",
+		},
+	}
+	upd1 := &fakeUpdateAdapter{
+		name:   "tool-a",
+		policy: adapters.PolicyGated,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			UpdateAvailable: true,
+			CurrentVersion:  "1.0.0",
+			LatestVersion:   "1.1.0",
+		},
+		result: adapters.Result{Success: true, Before: "1.0.0", After: "1.1.0"},
+	}
+	upd2 := &fakeUpdateAdapter{
+		name:   "tool-b",
+		policy: adapters.PolicyGated,
+		trust:  security.TrustOfficial,
+		info: adapters.UpdateInfo{
+			UpdateAvailable: true,
+			CurrentVersion:  "2.0.0",
+			LatestVersion:   "2.1.0",
+		},
+		result: adapters.Result{Success: true, Before: "2.0.0", After: "2.1.0"},
+	}
+
+	var buf bytes.Buffer
+	r := output.NewRenderer(&buf, false)
+	all := []adapters.Adapter{current, upd1, upd2}
+	eng := engine.New(nil, platform.OSLinux, engine.WithAdapters(all))
+	sess := NewUpdateSession(context.Background(), &GlobalFlags{}, &UpdateFlags{DryRun: true}, r, eng, all, platform.OSLinux, nil, &buf)
+
+	if err := sess.RunSequential(all); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Updating 1/2:") || !strings.Contains(out, "Updating 2/2:") {
+		t.Errorf("expected progress counters Updating 1/2: and Updating 2/2: for 2 planned updates, got:\n%s", out)
+	}
+	if strings.Contains(out, "/3:") {
+		t.Errorf("progress counter must not use filteredAdapters length (3), got:\n%s", out)
 	}
 }

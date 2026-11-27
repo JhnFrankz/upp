@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -58,7 +57,7 @@ func NewUninstallCommand(gf *GlobalFlags) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "preview targets to be removed without deleting anything")
+	cmd.Flags().BoolVarP(&flags.DryRun, "dry-run", "n", false, "preview targets to be removed without deleting anything")
 	cmd.Flags().BoolVarP(&flags.Yes, "yes", "y", false, "confirm uninstallation without interactive prompt")
 
 	return cmd
@@ -165,12 +164,11 @@ func runUninstall(ctx context.Context, gf *GlobalFlags, flags UninstallFlags, ou
 	if !flags.Yes {
 		presentUninstallPlan(r, targets)
 		_, _ = fmt.Fprint(out, "Proceed with uninstallation? [y/N]: ")
-		scanner := bufio.NewScanner(deps.stdin)
-		var ans string
-		if scanner.Scan() {
-			ans = strings.ToLower(strings.TrimSpace(scanner.Text()))
+		confirmed, err := confirmYesNo(deps.stdin)
+		if err != nil {
+			_, _ = fmt.Fprintln(out)
 		}
-		if ans != "y" && ans != "yes" {
+		if err != nil || !confirmed {
 			r.UninstallCanceled()
 			return nil
 		}
