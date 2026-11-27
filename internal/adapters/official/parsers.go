@@ -84,6 +84,43 @@ func nextField(s string) (field, rest string) {
 	return s[:j], s[j:]
 }
 
+// parseBrewListVersionsOutput parses the stdout of `brew list --versions <pkg>`.
+// It returns the last version-like token on the matching package line, or "" if
+// absent or unparseable.
+func parseBrewListVersionsOutput(out, pkg string) string {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
+		name, rest := nextField(line)
+		if name == "" || !strings.EqualFold(name, pkg) {
+			continue
+		}
+		latest := ""
+		for {
+			var tok string
+			tok, rest = nextField(rest)
+			if tok == "" {
+				break
+			}
+			if isVersionLike(tok) {
+				latest = tok
+			}
+		}
+		if latest != "" {
+			return latest
+		}
+	}
+	return ""
+}
+
+// matchWingetPackageID reports whether a whitespace token matches pkgID
+// (including the gh <-> GitHub.cli alias).
+func matchWingetPackageID(field, pkgID string) bool {
+	return strings.EqualFold(field, pkgID) ||
+		(strings.EqualFold(pkgID, "gh") && strings.EqualFold(field, "GitHub.cli")) ||
+		(strings.EqualFold(pkgID, "GitHub.cli") && strings.EqualFold(field, "gh"))
+}
+
 // parseWingetPackageUpgradeOutput scans the no-argument `winget upgrade`
 // listing (the read-only form CheckPackage runs) for the row whose manifest Id
 // matches pkgID and returns (current, latest, found). It
@@ -102,9 +139,7 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 			if field == "" {
 				break
 			}
-			if strings.EqualFold(field, pkgID) ||
-				(strings.EqualFold(pkgID, "gh") && strings.EqualFold(field, "GitHub.cli")) ||
-				(strings.EqualFold(pkgID, "GitHub.cli") && strings.EqualFold(field, "gh")) {
+			if matchWingetPackageID(field, pkgID) {
 				c, restAfterCurrent := nextField(rest)
 				if c == "<" {
 					c, restAfterCurrent = nextField(restAfterCurrent)
@@ -118,6 +153,35 @@ func parseWingetPackageUpgradeOutput(out, pkgID string) (current, latest string,
 		}
 	}
 	return "", "", false
+}
+
+// parseWingetPackageListOutput scans `winget list <pkg>` output for the row
+// whose manifest Id matches pkgID and returns its installed version, or "" if
+// absent or unparseable.
+func parseWingetPackageListOutput(out, pkgID string) string {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
+		rest := line
+		for {
+			var field string
+			field, rest = nextField(rest)
+			if field == "" {
+				break
+			}
+			if matchWingetPackageID(field, pkgID) {
+				c, restAfterCurrent := nextField(rest)
+				if c == "<" {
+					c, _ = nextField(restAfterCurrent)
+				}
+				if c != "" && isVersionLike(c) {
+					return c
+				}
+				continue
+			}
+		}
+	}
+	return ""
 }
 
 // parseWingetUpgradeOutput scans `winget upgrade` (no args) output for the
@@ -175,6 +239,24 @@ func parseScoopPackageStatusOutput(out, pkg string) (current, latest string, fou
 
 func parseScoopStatusOutput(out string) (current, latest string, found bool) {
 	return parseScoopPackageStatusOutput(out, "scoop")
+}
+
+// parseScoopListOutput scans `scoop list <pkg>` output for a matching package
+// row and returns its installed version, or "" if absent or unparseable.
+func parseScoopListOutput(out, pkg string) string {
+	for len(out) > 0 {
+		var line string
+		line, out, _ = strings.Cut(out, "\n")
+		name, rest := nextField(line)
+		if name == "" || !strings.EqualFold(name, pkg) {
+			continue
+		}
+		v, _ := nextField(rest)
+		if v != "" && isVersionLike(v) {
+			return v
+		}
+	}
+	return ""
 }
 
 // truncate shortens a string to maxLen characters, appending "..." if truncated.

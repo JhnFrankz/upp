@@ -24,8 +24,12 @@ func scoopStatusOutput(ctx context.Context) (string, error) {
 // and executed by Update() (design D2 single source of truth).
 const (
 	scoopSelfUpdateCmd         = "scoop update scoop"
-	scoopPackageUpdateTemplate = "scoop update {{.Package}}"
+	scoopPackageUpdateTemplate = "scoop update <pkg>"
 )
+
+func (a *ScoopAdapter) installedVersion(ctx context.Context, pkg string) string {
+	return parseScoopListOutput(commandOutput(ctx, "scoop", "list", pkg), pkg)
+}
 
 func (a *ScoopAdapter) Name() string { return "scoop" }
 
@@ -110,10 +114,8 @@ func (a *ScoopAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result
 	}
 
 	after := before
-	if out, err := scoopStatusOutput(ctx); err == nil && out != "" {
-		if cur, _, ok := parseScoopStatusOutput(out); ok && cur != "" {
-			after = cur
-		}
+	if v := a.installedVersion(ctx, "scoop"); v != "" {
+		after = v
 	}
 
 	return adapters.Result{
@@ -166,6 +168,8 @@ func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.
 	before := "unknown"
 	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
 		before = info.CurrentVersion
+	} else if v := a.installedVersion(ctx, pkg); v != "" {
+		before = v
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "scoop", "update", pkg)
@@ -191,8 +195,8 @@ func (a *ScoopAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.
 	}
 
 	after := before
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		after = info.CurrentVersion
+	if v := a.installedVersion(ctx, pkg); v != "" {
+		after = v
 	}
 
 	return adapters.Result{

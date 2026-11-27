@@ -1615,6 +1615,45 @@ func TestUpdatePackage_AuthenticVersionProgression(t *testing.T) {
 		}
 	})
 
+	t.Run("brew/version-advances", func(t *testing.T) {
+		resetBrewOutdatedCache()
+		outdatedCalls := 0
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"brew": true},
+			shell: map[string]fakeResult{
+				"brew upgrade gh": {},
+			},
+		})
+		origRunCmdArgs := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "brew" && len(args) == 3 && args[0] == "outdated" && args[1] == "--json" && args[2] == "gh" {
+				outdatedCalls++
+				if outdatedCalls == 1 {
+					return `[{"name":"gh","installed_versions":["2.45.0"],"current_version":"2.46.0"}]`, "", nil
+				}
+				return `[]`, "", nil
+			}
+			if name == "brew" && len(args) == 3 && args[0] == "list" && args[1] == "--versions" && args[2] == "gh" {
+				return "gh 2.46.0\n", "", nil
+			}
+			return origRunCmdArgs(ctx, name, args...)
+		}
+
+		res, err := (&BrewAdapter{}).UpdatePackage(context.Background(), "gh")
+		if err != nil {
+			t.Fatalf("UpdatePackage unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Errorf("res.Success = false, want true")
+		}
+		if res.Before != "2.45.0" {
+			t.Errorf("res.Before = %q, want 2.45.0", res.Before)
+		}
+		if res.After != "2.46.0" {
+			t.Errorf("res.After = %q, want 2.46.0", res.After)
+		}
+	})
+
 	t.Run("winget/version-advances", func(t *testing.T) {
 		callCount := 0
 		setExecFakes(t, execFakes{
@@ -1630,7 +1669,11 @@ func TestUpdatePackage_AuthenticVersionProgression(t *testing.T) {
 				if callCount == 1 {
 					return "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.45.0  2.46.0  winget\n", "", nil
 				}
-				return "Name  Id  Version  Available  Source\n------\ngithub-cli  gh  2.46.0  2.46.0  winget\n", "", nil
+				// Real winget upgrade omits the package once it is no longer outdated.
+				return "Name  Id  Version  Available  Source\n------\n", "", nil
+			}
+			if name == "winget" && len(args) == 2 && args[0] == "list" && args[1] == "gh" {
+				return "Name  Id  Version  Source\n------\nGitHub CLI  GitHub.cli  2.46.0  winget\n", "", nil
 			}
 			return origRunCmdArgs(ctx, name, args...)
 		}
@@ -1647,6 +1690,85 @@ func TestUpdatePackage_AuthenticVersionProgression(t *testing.T) {
 		}
 		if res.After != "2.46.0" {
 			t.Errorf("res.After = %q, want 2.46.0", res.After)
+		}
+	})
+
+	t.Run("scoop/version-advances", func(t *testing.T) {
+		scoopStatusQuery.invalidate()
+		statusCalls := 0
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"scoop": true},
+			shell: map[string]fakeResult{
+				"scoop update gh": {},
+			},
+		})
+		origRunCmdArgs := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "scoop" && len(args) == 1 && args[0] == "status" {
+				statusCalls++
+				if statusCalls == 1 {
+					return "Name  Installed Version  Latest Version  Missing Dependencies  Info\n----  -----------------  --------------  --------------------  ----\ngh    2.45.0             2.46.0\n", "", nil
+				}
+				// Real scoop status omits the package once upgraded.
+				return "Scoop is up to date.\nEverything is ok!\n", "", nil
+			}
+			if name == "scoop" && len(args) == 2 && args[0] == "list" && args[1] == "gh" {
+				return "Installed apps:\n\nName  Version  Source  Updated\n----  -------  ------  -------\ngh    2.46.0   main    2024-05-01\n", "", nil
+			}
+			return origRunCmdArgs(ctx, name, args...)
+		}
+
+		res, err := (&ScoopAdapter{}).UpdatePackage(context.Background(), "gh")
+		if err != nil {
+			t.Fatalf("UpdatePackage unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Errorf("res.Success = false, want true")
+		}
+		if res.Before != "2.45.0" {
+			t.Errorf("res.Before = %q, want 2.45.0", res.Before)
+		}
+		if res.After != "2.46.0" {
+			t.Errorf("res.After = %q, want 2.46.0", res.After)
+		}
+	})
+
+	t.Run("scoop/self-version-advances", func(t *testing.T) {
+		scoopStatusQuery.invalidate()
+		statusCalls := 0
+		setExecFakes(t, execFakes{
+			lookPath: map[string]bool{"scoop": true},
+			shell: map[string]fakeResult{
+				"scoop update scoop": {},
+			},
+		})
+		origRunCmdArgs := runCmdArgsFn
+		runCmdArgsFn = func(ctx context.Context, name string, args ...string) (string, string, error) {
+			if name == "scoop" && len(args) == 1 && args[0] == "status" {
+				statusCalls++
+				if statusCalls == 1 {
+					return "Name   Installed Version  Latest Version  Missing Dependencies  Info\n----   -----------------  --------------  --------------------  ----\nscoop  1.0.0              1.2.0\n", "", nil
+				}
+				return "Scoop is up to date.\nEverything is ok!\n", "", nil
+			}
+			if name == "scoop" && len(args) == 2 && args[0] == "list" && args[1] == "scoop" {
+				return "Installed apps:\n\nName   Version  Source  Updated\n----   -------  ------  -------\nscoop  1.2.0    main    2024-05-01\n", "", nil
+			}
+			return origRunCmdArgs(ctx, name, args...)
+		}
+
+		res, err := (&ScoopAdapter{}).Update(context.Background(), false)
+		if err != nil {
+			t.Fatalf("Update unexpected error: %v", err)
+		}
+		if !res.Success {
+			t.Errorf("res.Success = false, want true")
+		}
+		if res.Before != "1.0.0" {
+			t.Errorf("res.Before = %q, want 1.0.0", res.Before)
+		}
+		if res.After != "1.2.0" {
+			t.Errorf("res.After = %q, want 1.2.0", res.After)
 		}
 	})
 }

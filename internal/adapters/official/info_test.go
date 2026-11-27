@@ -93,7 +93,7 @@ func TestManagerCommandDeclarations(t *testing.T) {
 
 		wantPkg, isPackageManager := packageManagers[info.ID]
 		if isPackageManager {
-			if !strings.Contains(info.PackageUpdateCommand, adapters.PackagePlaceholder) && !strings.Contains(info.PackageUpdateCommand, "{{.Package}}") {
+			if !strings.Contains(info.PackageUpdateCommand, adapters.PackagePlaceholder) {
 				t.Errorf("%s: PackageUpdateCommand = %q, want it to contain package placeholder",
 					info.ID, info.PackageUpdateCommand)
 			}

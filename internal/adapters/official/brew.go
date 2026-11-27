@@ -107,6 +107,10 @@ func (a *BrewAdapter) CheckPackage(ctx context.Context, pkg string) (adapters.Up
 	}, nil
 }
 
+func (a *BrewAdapter) installedVersion(ctx context.Context, pkg string) string {
+	return parseBrewListVersionsOutput(commandOutput(ctx, "brew", "list", "--versions", pkg), pkg)
+}
+
 // UpdatePackage runs the per-package update command for an owned tool under
 // brew (e.g. `brew upgrade gh`), via brew's executor. This is the manager-group
 // bulk path (design D3): it upgrades the owned FORMULA, NOT brew's self-only
@@ -123,6 +127,8 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 	before := "unknown"
 	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
 		before = info.CurrentVersion
+	} else if v := a.installedVersion(ctx, pkg); v != "" {
+		before = v
 	}
 
 	_, stderr, err := runCmdArgsUpdate(ctx, "brew", "upgrade", pkg)
@@ -148,8 +154,8 @@ func (a *BrewAdapter) UpdatePackage(ctx context.Context, pkg string) (adapters.R
 	}
 
 	after := before
-	if info, err := a.CheckPackage(ctx, pkg); err == nil && info.CurrentVersion != "" {
-		after = info.CurrentVersion
+	if v := a.installedVersion(ctx, pkg); v != "" {
+		after = v
 	}
 
 	return adapters.Result{
