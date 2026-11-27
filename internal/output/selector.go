@@ -32,9 +32,12 @@ type SelectResult struct {
 // touching a real terminal. Production behavior is preserved — they
 // initialize to the real term implementations.
 var (
-	makeRawFn   = term.MakeRaw
-	restoreTerm = term.Restore
+	makeRawFn     = term.MakeRaw
+	restoreTerm   = term.Restore
+	termGetSizeFn = term.GetSize
 )
+
+const selectorKeyHints = "Space toggle · a all · n none · Enter confirm · q/Esc cancel"
 
 // CheckboxSelector renders an interactive multi-select list and reads keys
 // from the injected reader.
@@ -169,15 +172,34 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 		useColor = *s.color
 	}
 
+	termHeight := 0
+	if f, ok := s.w.(*os.File); ok {
+		if _, h, err := termGetSizeFn(int(f.Fd())); err == nil && h > 0 {
+			termHeight = h
+		}
+	}
+	bodyBudget := 0
+	if termHeight > 0 {
+		// Reserve 1 row for the trailing newline after the footer so cursor-up
+		// redraws never scroll past row 1, plus 1 row for the keybinding footer.
+		maxLines := max(1, termHeight-1)
+		if maxLines > 1 {
+			bodyBudget = maxLines - 1
+		} else {
+			bodyBudget = 1
+		}
+	}
+
 	if useColor {
 		_, _ = io.WriteString(s.w, "\x1b[?25l")
 		defer func() { _, _ = io.WriteString(s.w, "\x1b[?25h") }()
 	}
 
+	scrollTop := 0
 	linesRendered := 0
 	render := func() {
 		var sb strings.Builder
-		sb.Grow(len(s.opts)*80 + 64)
+		sb.Grow(len(s.opts)*80 + 128)
 		if useColor {
 			sb.WriteString(noWrapOn)
 		}
@@ -191,9 +213,36 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 		if rawMode {
 			newline = "\r\n"
 		}
+
+		var start, end int
+		scrollTop, start, end = selectorWindow(s.opts, cursor, scrollTop, bodyBudget)
+
 		currentLines := 0
+		writeMore := func(arrow string, count int) {
+			if useColor {
+				sb.WriteString("\r\x1b[K\x1b[2m   ")
+				sb.WriteString(arrow)
+				sb.WriteByte(' ')
+				sb.WriteString(strconv.Itoa(count))
+				sb.WriteString(" more\x1b[0m")
+			} else {
+				sb.WriteString("   ")
+				sb.WriteString(arrow)
+				sb.WriteByte(' ')
+				sb.WriteString(strconv.Itoa(count))
+				sb.WriteString(" more")
+			}
+			sb.WriteString(newline)
+			currentLines++
+		}
+
+		if start > 0 {
+			writeMore("↑", start)
+		}
+
 		lastGroup := ""
-		for i, opt := range s.opts {
+		for i := start; i < end; i++ {
+			opt := s.opts[i]
 			// A group header line renders once, before the first option of
 			// that group (design: selector group headers). Options without a
 			// Group field (or repeated within a contiguous run) are unaffected.
@@ -245,6 +294,26 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 			sb.WriteString(newline)
 			currentLines++
 		}
+
+		if end < len(s.opts) {
+			writeMore("↓", len(s.opts)-end)
+		}
+
+		if termHeight == 0 || termHeight > 2 {
+			if useColor {
+				sb.WriteString("\r\x1b[K\x1b[2m")
+				sb.WriteString(selectorKeyHints)
+				sb.WriteString("\x1b[0m")
+			} else {
+				sb.WriteString(selectorKeyHints)
+			}
+			sb.WriteString(newline)
+			currentLines++
+		}
+
+		if useColor && currentLines < linesRendered {
+			sb.WriteString("\x1b[J")
+		}
 		linesRendered = currentLines
 		if useColor {
 			sb.WriteString(noWrapOff)
@@ -288,14 +357,23 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 			for i := range selected {
 				selected[i] = false
 			}
+		case 'k':
+			if cursor > 0 {
+				cursor--
+			}
+		case 'j':
+			if cursor < len(s.opts)-1 {
+				cursor++
+			}
 		case 0x03:
 			return SelectResult{Canceled: true}, context.Canceled
 		case 0x04, 'q':
 			return SelectResult{Canceled: true}, nil
 		case 0x1b:
-			// Escape either starts an arrow sequence (\x1b[A / \x1b[B) or
-			// cancels on its own. Wait briefly so split SSH/tmux bursts still
-			// register as arrows without hanging bare Esc.
+			// Escape either starts an arrow sequence (\x1b[A/\x1b[B or
+			// application-mode \x1bOA/\x1bOB) or cancels on its own. Wait
+			// briefly so split SSH/tmux bursts still register as arrows
+			// without hanging bare Esc.
 			next, ok, err := pump.nextTimeout(ctx, escSequenceWait)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -303,7 +381,7 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 				}
 				return SelectResult{Canceled: true}, err
 			}
-			if !ok || next != '[' {
+			if !ok || (next != '[' && next != 'O') {
 				return SelectResult{Canceled: true}, nil
 			}
 			arrow, ok, err := pump.nextTimeout(ctx, escSequenceWait)
@@ -331,4 +409,62 @@ func (s *CheckboxSelector) RunContext(ctx context.Context) (SelectResult, error)
 		}
 		render()
 	}
+}
+
+func selectorWindow(opts []SelectOption, cursor, scrollTop, bodyBudget int) (int, int, int) {
+	if len(opts) == 0 {
+		return 0, 0, 0
+	}
+	if bodyBudget <= 0 {
+		return 0, 0, len(opts)
+	}
+	if cursor < scrollTop {
+		scrollTop = cursor
+	}
+	end := computeWindowEnd(opts, scrollTop, bodyBudget)
+	for cursor >= end && scrollTop < len(opts)-1 {
+		scrollTop++
+		end = computeWindowEnd(opts, scrollTop, bodyBudget)
+	}
+	return scrollTop, scrollTop, end
+}
+
+func computeWindowEnd(opts []SelectOption, start, bodyBudget int) int {
+	topInd := 0
+	if start > 0 {
+		topInd = 1
+	}
+
+	totalLines := topInd
+	lastGroup := ""
+	for i := start; i < len(opts); i++ {
+		if opts[i].Group != "" && opts[i].Group != lastGroup {
+			totalLines++
+			lastGroup = opts[i].Group
+		}
+		totalLines++
+	}
+	if totalLines <= bodyBudget {
+		return len(opts)
+	}
+
+	avail := bodyBudget - topInd - 1 // reserve 1 line for bottom ↓ indicator
+	used := 0
+	lastGroup = ""
+	end := start
+	for i := start; i < len(opts); i++ {
+		cost := 1
+		nextGroup := lastGroup
+		if opts[i].Group != "" && opts[i].Group != lastGroup {
+			cost++
+			nextGroup = opts[i].Group
+		}
+		if i > start && used+cost > avail {
+			break
+		}
+		used += cost
+		lastGroup = nextGroup
+		end = i + 1
+	}
+	return end
 }

@@ -446,3 +446,25 @@ func TestRenderer_UpdatePresenterInterfaces(t *testing.T) {
 		t.Errorf("UpdatePresenter interface methods missing expected output, got: %s", out)
 	}
 }
+
+func TestUpdateSummary_ColorOutput(t *testing.T) {
+	out := renderUpdateSummary(Summary{
+		Results: []ToolResult{
+			{Name: "brew", Status: StatusUpdated, Version: "4.1.0"},
+			{Name: "npm", Status: StatusFailed, Error: fmt.Errorf("timeout"), Stderr: "line1\nline2"},
+		},
+	}, true, false, false, true)
+
+	for _, want := range []string{
+		"\033[32m1 updated\033[0m",
+		"\033[31m1 failed\033[0m",
+		"\033[32mUpdated:\033[0m brew",
+		"\033[31mFailed:\033[0m npm",
+		"\033[2m│\033[0m \033[2mline1\033[0m",
+		"\033[2m│\033[0m \033[2mline2\033[0m",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected colored summary to contain %q, got:\n%q", want, out)
+		}
+	}
+}

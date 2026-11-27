@@ -134,6 +134,20 @@ func TestRenderer_DoctorResults_WarningsAndErrors(t *testing.T) {
 			t.Errorf("verbose mode should display Detail, got: %s", out)
 		}
 	})
+
+	t.Run("quiet suppresses detail even when verbose", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := NewRendererForced(&buf, false, false, true, true)
+		r.DoctorResults(results, true, true)
+
+		out := buf.String()
+		if strings.Contains(out, "permission denied") {
+			t.Errorf("quiet mode should suppress Detail even when verbose, got: %s", out)
+		}
+		if !strings.Contains(out, "Config directory is not writable") {
+			t.Errorf("quiet mode should still show error message, got: %s", out)
+		}
+	})
 }
 
 func TestDoctorIcon(t *testing.T) {

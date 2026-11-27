@@ -55,6 +55,36 @@ func TestSelector_KeyHandling(t *testing.T) {
 			wantSel: []string{"brew", "go", "docker"},
 		},
 		{
+			name:    "j moves down and space deselects the second row",
+			input:   "j \r",
+			wantSel: []string{"brew", "go", "docker"},
+		},
+		{
+			name:    "j then k returns to first row",
+			input:   "jk \r",
+			wantSel: []string{"npm", "go", "docker"},
+		},
+		{
+			name:    "k at first row stays at first row",
+			input:   "k \r",
+			wantSel: []string{"npm", "go", "docker"},
+		},
+		{
+			name:    "j past last row stays at last row",
+			input:   "jjjj \r",
+			wantSel: []string{"brew", "npm", "go"},
+		},
+		{
+			name:    "application-mode down arrow deselects the second row",
+			input:   "\x1bOB \r",
+			wantSel: []string{"brew", "go", "docker"},
+		},
+		{
+			name:    "application-mode up arrow returns to first row",
+			input:   "\x1bOB\x1bOA \r",
+			wantSel: []string{"npm", "go", "docker"},
+		},
+		{
 			name:    "up from the first row stays and toggles it",
 			input:   "\x1b[A \r",
 			wantSel: []string{"npm", "go", "docker"},
@@ -448,7 +478,7 @@ func TestSelector_ColorRepositioningAndCursorControl(t *testing.T) {
 	}
 
 	// Down arrow (\x1b[B), Space (deselect docker), Enter (\r)
-	// Total lines = 1 header ("APT Package Manager") + 3 options = 4 lines.
+	// Total lines = 1 header ("APT Package Manager") + 3 options + 1 footer = 5 lines.
 	sel := NewCheckboxSelector(&buf, strings.NewReader("\x1b[B \r"), opts).WithColor(true)
 	res, err := sel.Run()
 	if err != nil {
@@ -467,9 +497,13 @@ func TestSelector_ColorRepositioningAndCursorControl(t *testing.T) {
 		t.Errorf("expected cursor restore sequence \\x1b[?25h in output, got:\n%q", out)
 	}
 
-	// Must reposition cursor up by 4 lines on redraw (\x1b[4A).
-	if !strings.Contains(out, "\x1b[4A") {
-		t.Errorf("expected cursor up repositioning \\x1b[4A in output, got:\n%q", out)
+	// Must reposition cursor up by 5 lines on redraw (\x1b[5A).
+	if !strings.Contains(out, "\x1b[5A") {
+		t.Errorf("expected cursor up repositioning \\x1b[5A in output, got:\n%q", out)
+	}
+	// Must render the dim keybinding hint footer.
+	if !strings.Contains(out, "\x1b[2mSpace toggle · a all · n none · Enter confirm · q/Esc cancel\x1b[0m") {
+		t.Errorf("expected dim keybinding hint footer in output, got:\n%q", out)
 	}
 	// Must clear line with \r\x1b[K.
 	if !strings.Contains(out, "\r\x1b[K") {
@@ -738,5 +772,139 @@ func TestSelector_SplitArrowOverSlowPipe(t *testing.T) {
 	}
 	if !slices.Equal(res.Selected, []string{"brew"}) {
 		t.Errorf("Selected = %v, want [brew] (npm deselected)", res.Selected)
+	}
+}
+
+func TestSelector_ViewportBounding(t *testing.T) {
+	manyOpts := []SelectOption{
+		{ID: "t1", Label: "tool1"},
+		{ID: "t2", Label: "tool2"},
+		{ID: "t3", Label: "tool3"},
+		{ID: "t4", Label: "tool4"},
+		{ID: "t5", Label: "tool5"},
+		{ID: "t6", Label: "tool6"},
+		{ID: "t7", Label: "tool7"},
+		{ID: "t8", Label: "tool8"},
+	}
+	groupedOpts := []SelectOption{
+		{ID: "g1", Label: "g1", Group: "GroupA"},
+		{ID: "g2", Label: "g2", Group: "GroupA"},
+		{ID: "g3", Label: "g3", Group: "GroupB"},
+		{ID: "g4", Label: "g4", Group: "GroupB"},
+		{ID: "g5", Label: "g5", Group: "GroupC"},
+		{ID: "g6", Label: "g6", Group: "GroupC"},
+	}
+
+	tests := []struct {
+		name         string
+		opts         []SelectOption
+		termHeight   int
+		termErr      error
+		input        string
+		wantSelected []string
+		wantContains []string
+		wantNotCont  []string
+		maxCursorUp  int
+	}{
+		{
+			name:         "initial render bounds height and shows down indicator",
+			opts:         manyOpts,
+			termHeight:   6, // maxLines=5, bodyBudget=4 -> 3 opts + ↓ + footer = 5 lines
+			input:        " \r",
+			wantSelected: []string{"t2", "t3", "t4", "t5", "t6", "t7", "t8"},
+			wantContains: []string{"↓", "more", "\x1b[5A", "Space toggle · a all · n none · Enter confirm · q/Esc cancel"},
+			wantNotCont:  []string{"\x1b[6A", "\x1b[7A", "\x1b[8A", "\x1b[9A"},
+			maxCursorUp:  5,
+		},
+		{
+			name:         "scrolling down keeps cursor in view and shows up indicator",
+			opts:         manyOpts,
+			termHeight:   6,
+			input:        "jjjj \r", // move to index 4 (tool5), toggle off
+			wantSelected: []string{"t1", "t2", "t3", "t4", "t6", "t7", "t8"},
+			wantContains: []string{"↑", "↓", "\x1b[5A"},
+			wantNotCont:  []string{"\x1b[6A"},
+			maxCursorUp:  5,
+		},
+		{
+			name:         "scrolling to bottom omits down indicator",
+			opts:         manyOpts,
+			termHeight:   6,
+			input:        "jjjjjjj \r", // move to index 7 (tool8), toggle off
+			wantSelected: []string{"t1", "t2", "t3", "t4", "t5", "t6", "t7"},
+			wantContains: []string{"↑", "tool8", "\x1b[5A"},
+			wantNotCont:  []string{"\x1b[6A"},
+			maxCursorUp:  5,
+		},
+		{
+			name:         "grouped options respect viewport budget",
+			opts:         groupedOpts,
+			termHeight:   6, // maxLines=5, bodyBudget=4
+			input:        "jjjjj \r",
+			wantSelected: []string{"g1", "g2", "g3", "g4", "g5"},
+			wantContains: []string{"↑", "GroupC", "g6"},
+			wantNotCont:  []string{"\x1b[6A", "\x1b[7A"},
+			maxCursorUp:  5,
+		},
+		{
+			name:         "termGetSize error falls back to unbounded",
+			opts:         manyOpts,
+			termHeight:   0,
+			termErr:      errors.New("not a tty"),
+			input:        " \r",
+			wantSelected: []string{"t2", "t3", "t4", "t5", "t6", "t7", "t8"},
+			wantContains: []string{"\x1b[9A"}, // 8 opts + 1 footer = 9 lines
+			wantNotCont:  []string{"↑", "↓"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pr, pw, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("os.Pipe() error: %v", err)
+			}
+
+			oldGetSize := termGetSizeFn
+			termGetSizeFn = func(int) (int, int, error) {
+				return 80, tt.termHeight, tt.termErr
+			}
+			defer func() { termGetSizeFn = oldGetSize }()
+
+			var outBuf bytes.Buffer
+			readDone := make(chan struct{})
+			go func() {
+				_, _ = io.Copy(&outBuf, pr)
+				close(readDone)
+			}()
+
+			sel := NewCheckboxSelector(pw, strings.NewReader(tt.input), tt.opts).WithColor(true)
+			res, runErr := sel.Run()
+			_ = pw.Close()
+			<-readDone
+			_ = pr.Close()
+
+			if runErr != nil {
+				t.Fatalf("Run() error: %v", runErr)
+			}
+			if res.Canceled {
+				t.Fatalf("Run() canceled unexpectedly")
+			}
+			if !slices.Equal(res.Selected, tt.wantSelected) {
+				t.Errorf("Selected = %v, want %v", res.Selected, tt.wantSelected)
+			}
+
+			out := outBuf.String()
+			for _, want := range tt.wantContains {
+				if !strings.Contains(out, want) {
+					t.Errorf("output missing %q, got:\n%q", want, out)
+				}
+			}
+			for _, unwanted := range tt.wantNotCont {
+				if strings.Contains(out, unwanted) {
+					t.Errorf("output must not contain %q, got:\n%q", unwanted, out)
+				}
+			}
+		})
 	}
 }

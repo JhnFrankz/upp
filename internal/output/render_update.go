@@ -109,16 +109,7 @@ func (r *Renderer) verboseToolLine(result ToolResult) {
 		}
 		r.scratch.WriteByte('\n')
 		if r.verbose && !r.quiet && result.Stderr != "" {
-			rem := strings.TrimSpace(result.Stderr)
-			for len(rem) > 0 {
-				var line string
-				line, rem, _ = strings.Cut(rem, "\n")
-				r.scratch.WriteString("    ")
-				r.writeColor(&r.scratch, "2", "│")
-				r.scratch.WriteByte(' ')
-				r.writeColor(&r.scratch, "2", line)
-				r.scratch.WriteByte('\n')
-			}
+			r.writeIndentedStderr(&r.scratch, result.Stderr)
 		}
 	case StatusDeselected:
 		r.scratch.WriteString("  ")
@@ -302,13 +293,7 @@ func (r *Renderer) UpdateSummary(summary Summary) {
 		}
 		first = false
 		if colorCode != "" && r.color {
-			sb.WriteString("\033[")
-			sb.WriteString(colorCode)
-			sb.WriteString("m")
-			sb.WriteString(strconv.Itoa(count))
-			sb.WriteByte(' ')
-			sb.WriteString(label)
-			sb.WriteString("\033[0m")
+			r.writeColor(&sb, colorCode, strconv.Itoa(count)+" "+label)
 		} else {
 			sb.WriteString(strconv.Itoa(count))
 			sb.WriteByte(' ')
@@ -353,16 +338,12 @@ func (r *Renderer) writeIndexSection(sb *strings.Builder, results []ToolResult, 
 		return false
 	}
 	sb.WriteString("  ")
-	if colorCode != "" && r.color {
-		sb.WriteString("\033[")
-		sb.WriteString(colorCode)
-		sb.WriteString("m")
-		sb.WriteString(label)
-		sb.WriteString("\033[0m ")
+	if colorCode != "" {
+		r.writeColor(sb, colorCode, label)
 	} else {
 		sb.WriteString(label)
-		sb.WriteByte(' ')
 	}
+	sb.WriteByte(' ')
 	for j, idx := range indices {
 		if j > 0 {
 			sb.WriteString(", ")
@@ -371,6 +352,19 @@ func (r *Renderer) writeIndexSection(sb *strings.Builder, results []ToolResult, 
 	}
 	sb.WriteByte('\n')
 	return true
+}
+
+func (r *Renderer) writeIndentedStderr(sb *strings.Builder, stderr string) {
+	rem := strings.TrimSpace(stderr)
+	for len(rem) > 0 {
+		var line string
+		line, rem, _ = strings.Cut(rem, "\n")
+		sb.WriteString("    ")
+		r.writeColor(sb, "2", "│")
+		sb.WriteByte(' ')
+		r.writeColor(sb, "2", line)
+		sb.WriteByte('\n')
+	}
 }
 
 func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary, idx *summaryIndices) {
@@ -383,16 +377,7 @@ func (r *Renderer) detailSummary(sb *strings.Builder, summary Summary, idx *summ
 		if r.verbose && !r.quiet {
 			for _, i := range idx.failed {
 				if summary.Results[i].Stderr != "" {
-					rem := strings.TrimSpace(summary.Results[i].Stderr)
-					for len(rem) > 0 {
-						var line string
-						line, rem, _ = strings.Cut(rem, "\n")
-						sb.WriteString("    ")
-						sb.WriteString(r.dim("│"))
-						sb.WriteByte(' ')
-						sb.WriteString(r.dim(line))
-						sb.WriteByte('\n')
-					}
+					r.writeIndentedStderr(sb, summary.Results[i].Stderr)
 				}
 			}
 		}
