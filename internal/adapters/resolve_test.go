@@ -7,6 +7,7 @@ import (
 
 	"github.com/JhnFrankz/upp/internal/config"
 	"github.com/JhnFrankz/upp/internal/platform"
+	"github.com/JhnFrankz/upp/internal/security"
 )
 
 type mockAdapter struct {
@@ -68,7 +69,7 @@ func (m *mockProvider) ResolveOwner(tool, os string) Adapter {
 }
 
 func TestProviderRegistrationAndHelpers(t *testing.T) {
-	orig := GlobalProvider()
+	orig := currentProvider()
 	defer RegisterProvider(orig)
 
 	p := &mockProvider{
@@ -84,8 +85,8 @@ func TestProviderRegistrationAndHelpers(t *testing.T) {
 	}
 
 	RegisterProvider(p)
-	if got := GlobalProvider(); got != p {
-		t.Fatalf("GlobalProvider() = %v, want %v", got, p)
+	if got := currentProvider(); got != p {
+		t.Fatalf("currentProvider() = %v, want %v", got, p)
 	}
 
 	darwinAdapters := AdaptersForPlatform("darwin")
@@ -129,7 +130,7 @@ func TestProviderRegistrationAndHelpers(t *testing.T) {
 }
 
 func TestResolveAdapters_NilProviderReturnsEmpty(t *testing.T) {
-	orig := GlobalProvider()
+	orig := currentProvider()
 	RegisterProvider(nil)
 	defer RegisterProvider(orig)
 
@@ -175,7 +176,7 @@ func TestResolveAdapters_PlatformAndCustomTools(t *testing.T) {
 	}
 	cfg.Tools["custom-disabled"] = config.ToolConfig{Enabled: false}
 
-	resolved, err := ResolveAdapters(cfg, "darwin", WithProvider(p))
+	resolved, err := resolveAdaptersWithProvider(cfg, "darwin", p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,8 +215,8 @@ func TestResolveAdapters_PlatformAndCustomTools(t *testing.T) {
 			if ca.Package() != "pkg-managed" {
 				t.Errorf("custom-managed Package() = %q, want pkg-managed", ca.Package())
 			}
-			if !ca.IsTrusted() {
-				t.Errorf("custom-managed IsTrusted() = false, want true")
+			if ca.Info().Trust != security.TrustCustomTrusted {
+				t.Errorf("custom-managed Trust = %v, want TrustCustomTrusted", ca.Info().Trust)
 			}
 		}
 	}
@@ -242,7 +243,7 @@ func TestResolveAdapters_CustomToolDisabledManager(t *testing.T) {
 		},
 	}
 
-	resolved, err := ResolveAdapters(cfg, "macos", WithProvider(p))
+	resolved, err := resolveAdaptersWithProvider(cfg, "macos", p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestResolveAdapters_NilAdapterInProviderList(t *testing.T) {
 		},
 	}
 
-	resolved, err := ResolveAdapters(nil, "macos", WithProvider(p))
+	resolved, err := resolveAdaptersWithProvider(nil, "macos", p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -299,7 +300,7 @@ func TestResolveAdapters_CustomToolManagerDisabledByID(t *testing.T) {
 		},
 	}
 
-	resolved, err := ResolveAdapters(cfg, "macos", WithProvider(p))
+	resolved, err := resolveAdaptersWithProvider(cfg, "macos", p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -316,7 +317,7 @@ func TestResolveAdapters_CustomToolManagerDisabledByID(t *testing.T) {
 }
 
 func TestProviderConcurrency(t *testing.T) {
-	orig := GlobalProvider()
+	orig := currentProvider()
 	defer RegisterProvider(orig)
 
 	mgr := &mockAdapter{name: "brew", kind: KindManager, platforms: []string{platform.OSMacOS}}
@@ -340,7 +341,7 @@ func TestProviderConcurrency(t *testing.T) {
 			case 0:
 				RegisterProvider(p)
 			case 1:
-				_ = GlobalProvider()
+				_ = currentProvider()
 			case 2:
 				_ = AdaptersForPlatform("darwin")
 				_ = ResolveOwner("gh", "darwin")

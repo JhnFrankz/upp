@@ -31,23 +31,7 @@ var resolveOwnerFn = ResolveOwner
 // adapters and wrappers stay hermetic when a test swaps the seam.
 
 func execShellWithTimeout(ctx context.Context, command string, timeout time.Duration) (stdout, stderr string, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	var cmd *exec.Cmd
-	if runtimeGOOSFn() == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
-		// Own process group so the timeout can kill shell grandchildren
-		// (curl|tar, sudo apt, brew...) too — the direct child alone is
-		// not enough for the compound commands every adapter runs.
-		adapters.Setpgid(cmd)
-	}
-	return adapters.RunCommandWithTimeout(ctx, cmd)
+	return adapters.ExecShellWithTimeoutForOS(ctx, runtimeGOOSFn(), command, timeout, false)
 }
 
 var (
@@ -58,49 +42,19 @@ var (
 		return execShellWithTimeout(ctx, command, adapters.CheckTimeout)
 	}
 	runCmdArgsFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		ctx, cancel := context.WithTimeout(ctx, adapters.CheckTimeout)
-		defer cancel()
-
-		var cmd *exec.Cmd
-		if runtimeGOOSFn() == "windows" {
-			cmd = exec.CommandContext(ctx, name, args...)
-		} else {
-			cmd = exec.CommandContext(ctx, name, args...)
-			// Own process group so the timeout can kill descendants too
-			// (npm/pnpm workers holding the pipes): the direct child alone
-			// is not enough, exactly like runCmdFn's shell path.
-			adapters.Setpgid(cmd)
-		}
-		return adapters.RunCommandWithTimeout(ctx, cmd)
+		return adapters.ExecArgsWithTimeoutForOS(ctx, runtimeGOOSFn(), adapters.CheckTimeout, name, args...)
 	}
 	runCmdArgsUpdateFn = func(ctx context.Context, name string, args ...string) (stdout, stderr string, err error) {
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		ctx, cancel := context.WithTimeout(ctx, adapters.UpdateTimeout)
-		defer cancel()
-
 		goos := runtimeGOOSFn()
 		var prepErr error
 		name, args, prepErr = prepareSudoUpdate(ctx, goos, name, args)
 		if prepErr != nil {
 			return "", "", prepErr
 		}
-
-		var cmd *exec.Cmd
-		if goos == "windows" {
-			cmd = exec.CommandContext(ctx, name, args...)
-		} else {
-			cmd = exec.CommandContext(ctx, name, args...)
-			// Own process group so the timeout can kill descendants too
-			// (workers holding the pipes): the direct child alone is
-			// not enough, exactly like runCmdFn's shell path.
-			adapters.Setpgid(cmd)
-		}
-		return adapters.RunCommandWithTimeout(ctx, cmd)
+		return adapters.ExecArgsWithTimeoutForOS(ctx, goos, adapters.UpdateTimeout, name, args...)
 	}
 	lookPathFn = func(name string) bool {
 		_, err := exec.LookPath(name)
@@ -245,24 +199,10 @@ func commandOutputErr(ctx context.Context, name string, args ...string) (string,
 	return commandOutputErrFor(ctx, name, name, args...)
 }
 
-// shellOutputErr runs a shell command and returns its trimmed stdout, or a
-// structured failure when the subprocess fails (design D3). Delegates to the
-// same runCmdFn seam variable as shellOutput, so seam fakes keep working.
-// stdout is preserved on failure: the npm/pnpm exit-1 convention (D4) needs
-// it to decide availability. The failure label is the explicit tool name,
-// not the command's first token (a wrapper or shell builtin).
-func shellOutputErr(ctx context.Context, command, tool string) (string, error) {
-	return shellOutputErrWith(runCmdFn, ctx, command, tool)
-}
-
 // shellOutputErrCheck runs a read-only shell check command bounded by
 // CheckTimeout (via runCmdCheckFn) rather than UpdateTimeout.
 func shellOutputErrCheck(ctx context.Context, command, tool string) (string, error) {
-	return shellOutputErrWith(runCmdCheckFn, ctx, command, tool)
-}
-
-func shellOutputErrWith(execFn func(context.Context, string) (string, string, error), ctx context.Context, command, tool string) (string, error) {
-	stdout, stderr, err := execFn(ctx, command)
+	stdout, stderr, err := runCmdCheckFn(ctx, command)
 	var retErr error
 	if err != nil {
 		retErr = commandFailureErr(tool, stderr, err)
@@ -271,6 +211,78 @@ func shellOutputErrWith(execFn func(context.Context, string) (string, string, er
 		return "", retErr
 	}
 	return strings.TrimSpace(stdout), retErr
+}
+
+// hasFatalStderr reports whether stderr contains a fatal error prefix at the
+// start of any line (e.g. "error:", "Error:", "ERROR ", "fatal:", "E:").
+// Checking line prefixes avoids false positives on exit-0 commands that mention
+// "error" in benign text (e.g. "0 errors", package names, or warnings).
+func hasFatalStderr(stderr string) bool {
+	if stderr == "" {
+		return false
+	}
+	for len(stderr) > 0 {
+		var line string
+		line, stderr, _ = strings.Cut(stderr, "\n")
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "error:") ||
+			strings.HasPrefix(lower, "fatal:") ||
+			strings.HasPrefix(trimmed, "ERROR ") ||
+			strings.HasPrefix(trimmed, "E:") {
+			return true
+		}
+	}
+	return false
+}
+
+type updateExecConfig struct {
+	label      string
+	before     string
+	privileges []string
+	onDone     func()
+	afterFn    func() string
+	cmd        string
+	args       []string
+}
+
+func executeUpdateCmd(ctx context.Context, cfg updateExecConfig) (adapters.Result, error) {
+	_, stderr, err := runCmdArgsUpdate(ctx, cfg.cmd, cfg.args...)
+	if cfg.onDone != nil {
+		cfg.onDone()
+	}
+	if err != nil {
+		return adapters.Result{
+			Success:    false,
+			Before:     cfg.before,
+			After:      cfg.before,
+			Error:      fmt.Errorf("%s failed: %w", cfg.label, err),
+			Stderr:     stderr,
+			Privileges: cfg.privileges,
+		}, nil
+	}
+	if hasFatalStderr(stderr) {
+		return adapters.Result{
+			Success:    false,
+			Before:     cfg.before,
+			After:      cfg.before,
+			Error:      fmt.Errorf("%s error: %s", cfg.label, truncate(stderr, 200)),
+			Stderr:     stderr,
+			Privileges: cfg.privileges,
+		}, nil
+	}
+	after := cfg.before
+	if cfg.afterFn != nil {
+		if v := cfg.afterFn(); v != "" {
+			after = v
+		}
+	}
+	return adapters.Result{
+		Success:    true,
+		Before:     cfg.before,
+		After:      after,
+		Privileges: cfg.privileges,
+	}, nil
 }
 
 // commandFailureErr builds the structured Check() failure message

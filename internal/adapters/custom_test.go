@@ -16,15 +16,16 @@ func TestNewCustomAdapter_RequiresCommand(t *testing.T) {
 	}
 }
 
-// TestCustomAdapter_IsTrusted covers IsTrusted directly (security
+// TestCustomAdapter_Trust covers Info().Trust directly (security
 // classification): trusted must be exactly what config declared.
-func TestCustomAdapter_IsTrusted(t *testing.T) {
+func TestCustomAdapter_Trust(t *testing.T) {
 	tests := []struct {
 		name    string
 		trusted bool
+		want    security.TrustLevel
 	}{
-		{"untrusted default", false},
-		{"trusted via config", true},
+		{"untrusted default", false, security.TrustCustomUntrusted},
+		{"trusted via config", true, security.TrustCustomTrusted},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -32,8 +33,8 @@ func TestCustomAdapter_IsTrusted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := ca.IsTrusted(); got != tt.trusted {
-				t.Errorf("IsTrusted() = %v, want %v", got, tt.trusted)
+			if got := ca.Info().Trust; got != tt.want {
+				t.Errorf("Info().Trust = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -575,12 +576,12 @@ func TestShellExec(t *testing.T) {
 		},
 	})
 
-	stdout, _, err := shellExec(context.Background(), "echo hello")
+	stdout, _, err := shellExecWithTimeoutFn(context.Background(), "echo hello", UpdateTimeout)
 	if err != nil {
-		t.Fatalf("shellExec() error = %v", err)
+		t.Fatalf("shellExecWithTimeoutFn() error = %v", err)
 	}
 	if stdout != "hello" {
-		t.Errorf("shellExec() stdout = %q, want %q", stdout, "hello")
+		t.Errorf("shellExecWithTimeoutFn() stdout = %q, want %q", stdout, "hello")
 	}
 }
 
@@ -607,9 +608,9 @@ func TestShellExec_UpdateTimeoutKills(t *testing.T) {
 		},
 	})
 
-	_, _, err := shellExec(context.Background(), "sleep 2")
+	_, _, err := shellExecWithTimeoutFn(context.Background(), "sleep 2", UpdateTimeout)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("shellExec() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+		t.Errorf("shellExecWithTimeoutFn() error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
 	}
 }
 
@@ -685,11 +686,6 @@ func TestCustomAdapter_Package_GetterSetter(t *testing.T) {
 	ca.SetPackage("  ripgrep-trimmed  ")
 	if ca.Package() != "ripgrep-trimmed" {
 		t.Errorf("Package() = %q, want %q", ca.Package(), "ripgrep-trimmed")
-	}
-
-	ca.WithPackage("rg-chained")
-	if ca.Package() != "rg-chained" {
-		t.Errorf("WithPackage() = %q, want %q", ca.Package(), "rg-chained")
 	}
 
 	ca2, err := NewCustomAdapterWithPackage("bat", "bat --update", "", "bat-extras", false)

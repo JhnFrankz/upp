@@ -2,7 +2,6 @@ package official
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -15,28 +14,19 @@ type DockerAdapter struct{}
 func (a *DockerAdapter) Name() string { return "docker" }
 
 func (a *DockerAdapter) Detect() bool {
-	return lookPath("docker")
+	return dockerDelegated.detect()
 }
 
 func (a *DockerAdapter) CurrentVersion(ctx context.Context) (string, error) {
-	return extractVersion(commandOutput(ctx, "docker", "--version")), nil
+	return dockerDelegated.currentVersion(ctx)
 }
 
 func (a *DockerAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
-	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("%w: docker is not installed", adapters.ErrNotInstalled)
-	}
-
-	current, _ := a.CurrentVersion(ctx)
-	return DelegatedCheck(ctx, a, current)
+	return dockerDelegated.check(ctx, a)
 }
 
 func (a *DockerAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
-	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("%w: docker is not installed", adapters.ErrNotInstalled)
-	}
-
-	return DelegatedUpdate(ctx, a, dryRun)
+	return dockerDelegated.update(ctx, a, dryRun)
 }
 
 var (
@@ -65,11 +55,13 @@ var (
 		Manager:        dockerManagerPacman,
 		ManagerPackage: dockerPkgPacman,
 	}
+	dockerDelegated = delegatedToolAdapter{
+		id:         "docker",
+		aptInfo:    dockerInfoApt,
+		pacmanInfo: dockerInfoPacman,
+	}
 )
 
 func (a *DockerAdapter) Info() adapters.ToolInfo {
-	if defaultLinuxManager() == "pacman" {
-		return dockerInfoPacman
-	}
-	return dockerInfoApt
+	return dockerDelegated.info()
 }

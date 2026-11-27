@@ -2,7 +2,6 @@ package official
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -15,28 +14,19 @@ type GhAdapter struct{}
 func (a *GhAdapter) Name() string { return "gh" }
 
 func (a *GhAdapter) Detect() bool {
-	return lookPath("gh")
+	return ghDelegated.detect()
 }
 
 func (a *GhAdapter) CurrentVersion(ctx context.Context) (string, error) {
-	return extractVersion(commandOutput(ctx, "gh", "--version")), nil
+	return ghDelegated.currentVersion(ctx)
 }
 
 func (a *GhAdapter) Check(ctx context.Context) (adapters.UpdateInfo, error) {
-	if !a.Detect() {
-		return adapters.UpdateInfo{}, fmt.Errorf("%w: gh is not installed", adapters.ErrNotInstalled)
-	}
-
-	current, _ := a.CurrentVersion(ctx)
-	return DelegatedCheck(ctx, a, current)
+	return ghDelegated.check(ctx, a)
 }
 
 func (a *GhAdapter) Update(ctx context.Context, dryRun bool) (adapters.Result, error) {
-	if !a.Detect() {
-		return adapters.Result{Success: false}, fmt.Errorf("%w: gh is not installed", adapters.ErrNotInstalled)
-	}
-
-	return DelegatedUpdate(ctx, a, dryRun)
+	return ghDelegated.update(ctx, a, dryRun)
 }
 
 var (
@@ -65,11 +55,13 @@ var (
 		Manager:        ghManagerPacman,
 		ManagerPackage: ghPkgPacman,
 	}
+	ghDelegated = delegatedToolAdapter{
+		id:         "gh",
+		aptInfo:    ghInfoApt,
+		pacmanInfo: ghInfoPacman,
+	}
 )
 
 func (a *GhAdapter) Info() adapters.ToolInfo {
-	if defaultLinuxManager() == "pacman" {
-		return ghInfoPacman
-	}
-	return ghInfoApt
+	return ghDelegated.info()
 }

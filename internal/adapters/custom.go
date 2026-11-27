@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/JhnFrankz/upp/internal/platform"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -86,12 +85,6 @@ func (c *CustomAdapter) SetPackage(pkg string) {
 	c.info = c.buildInfo()
 }
 
-// WithPackage sets the package name and returns the adapter for chaining.
-func (c *CustomAdapter) WithPackage(pkg string) *CustomAdapter {
-	c.SetPackage(pkg)
-	return c
-}
-
 func (c *CustomAdapter) Name() string { return c.id }
 
 // IsCustom reports that this adapter is a user-defined custom adapter.
@@ -127,12 +120,12 @@ func (c *CustomAdapter) Check(ctx context.Context) (UpdateInfo, error) {
 		return UpdateInfo{}, fmt.Errorf("%w: tool %q is not installed (binary %q not found on PATH)", ErrNotInstalled, c.id, base)
 	}
 
-	stdout, _, err := shellExecWithTimeout(ctx, c.checkCmd, CheckTimeout)
+	stdout, _, err := shellExecWithTimeoutFn(ctx, c.checkCmd, CheckTimeout)
 	if err != nil {
 		return UpdateInfo{}, fmt.Errorf("check command failed for %s: %w", c.id, err)
 	}
 
-	latest := extractVersionFromOutput(stdout)
+	latest := version.ExtractVersionFromOutput(stdout)
 
 	return UpdateInfo{
 		CurrentVersion:  latest,
@@ -180,7 +173,7 @@ func (c *CustomAdapter) Update(ctx context.Context, dryRun bool) (Result, error)
 		}, nil
 	}
 
-	_, stderr, err := shellExec(ctx, c.command)
+	_, stderr, err := shellExecWithTimeoutFn(ctx, c.command, UpdateTimeout)
 	if err != nil {
 		return Result{
 			Success:    false,
@@ -260,27 +253,7 @@ func (c *CustomAdapter) ManagerChecker() PackageChecker {
 	return nil
 }
 
-// IsTrusted returns whether the custom adapter is trusted via config.
-func (c *CustomAdapter) IsTrusted() bool {
-	return c.trusted
-}
-
 // extractBaseCommand gets the base executable from a command string.
 func extractBaseCommand(cmd string) string {
 	return platform.ExtractBaseCommand(cmd)
-}
-
-// shellExec runs a command via the platform shell, bounded by UpdateTimeout.
-func shellExec(ctx context.Context, command string) (string, string, error) {
-	return shellExecWithTimeout(ctx, command, UpdateTimeout)
-}
-
-// shellExecWithTimeout delegates to the shellExecWithTimeoutFn seam variable.
-func shellExecWithTimeout(ctx context.Context, command string, timeout time.Duration) (string, string, error) {
-	return shellExecWithTimeoutFn(ctx, command, timeout)
-}
-
-// extractVersionFromOutput extracts a version-like string from command output.
-func extractVersionFromOutput(output string) string {
-	return version.ExtractVersionFromOutput(output)
 }

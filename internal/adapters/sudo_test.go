@@ -47,9 +47,9 @@ func TestPrepareSudoArgs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			in := slices.Clone(tc.args)
-			got := PrepareSudoArgs(tc.cmd, in)
+			got := PrepareSudoArgsForOS(runtimeGOOSFn(), tc.cmd, in)
 			if !slices.Equal(got, tc.want) {
-				t.Errorf("PrepareSudoArgs(%q, %v) = %v, want %v", tc.cmd, tc.args, got, tc.want)
+				t.Errorf("PrepareSudoArgsForOS(%q, %q, %v) = %v, want %v", runtimeGOOSFn(), tc.cmd, tc.args, got, tc.want)
 			}
 		})
 	}

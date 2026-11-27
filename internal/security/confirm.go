@@ -1,10 +1,13 @@
 package security
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync"
 )
 
 // ConfirmDecision represents the outcome of a confirmation prompt.
@@ -144,24 +147,46 @@ func promptUser(cfg ConfirmConfig) ConfirmDecision {
 		reader = os.Stdin
 	}
 
-	var buf []byte
-	var b [1]byte
-	for {
-		n, err := reader.Read(b[:])
-		if n > 0 {
-			if b[0] == '\n' {
-				break
-			}
-			buf = append(buf, b[0])
-		}
-		if err != nil {
-			break
-		}
-	}
-	input := strings.TrimSpace(strings.ToLower(string(buf)))
+	const maxPromptInputBytes = 4096
+	input := strings.TrimSpace(strings.ToLower(readPromptLine(reader, maxPromptInputBytes)))
 	if input == "y" || input == "yes" {
 		return ConfirmProceed
 	}
 
 	return ConfirmDeny
+}
+
+var (
+	promptReaderMu   sync.Mutex
+	lastPromptSource io.Reader
+	lastPromptBuf    *bufio.Reader
+)
+
+func readPromptLine(reader io.Reader, maxBytes int) string {
+	if br, ok := reader.(io.ByteReader); ok {
+		buf := make([]byte, 0, 16)
+		for len(buf) < maxBytes {
+			b, err := br.ReadByte()
+			if err != nil {
+				break
+			}
+			if b == '\n' {
+				break
+			}
+			buf = append(buf, b)
+		}
+		return string(buf)
+	}
+
+	promptReaderMu.Lock()
+	defer promptReaderMu.Unlock()
+	if reader != lastPromptSource {
+		lastPromptSource = reader
+		lastPromptBuf = bufio.NewReaderSize(reader, maxBytes)
+	}
+	line, err := lastPromptBuf.ReadSlice('\n')
+	if errors.Is(err, bufio.ErrBufferFull) {
+		return ""
+	}
+	return string(line)
 }

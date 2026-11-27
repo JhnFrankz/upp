@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"path"
-	"strings"
 
 	"github.com/JhnFrankz/upp/internal/adapters"
 	"github.com/JhnFrankz/upp/internal/security"
@@ -118,7 +117,7 @@ func (a *OpenCodeAdapter) Update(ctx context.Context, dryRun bool) (adapters.Res
 		}, nil
 	}
 
-	if stderr != "" && (strings.Contains(stderr, "error") || strings.Contains(stderr, "Error")) {
+	if hasFatalStderr(stderr) {
 		return adapters.Result{
 			Success: false,
 			Before:  before,
